@@ -347,16 +347,8 @@ class Language:
         self.cells = self.cells.union(grow_into)
         print(growth)
 
-def plot_grid(function):
-    polygons = []
-    values = []
-    for cell in list(all_gridcells.values()):
-        polygons.append(cell.polygon())
-        values.append(function(cell))
-    collection = matplotlib.collections.PolyCollection(
-        polygons, facecolors=values)
 
-    return collection
+from .geo_plot import plot_hex_grid
 
 def random_cell():
     m = numpy.random.randint(2)
@@ -391,6 +383,7 @@ ax = plt.axes(projection=ccrs.PlateCarree())
 ax.coastlines("50m")
 ax.set_extent(continent)
 
-ax.add_collection(plot_grid(lambda cell: (cell.language.id if cell.language else (0,0,0,1))))
+ax.add_collection(plot_grid(lambda cell: (cell.language.id if cell.language else (0,0,0,1)),
+                            all_gridcells))
 plt.show()
 
