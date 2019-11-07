@@ -10,6 +10,8 @@ from shapely.ops import unary_union
 from shapely.prepared import prep
 import tifffile
 import matplotlib.transforms as mtransforms
+from language import Language
+from geo_plot import plot_hex_grid
 
 GEODESIC = geodesic.Geodesic()
 SQRT3 = 3 ** 0.5
@@ -293,62 +295,6 @@ class GridCell():
                 if include_foreign or g.language == self.language or g.language is None
                 if include_unlivable or g.popcap >= 1]
 
-growth_factor = 1.1
-
-import csv
-
-popcaps = []
-with open("../binford/data-raw/HG_Output_final.csv") as binford_data:
-    for people in csv.DictReader(binford_data, skipinitialspace=True):
-        if people["STATE"].startswith("AUSTRALIA"):
-            # Exclude AUS populations
-            continue
-        if int(people["CLIM"]) < 3:
-            # Exclude arctic and sub-arctic populations
-            continue
-        popcaps.append(float(people["TLPOP"]))
-
-class Language:
-    def __init__(self, color, cell):
-        g = gridcell(*cell)
-        g.population = 10
-        g.language = self
-        self.cells = {g}
-        self.id = color
-        self.popcap = popcaps[numpy.random.randint(len(popcaps))]
-
-    def grow(self):
-        grow_into = {}
-        growth = 0
-        for cell in self.cells:
-            if cell not in grow_into:
-                grow_into[cell] = cell.popcap - cell.population
-            region_popcap = cell.popcap
-            region_population = cell.population
-            for n in cell.neighbors():
-                if n not in grow_into:
-                    grow_into[n] = n.popcap - n.population
-                region_popcap += n.popcap
-                region_population += n.population
-            growth += growth_factor * cell.population * (1 - region_population / region_popcap)
-        if not set(grow_into) - self.cells:
-            raise StopIteration
-        self.popcap -= growth
-        if self.popcap < 0:
-            raise StopIteration
-        distribution = growth / sum(grow_into.values())
-        if distribution > 1:
-            print("Population will grow by more than its population capacity allows: {:}".format(distribution))
-        for cell, proportion in grow_into.items():
-            if cell.popcap < 1:
-                continue
-            cell.language = self
-            cell.population += proportion * distribution
-        self.cells = self.cells.union(grow_into)
-        print(growth)
-
-
-from .geo_plot import plot_hex_grid
 
 def random_cell():
     m = numpy.random.randint(2)
@@ -362,7 +308,7 @@ while gridcell(*g).popcap < 1:
     g = random_cell()
 
 l = Language((numpy.random.random(), numpy.random.random(), numpy.random.random(), 0.8),
-             g)
+             gridcell(*g))
 while True:
     while True:
         try:
@@ -375,7 +321,7 @@ while True:
     if not free:
         break
     l = Language((numpy.random.random(), numpy.random.random(), numpy.random.random(), 0.8),
-                 free[numpy.random.randint(len(free))])
+                 gridcell(*free[numpy.random.randint(len(free))]))
 
 
 
@@ -383,7 +329,7 @@ ax = plt.axes(projection=ccrs.PlateCarree())
 ax.coastlines("50m")
 ax.set_extent(continent)
 
-ax.add_collection(plot_grid(lambda cell: (cell.language.id if cell.language else (0,0,0,1)),
+ax.add_collection(plot_hex_grid(lambda cell: (cell.language.id if cell.language else (0,0,0,1)),
                             all_gridcells))
 plt.show()
 

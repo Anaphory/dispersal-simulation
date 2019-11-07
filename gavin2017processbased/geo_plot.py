@@ -1,3 +1,5 @@
+import matplotlib.collections
+
 def plot_hex_grid(function, all_gridcells):
     polygons = []
     values = []
