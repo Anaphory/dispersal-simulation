@@ -307,21 +307,22 @@ g = random_cell()
 while gridcell(*g).popcap < 1:
     g = random_cell()
 
-l = Language((numpy.random.random(), numpy.random.random(), numpy.random.random(), 0.8),
-             gridcell(*g))
+l = Language(1, gridcell(*g))
 while True:
     while True:
         try:
             l.grow()
         except StopIteration:
             break
-    free = [i for i, g in all_gridcells.items()
-            if g.language is None
-            if g.popcap >= 1]
-    if not free:
+    filled = {g for g in all_gridcells.values()
+              if g.language is not None}
+    expansion_zone = {i for g in filled
+                      for i in g.neighbors()
+                      if i.popcap > 0} - filled
+    if not expansion_zone:
         break
-    l = Language((numpy.random.random(), numpy.random.random(), numpy.random.random(), 0.8),
-                 gridcell(*free[numpy.random.randint(len(free))]))
+    free = list(expansion_zone)
+    l = Language(l.id + 1, free[numpy.random.randint(len(free))])
 
 
 
@@ -329,7 +330,11 @@ ax = plt.axes(projection=ccrs.PlateCarree())
 ax.coastlines("50m")
 ax.set_extent(continent)
 
-ax.add_collection(plot_hex_grid(lambda cell: (cell.language.id if cell.language else (0,0,0,1)),
-                            all_gridcells))
+colors = {}
+ax.add_collection(plot_hex_grid(
+    lambda cell: colors.setdefault(
+        cell.language, numpy.random.random(size=3))
+    if cell.language else (0, 0, 0, 0),
+    all_gridcells))
 plt.show()
 

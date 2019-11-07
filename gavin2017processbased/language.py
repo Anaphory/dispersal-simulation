@@ -1,4 +1,6 @@
 from popcaps import random_popcap
+import bisect
+import numpy
 
 class Language:
     growth_factor = 1.1
@@ -24,20 +26,70 @@ class Language:
                     grow_into[n] = n.popcap - n.population
                 region_popcap += n.popcap
                 region_population += n.population
-            growth += self.growth_factor * cell.population * (1 - region_population / region_popcap)
-        if not set(grow_into) - self.cells:
-            raise StopIteration
-        self.popcap -= growth
-        if self.popcap < 0:
-            raise StopIteration
-        distribution = growth / sum(grow_into.values())
-        if distribution > 1:
-            print("Population will grow by more than its population capacity allows: {:}".format(distribution))
-        for cell, proportion in grow_into.items():
-            if cell.popcap < 1:
+            if region_popcap == 0:
                 continue
-            cell.language = self
-            cell.population += proportion * distribution
-        self.cells = self.cells.union(grow_into)
-        print(growth)
+            growth += self.growth_factor * cell.population * (1 - region_population / region_popcap)
+        self.distribute(growth, list(grow_into))
 
+    def distribute(self, growth, candidates):
+        print(growth)
+        if not set(candidates) - self.cells:
+            raise StopIteration
+        if growth < 1:
+            raise StopIteration
+
+        for _ in range(int(growth)):
+            capacity = [max(1 - cell.population / cell.popcap , 0)
+                        for cell in candidates]
+            # The paper states distribution is according to a function of N/K,
+            # without any specification of the process.
+            c = numpy.cumsum(capacity)
+            self.popcap -= 1
+            if self.popcap <= 0:
+                raise StopIteration
+            i = bisect.bisect(c, numpy.random.random()*c[0])
+            candidates[i].population += 1
+            candidates[i].language = self
+            self.cells.add(candidates[i])
+
+class FastSpreadLanguage(Language):
+    def distribute(self, growth, candidates):
+        print(growth)
+        if not set(candidates) - self.cells:
+            raise StopIteration
+        if growth < 1:
+            raise StopIteration
+
+        capacities = [max(1 - cell.population / cell.popcap , 0)
+                    for cell in candidates]
+        # The paper states distribution is according to a function of N/K,
+        # without any specification. That is very underspecified and unlikely, though.
+        c = sum(capacities)
+        for candidate, capacity in zip(candidates, capacities):
+            candidate.population += capacity * (growth / c)
+            self.popcap -= capacity * (growth / c)
+            candidate.language = self
+            self.cells.add(candidate)
+        if self.popcap <= 0:
+            raise StopIteration
+
+class DifferenceSpreadLanguage(Language):
+    def distribute(self, growth, candidates):
+        print(growth)
+        if not set(candidates) - self.cells:
+            raise StopIteration
+        if growth < 1:
+            raise StopIteration
+
+        capacities = [max(cell.popcap - cell.population, 0)
+                    for cell in candidates]
+        # The paper states distribution is according to a function of N/K,
+        # without any specification. That is very underspecified and unlikely, though.
+        c = sum(capacities)
+        for candidate, capacity in zip(candidates, capacities):
+            candidate.population += capacity * (growth / c)
+            self.popcap -= capacity * (growth / c)
+            candidate.language = self
+            self.cells.add(candidate)
+        if self.popcap <= 0:
+            raise StopIteration
