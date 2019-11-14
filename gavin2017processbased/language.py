@@ -42,7 +42,9 @@ class Language:
             capacity = [max(1 - cell.population / cell.popcap , 0)
                         for cell in candidates]
             # The paper states distribution is according to a function of N/K,
-            # without any specification of the process.
+            # without any specification of the process. But it also implicitly
+            # states that no randomness is involved in the distribution of new
+            # individuals.
             c = numpy.cumsum(capacity)
             self.popcap -= 1
             if self.popcap <= 0:
@@ -63,7 +65,8 @@ class FastSpreadLanguage(Language):
         capacities = [max(1 - cell.population / cell.popcap , 0)
                     for cell in candidates]
         # The paper states distribution is according to a function of N/K,
-        # without any specification. That is very underspecified and unlikely, though.
+        # without any specification. This gives beautiful broad regular
+        # hexagons instead of their approximate circles, though.
         c = sum(capacities)
         for candidate, capacity in zip(candidates, capacities):
             candidate.population += capacity * (growth / c)
@@ -84,7 +87,7 @@ class DifferenceSpreadLanguage(Language):
         capacities = [max(cell.popcap - cell.population, 0)
                     for cell in candidates]
         # The paper states distribution is according to a function of N/K,
-        # without any specification. That is very underspecified and unlikely, though.
+        # without any specification. Here I use something based on K-N instead.
         c = sum(capacities)
         for candidate, capacity in zip(candidates, capacities):
             candidate.population += capacity * (growth / c)
