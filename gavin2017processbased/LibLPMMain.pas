@@ -30,7 +30,7 @@ interface
 
 uses
   {$IfDef DLLShapes}LibFastShareMem,{$EndIf}
-  SysUtils, Classes, Math, Windows, SyncObjs,
+  SysUtils, Classes, Math, Linux, SyncObjs,
   {$IfNDef CONSOLE}
   ExtCtrls,
   {$EndIf}
