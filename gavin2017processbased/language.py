@@ -52,6 +52,7 @@ class Language:
             candidates[i].language = self
             self.cells.add(candidates[i])
 
+
 class FastSpreadLanguage(Language):
     def distribute(self, growth, candidates):
         print(growth)
@@ -73,6 +74,7 @@ class FastSpreadLanguage(Language):
         if self.popcap <= 0:
             raise StopIteration
 
+
 class DifferenceSpreadLanguage(Language):
     def distribute(self, growth, candidates):
         print(growth)
@@ -93,3 +95,46 @@ class DifferenceSpreadLanguage(Language):
             self.cells.add(candidate)
         if self.popcap <= 0:
             raise StopIteration
+
+
+class DifferenceSpreadAndRoundLanguage(Language):
+    """This implementation seems to best capture the spirit of the reference.
+
+    It is far less fancy for handling neighborhoods separately and it ignores
+    several ways to obtain rounding errors, compared to the original.
+
+    """
+    def distribute(self, growth, candidates):
+        print(growth)
+        if not set(candidates) - self.cells:
+            raise StopIteration("no new cells")
+        if growth < 1:
+            raise StopIteration("no growth")
+
+        sum_growth_space = sum([cell.popcap - cell.population for cell in candidates])
+        cell_indices = list(range(len(candidates)))
+        while cell_indices:
+            i = cell_indices.pop(numpy.random.randint(len(cell_indices)))
+            cell = candidates[i]
+            cell_growth = round(growth * (cell.popcap - cell.population) / sum_growth_space)
+            if cell_growth > 0 or cell.popcap < 1:
+                cell.population += cell_growth
+                cell.language = self
+                self.cells.add(cell)
+                print(cell, cell.population, cell_growth)
+                self.popcap -= cell_growth
+                if self.popcap <= 0:
+                    raise StopIteration("popcap reached")
+                growth -= cell_growth
+            if growth < 0.5:
+                return
+        while candidates and growth > 1:
+            i = numpy.random.randint(len(candidates))
+            cell = candidates[i]
+            if cell.popcap > cell.population:
+                cell.population += 1
+                growth -= 1
+                self.popcap -= 1
+            else:
+                del candidates[i]
+

@@ -10,7 +10,7 @@ from shapely.ops import unary_union
 from shapely.prepared import prep
 import tifffile
 import matplotlib.transforms as mtransforms
-from language import Language
+from language import DifferenceSpreadAndRoundLanguage as Language
 from geo_plot import plot_hex_grid
 
 GEODESIC = geodesic.Geodesic()
@@ -266,6 +266,11 @@ class GridCell():
     def __hash__(self):
         return hash((self.m, self.ij))
 
+    def __repr__(self):
+        return "<Cell {:}:{:},{:}{:}>".format(
+            self.m, self.ij[0], self.ij[1],
+            " with language {:}".format(self.language.id) if self.language else " (empty)")
+
     def precipitation(self):
         index = tuple(coordinates_to_index(self.point))
         return precipitation[index]
@@ -312,11 +317,14 @@ if __name__ == "__main__":
 
     # Create a population in that starting grid cell
     l = Language(1, gridcell(*g))
+    generation = 0
     while True:
+        generation += 1
         while True:
             try:
                 l.grow()
-            except StopIteration:
+            except StopIteration as s:
+                print(s)
                 break
         filled = {g for g in all_gridcells.values()
                 if g.language is not None}
@@ -329,16 +337,18 @@ if __name__ == "__main__":
         l = Language(l.id + 1, free[numpy.random.randint(len(free))])
 
 
-    # Plot the results
-    ax = plt.axes(projection=ccrs.PlateCarree())
-    ax.coastlines("50m")
-    ax.set_extent(continent)
+        # Plot the results
+        ax = plt.axes(projection=ccrs.PlateCarree())
+        ax.coastlines("50m")
+        ax.set_extent(continent)
 
-    colors = {}
-    ax.add_collection(plot_hex_grid(
-        lambda cell: colors.setdefault(
-            cell.language, numpy.random.random(size=3))
-        if cell.language else (0, 0, 0, 0),
-        all_gridcells))
+        colors = {}
+        ax.add_collection(plot_hex_grid(
+            lambda cell: colors.setdefault(
+                cell.language, numpy.random.random(size=3))
+            if cell.language else (0, 0, 0, 0),
+            all_gridcells))
+        plt.savefig("output_{:08}.png".format(generation))
+        plt.close()
     plt.show()
 
