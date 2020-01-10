@@ -129,10 +129,10 @@ continent = australia
 
 area = 450000000 #m²
 
-grid = hexagonal_earth_grid(continent, area)
-
 def is_land(xy):
    return LAND.contains(sgeom.Point(*xy))
+
+grid = hexagonal_earth_grid(continent, area)
 
 land = (
     numpy.apply_along_axis(is_land, axis=2, arr=grid[0]),
@@ -303,38 +303,42 @@ def random_cell():
         numpy.random.randint(grid[m].shape[0]),
         numpy.random.randint(grid[m].shape[1]))
 
-g = random_cell()
-while gridcell(*g).popcap < 1:
+# Start the simulation
+if __name__ == "__main__":
+    # Find a random starting cell that is capable of supporting at least one individual
     g = random_cell()
+    while gridcell(*g).popcap < 1:
+        g = random_cell()
 
-l = Language(1, gridcell(*g))
-while True:
+    # Create a population in that starting grid cell
+    l = Language(1, gridcell(*g))
     while True:
-        try:
-            l.grow()
-        except StopIteration:
+        while True:
+            try:
+                l.grow()
+            except StopIteration:
+                break
+        filled = {g for g in all_gridcells.values()
+                if g.language is not None}
+        expansion_zone = {i for g in filled
+                        for i in g.neighbors()
+                        if i.popcap > 0} - filled
+        if not expansion_zone:
             break
-    filled = {g for g in all_gridcells.values()
-              if g.language is not None}
-    expansion_zone = {i for g in filled
-                      for i in g.neighbors()
-                      if i.popcap > 0} - filled
-    if not expansion_zone:
-        break
-    free = list(expansion_zone)
-    l = Language(l.id + 1, free[numpy.random.randint(len(free))])
+        free = list(expansion_zone)
+        l = Language(l.id + 1, free[numpy.random.randint(len(free))])
 
 
+    # Plot the results
+    ax = plt.axes(projection=ccrs.PlateCarree())
+    ax.coastlines("50m")
+    ax.set_extent(continent)
 
-ax = plt.axes(projection=ccrs.PlateCarree())
-ax.coastlines("50m")
-ax.set_extent(continent)
-
-colors = {}
-ax.add_collection(plot_hex_grid(
-    lambda cell: colors.setdefault(
-        cell.language, numpy.random.random(size=3))
-    if cell.language else (0, 0, 0, 0),
-    all_gridcells))
-plt.show()
+    colors = {}
+    ax.add_collection(plot_hex_grid(
+        lambda cell: colors.setdefault(
+            cell.language, numpy.random.random(size=3))
+        if cell.language else (0, 0, 0, 0),
+        all_gridcells))
+    plt.show()
 
