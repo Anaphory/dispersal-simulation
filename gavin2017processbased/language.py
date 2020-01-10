@@ -1,6 +1,7 @@
 from popcaps import random_popcap
 import bisect
 import numpy
+from collections import Counter
 
 class Language:
     growth_factor = 1.1
@@ -14,22 +15,32 @@ class Language:
         self.popcap = random_popcap()
 
     def grow(self):
-        grow_into = {}
-        growth = 0
+        grow_into = Counter()
         for cell in self.cells:
-            if cell not in grow_into:
-                grow_into[cell] = cell.popcap - cell.population
+            region_growth = set()
+            region_growth.add(cell)
             region_popcap = cell.popcap
             region_population = cell.population
+
             for n in cell.neighbors():
-                if n not in grow_into:
-                    grow_into[n] = n.popcap - n.population
+                region_growth.add(n)
                 region_popcap += n.popcap
                 region_population += n.population
-            if region_popcap == 0:
+
+            if region_popcap < 1:
                 continue
-            growth += self.growth_factor * cell.population * (1 - region_population / region_popcap)
-        self.distribute(growth, list(grow_into))
+
+            growth = self.growth_factor * cell.population * (1 - region_population / region_popcap)
+            if growth < 0:
+                continue
+
+            grow_into += self.distribute(growth, region_growth)
+
+        for cell, growth in grow_into.items():
+            if cell.popcap < 1 or growth > 1:
+                cell.population += growth
+                cell.language = self
+                self.cells.add(cell)
 
     def distribute(self, growth, candidates):
         """This implementation seems to best capture the spirit of the reference.
@@ -39,37 +50,23 @@ class Language:
 
         """
         print(growth)
-        if not set(candidates) - self.cells:
-            raise StopIteration("no new cells")
-        if growth < 1:
-            raise StopIteration("no growth")
 
         sum_growth_space = sum([cell.popcap - cell.population for cell in candidates])
-        cell_indices = list(range(len(candidates)))
-        while cell_indices:
-            i = cell_indices.pop(numpy.random.randint(len(cell_indices)))
-            cell = candidates[i]
-            cell_growth = round(growth * (cell.popcap - cell.population) / sum_growth_space)
-            if cell_growth > 0 or cell.popcap < 1:
-                cell.population += cell_growth
-                cell.language = self
-                self.cells.add(cell)
-                print(cell, cell.population, cell_growth)
-                self.popcap -= cell_growth
-                if self.popcap <= 0:
-                    raise StopIteration("popcap reached")
-                growth -= cell_growth
-            if growth < 0.5:
-                return
-        while candidates and growth > 1:
-            i = numpy.random.randint(len(candidates))
-            cell = candidates[i]
-            if cell.popcap > cell.population:
-                cell.population += 1
-                growth -= 1
-                self.popcap -= 1
-            else:
-                del candidates[i]
+        
+        cell_growth = Counter()
+
+        cell_indices = [0] + sorted(range(1, len(candidates)), key=lambda _: numpy.random.random())
+        for i in cell_indices:
+            cell = list(candidates)[i]
+            cell_growth[cell] = int(
+                min(growth, cell.popcap - cell.population))
+            print(cell, cell.population, cell_growth[cell])
+            self.popcap -= cell_growth[cell]
+            if self.popcap <= 0:
+                raise StopIteration("popcap reached")
+            growth -= cell_growth[cell]
+
+        return cell_growth
 
 
 class DifferenceSpreadAndRoundLanguage(Language):
