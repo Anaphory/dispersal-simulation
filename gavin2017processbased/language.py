@@ -32,79 +32,12 @@ class Language:
         self.distribute(growth, list(grow_into))
 
     def distribute(self, growth, candidates):
-        print(growth)
-        if not set(candidates) - self.cells:
-            raise StopIteration
-        if growth < 1:
-            raise StopIteration
+        """This implementation seems to best capture the spirit of the reference.
 
-        for _ in range(int(growth)):
-            capacity = [max(1 - cell.population / cell.popcap , 0)
-                        for cell in candidates]
-            # The paper states distribution is according to a function of N/K,
-            # without any specification of the process.
-            c = numpy.cumsum(capacity)
-            self.popcap -= 1
-            if self.popcap <= 0:
-                raise StopIteration
-            i = bisect.bisect(c, numpy.random.random()*c[0])
-            candidates[i].population += 1
-            candidates[i].language = self
-            self.cells.add(candidates[i])
+        It is far less fancy for handling neighborhoods separately and it ignores
+        several ways to obtain rounding errors, compared to the original.
 
-
-class FastSpreadLanguage(Language):
-    def distribute(self, growth, candidates):
-        print(growth)
-        if not set(candidates) - self.cells:
-            raise StopIteration
-        if growth < 1:
-            raise StopIteration
-
-        capacities = [max(1 - cell.population / cell.popcap , 0)
-                    for cell in candidates]
-        # The paper states distribution is according to a function of N/K,
-        # without any specification. That is very underspecified and unlikely, though.
-        c = sum(capacities)
-        for candidate, capacity in zip(candidates, capacities):
-            candidate.population += capacity * (growth / c)
-            self.popcap -= capacity * (growth / c)
-            candidate.language = self
-            self.cells.add(candidate)
-        if self.popcap <= 0:
-            raise StopIteration
-
-
-class DifferenceSpreadLanguage(Language):
-    def distribute(self, growth, candidates):
-        print(growth)
-        if not set(candidates) - self.cells:
-            raise StopIteration
-        if growth < 1:
-            raise StopIteration
-
-        capacities = [max(cell.popcap - cell.population, 0)
-                    for cell in candidates]
-        # The paper states distribution is according to a function of N/K,
-        # without any specification. That is very underspecified and unlikely, though.
-        c = sum(capacities)
-        for candidate, capacity in zip(candidates, capacities):
-            candidate.population += capacity * (growth / c)
-            self.popcap -= capacity * (growth / c)
-            candidate.language = self
-            self.cells.add(candidate)
-        if self.popcap <= 0:
-            raise StopIteration
-
-
-class DifferenceSpreadAndRoundLanguage(Language):
-    """This implementation seems to best capture the spirit of the reference.
-
-    It is far less fancy for handling neighborhoods separately and it ignores
-    several ways to obtain rounding errors, compared to the original.
-
-    """
-    def distribute(self, growth, candidates):
+        """
         print(growth)
         if not set(candidates) - self.cells:
             raise StopIteration("no new cells")
@@ -138,3 +71,6 @@ class DifferenceSpreadAndRoundLanguage(Language):
             else:
                 del candidates[i]
 
+
+class DifferenceSpreadAndRoundLanguage(Language):
+    pass
