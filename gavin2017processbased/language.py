@@ -16,6 +16,7 @@ class Language:
 
     def grow(self):
         grow_into = Counter()
+        growth = [0]
         for cell in self.cells:
             region_growth = set()
             region_growth.add(cell)
@@ -30,17 +31,25 @@ class Language:
             if region_popcap < 1:
                 continue
 
-            growth = self.growth_factor * cell.population * (1 - region_population / region_popcap)
-            if growth < 0:
+            growth += self.growth_factor * cell.population * (1 - region_population / region_popcap)
+            if growth[0] < 1:
                 continue
 
-            grow_into += self.distribute(growth, region_growth)
+            grow_into, growth = self.distribute(growth, region_growth)
 
+        grown = False
+        print(grow_into)
         for cell, growth in grow_into.items():
-            if cell.popcap < 1 or growth > 1:
+            if cell.popcap < 1 or growth > 0:
+                grown = True
                 cell.population += growth
                 cell.language = self
                 self.cells.add(cell)
+                self.popcap -= growth
+                if self.popcap <= 0:
+                    raise StopIteration("popcap reached")
+        if not grown:
+            raise StopIteration("No more growth")
 
     def distribute(self, growth, candidates):
         """This implementation seems to best capture the spirit of the reference.
@@ -51,23 +60,46 @@ class Language:
         """
         print(growth)
 
-        sum_growth_space = sum([cell.popcap - cell.population for cell in candidates])
-        
+        growth_space = [cell.popcap - cell.population for cell in candidates]
+
         cell_growth = Counter()
 
         cell_indices = [0] + sorted(range(1, len(candidates)), key=lambda _: numpy.random.random())
+
+        m = dhondt(growth, growth_space)
+        # Use a divisor method to distribute the right number of new
+        # individuals. Divisor methods have a rounding choice. Here we round
+        # down, and as such favour the hexes with the most potential. Other
+        # options would be to round to the nearest integer, or to round up
+        # (which favours small areas). The original paper uses a quota method,
+        # not a divisor method, with the additional individuals distributed at
+        # random, thus slightly favouring small populations, but in a different
+        # manner.'.
         for i in cell_indices:
             cell = list(candidates)[i]
-            cell_growth[cell] = int(
-                min(growth, cell.popcap - cell.population))
-            print(cell, cell.population, cell_growth[cell])
-            self.popcap -= cell_growth[cell]
-            if self.popcap <= 0:
-                raise StopIteration("popcap reached")
-            growth -= cell_growth[cell]
+            cg = m[i]
+            if cg < 1:
+                continue
+            else:
+                cell_growth[cell] = cg
+            print(cell, cell.population, cg)
+            growth -= cg
 
-        return cell_growth
+        return cell_growth, growth
 
+def dhondt(seats_to_allocate, votes):
+    """Allocate seats according to votes using D'Hondt's methods
+
+    In case of a tie, the seat goes to the votes that come earlier in the list.
+    """
+    d = [1 for v in votes]
+    result = [0 for v in votes]
+    while sum(result) < seats_to_allocate:
+        next_seat = max(range(len(votes)), key=lambda i: votes[i]/d[i])
+        result[next_seat] += 1
+        d[next_seat] += 1
+
+    return result
 
 class DifferenceSpreadAndRoundLanguage(Language):
     pass
