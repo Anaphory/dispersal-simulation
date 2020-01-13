@@ -35,7 +35,8 @@ class Language:
             if growth[0] < 1:
                 continue
 
-            grow_into, growth = self.distribute(growth, region_growth)
+            more_grow_into, growth = self.distribute(growth, region_growth)
+            grow_into += more_grow_into
 
         grown = False
         print(grow_into)
@@ -69,12 +70,12 @@ class Language:
         m = dhondt(growth, growth_space)
         # Use a divisor method to distribute the right number of new
         # individuals. Divisor methods have a rounding choice. Here we round
-        # down, and as such favour the hexes with the most potential. Other
-        # options would be to round to the nearest integer, or to round up
-        # (which favours small areas). The original paper uses a quota method,
-        # not a divisor method, with the additional individuals distributed at
-        # random, thus slightly favouring small populations, but in a different
-        # manner.'.
+        # down (as per D'Hondt), and as such favour the hexes with the most
+        # growth potential. Other options would be to round to the nearest
+        # integer, or to round up (which favours small areas). The original
+        # paper uses a quota method, not a divisor method, with the additional
+        # individuals distributed at random, thus slightly favouring small
+        # populations, but in a different manner.'.
         for i in cell_indices:
             cell = list(candidates)[i]
             cg = m[i]
