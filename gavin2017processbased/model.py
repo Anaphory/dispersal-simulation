@@ -1,3 +1,4 @@
+import json
 import numpy
 import collections
 import cartopy.geodesic as geodesic
@@ -83,8 +84,8 @@ def hexagonal_earth_grid(bbox, area):
 
     """
     bbox_centre = Point(
-        (continent.e + continent.w)/2,
-        (continent.n + continent.s)/2)
+        (bbox.e + bbox.w)/2,
+        (bbox.n + bbox.s)/2)
     hexagon_side, grid_point_distance = hexagon(area)
 
     points = [bbox_centre]
@@ -93,20 +94,20 @@ def hexagonal_earth_grid(bbox, area):
     # TODO: Write a regression test for that case.
 
     # Neighbors east and west: Direct tiling
-    while points[-1].longitude < continent.e:
+    while points[-1].longitude < bbox.e:
         next = GEODESIC.direct(points[-1], 90, grid_point_distance)
         points.append(Point(*numpy.array(next)[0, :2]))
-    while points[0].longitude > continent.w:
+    while points[0].longitude > bbox.w:
         next = GEODESIC.direct(points[0], 270, grid_point_distance)
         points.insert(0, Point(*numpy.array(next)[0, :2]))
 
     grid = numpy.array([points])
-    while (grid[0, :, 1] < continent.n).any():
+    while (grid[0, :, 1] < bbox.n).any():
         next = GEODESIC.direct(grid[0], 0, 3 * hexagon_side)
         grid = numpy.vstack((
             [numpy.array(next)[:, :2]],
             grid))
-    while (grid[-1, :, 1] > continent.s).any():
+    while (grid[-1, :, 1] > bbox.s).any():
         next = GEODESIC.direct(grid[-1], 180, 3 * hexagon_side)
         grid = numpy.vstack((
             grid,
@@ -117,7 +118,6 @@ def hexagonal_earth_grid(bbox, area):
     return grid, mid_grid
 
 
-# Generate a hexagonal grid over the continent
 # Define continents
 australia = BoundingBox(
     112.8708,
@@ -125,18 +125,11 @@ australia = BoundingBox(
     -43.8615,
     -9.6712)
 
-continent = australia
 
 area = 450000000 #m²
 
 def is_land(xy):
    return LAND.contains(sgeom.Point(*xy))
-
-grid = hexagonal_earth_grid(continent, area)
-
-land = (
-    numpy.apply_along_axis(is_land, axis=2, arr=grid[0]),
-    numpy.apply_along_axis(is_land, axis=2, arr=grid[1]))
 
 try:
     precipitation
@@ -199,22 +192,29 @@ def index_to_coordinates(indices, resolution=2 * 60):
 
 # TODO: Write tests for middle, random, each corner, forwards and backwards.
 
-all_gridcells = {}
-def gridcell(m, i, j):
-    if i < 0 or i >= grid[m].shape[0]:
-        return None
-    if j < 0 or j >= grid[m].shape[1]:
-        return None
-    try:
-        return all_gridcells[m, i, j]
-    except KeyError:
-        all_gridcells[m, i, j] = GridCell(m, i, j)
-        return all_gridcells[m, i, j]
 
 class GridCell():
     alpha = 10 ** -8.07
     beta = 2.64
-    grid = hexagonal_earth_grid(continent, area)
+
+    grid = hexagonal_earth_grid(
+        BoundingBox(
+            180, 180, -90, 90),
+        area)
+    all_gridcells = {}
+
+    @classmethod
+    def gridcell(k, m, i, j):
+        if i < 0 or i >= k.grid[m].shape[0]:
+            return None
+        if j < 0 or j >= k.grid[m].shape[1]:
+            return None
+        try:
+            return k.all_gridcells[m, i, j]
+        except KeyError:
+            k.all_gridcells[m, i, j] = k(m, i, j)
+            return k.all_gridcells[m, i, j]
+
 
     def __init__(self, m, i, j, grid=grid):
         self.m = m
@@ -233,7 +233,7 @@ class GridCell():
 
     @property
     def point(self):
-        return Point(*grid[self.m][self.ij])
+        return Point(*self.grid[self.m][self.ij])
 
     def population_capacity(self):
         """Calculate the pop cap of a cell given its precipitation
@@ -300,23 +300,37 @@ class GridCell():
                 if include_foreign or g.language == self.language or g.language is None
                 if include_unlivable or g.popcap >= 1]
 
+    @classmethod
+    def random_cell(k):
+        m = numpy.random.randint(2)
+        return (
+            m,
+            numpy.random.randint(k.grid[m].shape[0]),
+            numpy.random.randint(k.grid[m].shape[1]))
 
-def random_cell():
-    m = numpy.random.randint(2)
-    return (
-        m,
-        numpy.random.randint(grid[m].shape[0]),
-        numpy.random.randint(grid[m].shape[1]))
 
 # Start the simulation
 if __name__ == "__main__":
+    run = hex(numpy.random.randint(4096))
+
+    continent = australia
+
+    # Generate a hexagonal grid over the continent
+    class LGrid(GridCell):
+        grid = hexagonal_earth_grid(continent, area)
+        all_gridcells = {}
+
+    land = (
+        numpy.apply_along_axis(is_land, axis=2, arr=LGrid.grid[0]),
+        numpy.apply_along_axis(is_land, axis=2, arr=LGrid.grid[1]))
+
     # Find a random starting cell that is capable of supporting at least one individual
-    g = random_cell()
-    while gridcell(*g).popcap < 1:
-        g = random_cell()
+    g = LGrid.random_cell()
+    while LGrid.gridcell(*g).popcap < 1:
+        g = LGrid.random_cell()
 
     # Create a population in that starting grid cell
-    l = Language(1, gridcell(*g))
+    l = Language(1, LGrid.gridcell(*g))
     generation = 0
     while True:
         generation += 1
@@ -324,9 +338,11 @@ if __name__ == "__main__":
             try:
                 l.grow()
             except StopIteration as s:
+                print([c.population for c in l.cells])
+                print(l.popcap)
                 print(s)
                 break
-        filled = {g for g in all_gridcells.values()
+        filled = {g for g in LGrid.all_gridcells.values()
                 if g.language is not None}
         expansion_zone = {i for g in filled
                         for i in g.neighbors()
@@ -348,7 +364,37 @@ if __name__ == "__main__":
                 cell.language, numpy.random.random(size=3))
             if cell.language else (0, 0, 0, 0),
             all_gridcells))
-        plt.savefig("output_{:08}.png".format(generation))
+        plt.savefig("output_{:}_{:08}.png".format(run, generation))
         plt.close()
-    plt.show()
+
+    def l_id(l_or_none):
+        if l_or_none is None:
+            return None
+        if l_or_none.language is None:
+            return None
+        return l_or_none.language.id
+
+    json.dump(
+        [
+            [[l_id(all_gridcells.get((0, i, j)))
+              for i in range(grid[0].shape[0])]
+             for j in range(grid[0].shape[1])],
+            [[l_id(all_gridcells.get((1, i, j)))
+              for i in range(grid[1].shape[0])]
+             for j in range(grid[1].shape[1])]
+        ],
+        open("output_{:}.json".format(run), "w"))
+
+    ax = plt.axes(projection=ccrs.PlateCarree())
+    ax.coastlines("50m")
+    ax.set_extent(continent)
+
+    colors = {}
+    ax.add_collection(plot_hex_grid(
+        lambda cell: colors.setdefault(
+            cell.language, numpy.random.random(size=3))
+        if cell.language else (0, 0, 0, 0),
+        all_gridcells))
+    plt.savefig("output_{:}_final.png".format(run))
+    plt.close()
 

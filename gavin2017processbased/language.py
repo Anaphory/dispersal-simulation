@@ -8,15 +8,16 @@ class Language:
 
     def __init__(self, color, cell):
         g = cell
-        g.population = 10
+        g.population = max(1, min(10, int(g.popcap)))
         g.language = self
         self.cells = {g}
         self.id = color
         self.popcap = random_popcap()
+        print(self.popcap)
 
     def grow(self):
         grow_into = Counter()
-        growth = [0]
+        growth = 0
         for cell in self.cells:
             region_growth = set()
             region_growth.add(cell)
@@ -28,20 +29,13 @@ class Language:
                 region_popcap += n.popcap
                 region_population += n.population
 
-            if region_popcap < 1:
-                continue
-
             growth += self.growth_factor * cell.population * (1 - region_population / region_popcap)
-            if growth[0] < 1:
-                continue
 
             more_grow_into, growth = self.distribute(growth, region_growth)
             grow_into += more_grow_into
 
         grown = False
-        print(grow_into)
         for cell, growth in grow_into.items():
-            if cell.popcap < 1 or growth > 0:
                 grown = True
                 cell.population += growth
                 cell.language = self
@@ -59,8 +53,6 @@ class Language:
         several ways to obtain rounding errors, compared to the original.
 
         """
-        print(growth)
-
         growth_space = [cell.popcap - cell.population for cell in candidates]
 
         cell_growth = Counter()
@@ -79,12 +71,16 @@ class Language:
         for i in cell_indices:
             cell = list(candidates)[i]
             cg = m[i]
-            if cg < 1:
-                continue
-            else:
-                cell_growth[cell] = cg
-            print(cell, cell.population, cg)
+            cell_growth[cell] = cg
             growth -= cg
+            # Fill cells while their growth is positive, to prevent spilling
+            # into empty cells too much, but do walk through desert cells if
+            # they by chance appear before other cells still to be filled.
+            # (This will not be the case when the focus cell is already a
+            # desert cell, because then growth will start at 0.)
+            if growth < 1:
+                break
+
 
         return cell_growth, growth
 
