@@ -199,7 +199,7 @@ class GridCell():
 
     grid = hexagonal_earth_grid(
         BoundingBox(
-            180, 180, -90, 90),
+            -1, 1, -1, 1),
         area)
     all_gridcells = {}
 
@@ -279,21 +279,21 @@ class GridCell():
         i, j = self.ij
         if self.m==0:
             neighbors = [
-                gridcell(0, i, j+1),
-                gridcell(1, i, j),
-                gridcell(1, i, j-1),
-                gridcell(0, i, j-1),
-                gridcell(1, i-1, j-1),
-                gridcell(1, i-1, j),
+                self.gridcell(0, i, j+1),
+                self.gridcell(1, i, j),
+                self.gridcell(1, i, j-1),
+                self.gridcell(0, i, j-1),
+                self.gridcell(1, i-1, j-1),
+                self.gridcell(1, i-1, j),
             ]
         else:
             neighbors = [
-                gridcell(1, i, j+1),
-                gridcell(0, i, j+1),
-                gridcell(0, i, j),
-                gridcell(1, i, j-1),
-                gridcell(0, i+1, j),
-                gridcell(0, i+1, j+1),
+                self.gridcell(1, i, j+1),
+                self.gridcell(0, i, j+1),
+                self.gridcell(0, i, j),
+                self.gridcell(1, i, j-1),
+                self.gridcell(0, i+1, j),
+                self.gridcell(0, i+1, j+1),
             ]
         neighbors = [g or self for g in neighbors]
         return [g for g in neighbors
@@ -313,7 +313,12 @@ class GridCell():
 if __name__ == "__main__":
     run = hex(numpy.random.randint(4096))
 
-    continent = australia
+    namerica = BoundingBox(
+        w=-178.2,
+        s=6.6,
+        e=-49.0,
+        n=83.3)
+    continent = namerica
 
     # Generate a hexagonal grid over the continent
     class LGrid(GridCell):
