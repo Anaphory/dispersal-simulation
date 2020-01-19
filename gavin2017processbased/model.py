@@ -13,7 +13,6 @@ import tifffile
 import matplotlib.transforms as mtransforms
 from language import DifferenceSpreadAndRoundLanguage as Language
 from geo_plot import plot_hex_grid
-from grid import GridCell
 
 GEODESIC = geodesic.Geodesic()
 SQRT3 = 3 ** 0.5
@@ -194,10 +193,47 @@ def index_to_coordinates(indices, resolution=2 * 60):
 # TODO: Write tests for middle, random, each corner, forwards and backwards.
 
 
-class PopCapGridCell(GridCell):
-    def precipitation(self):
-        index = tuple(coordinates_to_index(self.point))
-        return precipitation[index]
+class GridCell():
+    alpha = 10 ** -8.07
+    beta = 2.64
+
+    grid = hexagonal_earth_grid(
+        BoundingBox(
+            -1, 1, -1, 1),
+        area)
+    all_gridcells = {}
+
+    @classmethod
+    def gridcell(k, m, i, j):
+        if i < 0 or i >= k.grid[m].shape[0]:
+            return None
+        if j < 0 or j >= k.grid[m].shape[1]:
+            return None
+        try:
+            return k.all_gridcells[m, i, j]
+        except KeyError:
+            k.all_gridcells[m, i, j] = k(m, i, j)
+            return k.all_gridcells[m, i, j]
+
+
+    def __init__(self, m, i, j, grid=grid):
+        self.m = m
+        self.ij = i, j
+        self.population = 0
+        self.popcap = self.population_capacity() * area / 1000000 # area is in m², popcap is per km²
+        self.language = None
+
+    def polygon(self):
+        try:
+            return self._polygon
+        except AttributeError:
+            neighbors = numpy.array([n.point for n in self.neighbors(True, True)])
+            self._polygon = (neighbors + numpy.roll(neighbors, 1, 0) + self.point) / 3
+            return self._polygon
+
+    @property
+    def point(self):
+        return Point(*self.grid[self.m][self.ij])
 
     def population_capacity(self):
         """Calculate the pop cap of a cell given its precipitation
@@ -227,6 +263,51 @@ class PopCapGridCell(GridCell):
         """
         return self.alpha * self.precipitation() ** self.beta
 
+    def __hash__(self):
+        return hash((self.m, self.ij))
+
+    def __repr__(self):
+        return "<Cell {:}:{:},{:}{:}>".format(
+            self.m, self.ij[0], self.ij[1],
+            " with language {:}".format(self.language.id) if self.language else " (empty)")
+
+    def precipitation(self):
+        index = tuple(coordinates_to_index(self.point))
+        return precipitation[index]
+
+    def neighbors(self, include_unlivable=False, include_foreign=False):
+        i, j = self.ij
+        if self.m==0:
+            neighbors = [
+                self.gridcell(0, i, j+1),
+                self.gridcell(1, i, j),
+                self.gridcell(1, i, j-1),
+                self.gridcell(0, i, j-1),
+                self.gridcell(1, i-1, j-1),
+                self.gridcell(1, i-1, j),
+            ]
+        else:
+            neighbors = [
+                self.gridcell(1, i, j+1),
+                self.gridcell(0, i, j+1),
+                self.gridcell(0, i, j),
+                self.gridcell(1, i, j-1),
+                self.gridcell(0, i+1, j),
+                self.gridcell(0, i+1, j+1),
+            ]
+        neighbors = [g or self for g in neighbors]
+        return [g for g in neighbors
+                if include_foreign or g.language == self.language or g.language is None
+                if include_unlivable or g.popcap >= 1]
+
+    @classmethod
+    def random_cell(k):
+        m = numpy.random.randint(2)
+        return (
+            m,
+            numpy.random.randint(k.grid[m].shape[0]),
+            numpy.random.randint(k.grid[m].shape[1]))
+
 
 # Start the simulation
 if __name__ == "__main__":
@@ -240,7 +321,7 @@ if __name__ == "__main__":
     continent = namerica
 
     # Generate a hexagonal grid over the continent
-    class LGrid(PopCapGridCell):
+    class LGrid(GridCell):
         grid = hexagonal_earth_grid(continent, area)
         all_gridcells = {}
 
