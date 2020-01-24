@@ -1,3 +1,12 @@
+"""crema2014simulation
+
+A replication of the model described by Crema (2014).
+
+Crema, Enrico R. 2014. A Simulation Model of Fission–Fusion Dynamics and
+Long-Term Settlement Change. Journal of Archaeological Method and Theory 21(2).
+385–404. (doi:10.1007/s10816-013-9185-4)
+
+"""
 import numpy
 from matplotlib import pyplot as plt
 
