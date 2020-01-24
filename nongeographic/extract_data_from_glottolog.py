@@ -1,3 +1,5 @@
+import numpy
+
 import xml.etree.ElementTree as ET
 import itertools
 import pyglottolog
@@ -41,6 +43,7 @@ for toplevel in glottolog.tree.glob("*"):
         if len(macroareas) == 1:
             macroarea = macroareas.pop().id
         else:
+            print(toplevel, macroareas)
             # Ignore this language family.
             pass
     if macroarea is not None:
@@ -98,9 +101,10 @@ def family_data(family):
         language.id
         for language in family.descendants_from_nodemap(
                 languoids, level=glottolog.languoid_levels["language"])
-        if language.endangerment.status.id != 'extinct']
+        if language.endangerment is None or language.endangerment.status.id != 'extinct']
     [family.id] if family.level.id == 'language' else []
-    return family.id, age_distribution, extant_languages
+    return family.id, 0, extant_languages
+
 
 for macroarea, families in families_by_macroarea.items():
     ET.SubElement(
@@ -128,12 +132,21 @@ for macroarea, families in families_by_macroarea.items():
     ET.SubElement(logger, "log", idref="birthRate.t:{:}".format(macroarea))
     ET.SubElement(logger, "log", idref="deathRate.t:{:}".format(macroarea))
 
-    for family in itertools.chain(
+    for family_obj in itertools.chain(
             families, [None]):
-        if family is None:
+        if family_obj is None:
             family, age_distribution, extant_languages = macroarea, None, families
         else:
-            family, age_distribution, extant_languages = family_data(family)
+            family, age_distribution, extant_languages = family_data(family_obj)
+
+        if family_obj is None:
+            ...
+            continue
+
+        starting_tree = family_obj.newick_node(template="{l.id:}")
+        starting_tree.resolve_polytomies()
+        if starting_tree is None:
+            continue
 
         ET.SubElement(
             prior,
@@ -141,7 +154,7 @@ for macroarea, families in families_by_macroarea.items():
             birthDiffRate="@birthRate.t:{:}".format(macroarea),
             id="BirthDeathModel.t:{:}".format(family),
             relativeDeathRate="@deathRate.t:{:}".format(macroarea),
-            sampleProbability="@sampling.t" if age is None else "1",
+            sampleProbability="@sampling.t" if age_distribution is None else "1",
             spec="beast.evolution.speciation.BirthDeathGernhard08Model",
             tree="@Tree.t:{:}".format(family),
             type="unscaled")
@@ -149,34 +162,19 @@ for macroarea, families in families_by_macroarea.items():
         ET.SubElement(
             ET.SubElement(
                 ET.SubElement(
-                    mcmc,
-                    "init",
-                    estimate="false",
-                    id="startingTree.t:{:}".format(family),
-                    initial="@Tree.t:{:}".format(family),
-                    rootHeight="{:}".format(6000.0),
-                    spec="beast.evolution.tree.RandomTree",
-                    taxonset="@taxa:{:}".format(family)),
-                "populationModel",
-                spec="ConstantPopulation"),
-            "popSize",
-            spec="parameter.RealParameter",
-            value="1")
-
-
-        ET.SubElement(
-            ET.SubElement(
-                ET.SubElement(
                     ET.SubElement(
                         state,
-                        "tree",
+                        "stateNode",
+                        spec="TreeParser",
+                        IsLabelledNewick="true",
+                        adjustTipHeights="true",
                         id="Tree.t:{:}".format(family),
-                        name="stateNode"),
-                    "taxonset",
+                        newick=starting_tree),
+                    "taxa",
                     id="taxa:{:}".format(family),
                     spec="TaxonSet"),
                 "plate",
-                range="{:}".format(','.join(languages)),
+                range="{:}".format(','.join(extant_languages)),
                 var="language"),
             "taxon",
             id="$(language)")
@@ -188,7 +186,7 @@ for macroarea, families in families_by_macroarea.items():
             logEvery="500")
         ET.SubElement(logger, "log", idref="Tree.t:{:}".format(family))
 
-        if len(languages) > 1:
+        if len(extant_languages) > 1:
             ET.SubElement(
                 mcmc, "operator",
                 id="SubtreeSlide.t:{:}".format(family),
@@ -216,7 +214,7 @@ for macroarea, families in families_by_macroarea.items():
                 spec="Uniform", tree="@Tree.t:{:}".format(family),
                 weight="30.0")
 
-        if age:
+        if age_distribution:
             # Deactivate root scaling
             pass
         else:
