@@ -17,7 +17,7 @@ BAND_SIZE = 20
 GENERATION_TIME = 28 * TIME_STEPS_PER_YEAR
 demographic_variance = numpy.random.normal(
     0.24,
-    scale = 0.02 / 1.96) # std in terms of .95 ival
+    scale = 0.02 / 1.96) # std in terms of the give 95% confidence interval
 environmental_variance = numpy.random.uniform(0.005, 0.04)
 catastrophe_rate = numpy.random.uniform(50, 400) * TIME_STEPS_PER_YEAR
 carrying_capacity = 650
