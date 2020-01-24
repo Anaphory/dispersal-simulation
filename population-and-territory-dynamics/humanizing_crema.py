@@ -1,6 +1,9 @@
-"""crema2014simulation
+"""humanizing_crema
 
-A replication of the model described by Crema (2014).
+A modification of the hunter-gatherer population fission-fusion model described
+by Crema (2014). The goal of this modification is to adapt the model to be
+meaningful in comparison with actual human population dynamics, eg. relating
+time steps to years and cells to areas of given size.
 
 Crema, Enrico R. 2014. A Simulation Model of Fission–Fusion Dynamics and
 Long-Term Settlement Change. Journal of Archaeological Method and Theory 21(2).
@@ -9,25 +12,35 @@ Long-Term Settlement Change. Journal of Archaeological Method and Theory 21(2).
 """
 import numpy
 from matplotlib import pyplot as plt
+from model import GridCell, BoundingBox, hexagonal_earth_grid
 
 model_parameters = dict(
-    initial_agents = 10,
+    initial_agents = 100,
+    # Following Hamilton&Walker – This is only an initial state and matters little
     time_steps = 500,
     patches = 100,
-    basic_individual_payoff = 10,
-    payoff_standard_deviation = 1.,
-    # The paper calls this parameter ε “payoff variance”, but also describes
-    # the process as “random draw from a Gaussian probability distribution with
-    # […] a standard deviation ε”. Because the value is 1, it does not actually
-    # make any difference.
-    cooperative_benefit = [0.3, 0.5, 0.8],
-    resource_input = 200,
-    basic_reproduction_rate = 0.05,
-    death_parameter_one = [0.8, 1.0, 1.2, 1.4],
+    basic_individual_payoff = 1,
+    # Make this a measure of how many individuals a forager could care for, and
+    # adjust corresponding sizes accordingly.
+    payoff_standard_deviation = 0.1,
+    # This parameter scales linearly with b_i_p.
+    cooperative_benefit = (0.1, 0.5),
+    # This is the only parameter that does not scale properly with b_i_p. We
+    # need to either add a multiplicative factor to this part of the fitness
+    # for now, defeating the purpose. This requires some literature research to
+    # find sensible data on the actual benefit of cooperation in
+    # hunter-gatherer populations.
+    resource_input = 20,
+    # This parameter scales linearly with b_i_p.
+    basic_reproduction_rate = 0.5,
+    # This parameter scales linearly with 1/b_i_p, to keep probabilities the same.
+    death_parameter_one = 8,
+    # This parameter scales linearly with 1/b_i_p, to keep probabilities the same.
     death_parameter_two = 5,
     spatial_interaction_range = [1, 100],
     decision_making_probability = [0.1, 0.5, 1.0],
-    evidence_threshold = 3,
+    evidence_threshold = 0.3,
+    # This parameter scales linearly with b_i_p.
     observed_agents = [1e-7, 0.5, 1])
 
 
@@ -161,7 +174,7 @@ def simulation(
     for i in range(time_steps):
         foraging_contribution = numpy.random.normal(
             loc=population_grid * (
-                basic_individual_payoff + (population_grid - 1)**cooperative_benefit),
+                basic_individual_payoff + cooperative_benefit[0] * (population_grid - 1)**cooperative_benefit[1]),
             scale=payoff_standard_deviation / population_grid ** 0.5)
         fitness_grid = numpy.minimum(
                 foraging_contribution, resource_grid) / population_grid
@@ -238,6 +251,6 @@ def simulation(
     return run_results
 
 if __name__ == '__main__':
-    run_results = simulation()
+    run_results = simulation(**model_parameters)
     plt.plot([x.sum() for x in run_results])
     plt.show()
