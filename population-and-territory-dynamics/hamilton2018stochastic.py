@@ -1,3 +1,14 @@
+"""hamilton2018stochastic
+
+A replication of the model of hunter-gatherer population dynamics, with an
+extinction threshold, described by Hamilton (2018).
+
+Reference:
+Hamilton, Marcus J & Walker, Robert S. 2018. A stochastic density-dependent
+model of long-term population dynamics in hunter-gatherer populations.
+Evolutionary Ecology Research 19(1). 85–102.
+"""
+
 from matplotlib import pyplot as plt
 import numpy
 
@@ -43,4 +54,3 @@ for _ in range(20):
 plt.ylim(0, 15)
 plt.xlim(0, 1000)
 plt.show()
-
