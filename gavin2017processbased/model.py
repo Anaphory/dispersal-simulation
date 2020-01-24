@@ -11,7 +11,6 @@ from shapely.ops import unary_union
 from shapely.prepared import prep
 import tifffile
 import matplotlib.transforms as mtransforms
-from language import DifferenceSpreadAndRoundLanguage as Language
 from geo_plot import plot_hex_grid
 
 GEODESIC = geodesic.Geodesic()
@@ -83,18 +82,25 @@ def hexagonal_earth_grid(bbox, area):
         the complementary rectangular sub-grid of the hexagonal grid
 
     """
+
+    # Just in case, deal with bounding boxes crossing the date line. This may
+    # not be fine for the plotter, I don't know, but the logic should be sound,
+    # I hope.
+    # TODO: Write a regression test for that case.
+
+    if bbox.e < bbox.w:
+        east = bbox.e + 360
+    else:
+        east = bbox.e
     bbox_centre = Point(
-        (bbox.e + bbox.w)/2,
+        (east + bbox.w)/2,
         (bbox.n + bbox.s)/2)
     hexagon_side, grid_point_distance = hexagon(area)
 
     points = [bbox_centre]
 
-    # FIXME: This breaks when the bounding box crosses the date line.
-    # TODO: Write a regression test for that case.
-
     # Neighbors east and west: Direct tiling
-    while points[-1].longitude < bbox.e:
+    while points[-1].longitude < east:
         next = GEODESIC.direct(points[-1], 90, grid_point_distance)
         points.append(Point(*numpy.array(next)[0, :2]))
     while points[0].longitude > bbox.w:
@@ -119,22 +125,11 @@ def hexagonal_earth_grid(bbox, area):
 
 
 # Define continents
-australia = BoundingBox(
-    112.8708,
-    153.7392,
-    -43.8615,
-    -9.6712)
-
 
 area = 450000000 #m²
 
 def is_land(xy):
    return LAND.contains(sgeom.Point(*xy))
-
-try:
-    precipitation
-except NameError:
-    precipitation = tifffile.imread("../worldclim/wc2.0_bio_30s_12.tif").clip(0)
 
 def coordinates_to_index(points, resolution=2 * 60):
     """Convert long,lat coordinate pairs into indices in a TIF
@@ -216,7 +211,7 @@ class GridCell():
             return k.all_gridcells[m, i, j]
 
 
-    def __init__(self, m, i, j, grid=grid):
+    def __init__(self, m, i, j):
         self.m = m
         self.ij = i, j
         self.population = 0
@@ -272,6 +267,7 @@ class GridCell():
             " with language {:}".format(self.language.id) if self.language else " (empty)")
 
     def precipitation(self):
+        precipitation = tifffile.imread("../worldclim/wc2.0_bio_30s_12.tif").clip(0)
         index = tuple(coordinates_to_index(self.point))
         return precipitation[index]
 
@@ -311,6 +307,8 @@ class GridCell():
 
 # Start the simulation
 if __name__ == "__main__":
+    from language import DifferenceSpreadAndRoundLanguage as Language
+
     run = hex(numpy.random.randint(4096))
 
     namerica = BoundingBox(
@@ -318,7 +316,19 @@ if __name__ == "__main__":
         s=6.6,
         e=-49.0,
         n=83.3)
-    continent = namerica
+    australia = BoundingBox(
+        112.8708,
+        153.7392,
+        -43.8615,
+        -9.6712)
+    americas = BoundingBox(
+        e=-34.535395,
+        s=-56.028198,
+        w=-168.571541,
+        n=74.526716
+    )
+
+    continent = americas
 
     # Generate a hexagonal grid over the continent
     class LGrid(GridCell):
@@ -359,6 +369,7 @@ if __name__ == "__main__":
 
 
         # Plot the results
+        plt.gcf().set_size_inches(15, 15)
         ax = plt.axes(projection=ccrs.PlateCarree())
         ax.coastlines("50m")
         ax.set_extent(continent)
@@ -368,8 +379,9 @@ if __name__ == "__main__":
             lambda cell: colors.setdefault(
                 cell.language, numpy.random.random(size=3))
             if cell.language else (0, 0, 0, 0),
-            all_gridcells))
-        plt.savefig("output_{:}_{:08}.png".format(run, generation))
+            LGrid.all_gridcells))
+        plt.savefig("output_{:}_{:08}.png".format(run, generation),
+                    dpi=300)
         plt.close()
 
     def l_id(l_or_none):
@@ -382,14 +394,15 @@ if __name__ == "__main__":
     json.dump(
         [
             [[l_id(all_gridcells.get((0, i, j)))
-              for i in range(grid[0].shape[0])]
-             for j in range(grid[0].shape[1])],
+              for i in range(LGrid.grid[0].shape[0])]
+             for j in range(LGrid.grid[0].shape[1])],
             [[l_id(all_gridcells.get((1, i, j)))
-              for i in range(grid[1].shape[0])]
-             for j in range(grid[1].shape[1])]
+              for i in range(LGrid.grid[1].shape[0])]
+             for j in range(LGrid.grid[1].shape[1])]
         ],
         open("output_{:}.json".format(run), "w"))
 
+    plt.gcf().set_size_inches(15, 15)
     ax = plt.axes(projection=ccrs.PlateCarree())
     ax.coastlines("50m")
     ax.set_extent(continent)
@@ -399,7 +412,8 @@ if __name__ == "__main__":
         lambda cell: colors.setdefault(
             cell.language, numpy.random.random(size=3))
         if cell.language else (0, 0, 0, 0),
-        all_gridcells))
-    plt.savefig("output_{:}_final.png".format(run))
+        LGrid.all_gridcells))
+    plt.savefig("output_{:}_final.png".format(run),
+                dpi=300)
     plt.close()
 
