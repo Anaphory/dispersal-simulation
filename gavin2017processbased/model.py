@@ -11,7 +11,6 @@ from shapely.ops import unary_union
 from shapely.prepared import prep
 import tifffile
 import matplotlib.transforms as mtransforms
-from language import DifferenceSpreadAndRoundLanguage as Language
 from geo_plot import plot_hex_grid
 
 GEODESIC = geodesic.Geodesic()
@@ -131,11 +130,6 @@ area = 450000000 #m²
 
 def is_land(xy):
    return LAND.contains(sgeom.Point(*xy))
-
-try:
-    precipitation
-except NameError:
-    precipitation = tifffile.imread("../worldclim/wc2.0_bio_30s_12.tif").clip(0)
 
 def coordinates_to_index(points, resolution=2 * 60):
     """Convert long,lat coordinate pairs into indices in a TIF
@@ -268,6 +262,7 @@ class GridCell():
             " with language {:}".format(self.language.id) if self.language else " (empty)")
 
     def precipitation(self):
+        precipitation = tifffile.imread("../worldclim/wc2.0_bio_30s_12.tif").clip(0)
         index = tuple(coordinates_to_index(self.point))
         return precipitation[index]
 
@@ -307,6 +302,8 @@ class GridCell():
 
 # Start the simulation
 if __name__ == "__main__":
+    from language import DifferenceSpreadAndRoundLanguage as Language
+
     run = hex(numpy.random.randint(4096))
 
     australia = BoundingBox(
