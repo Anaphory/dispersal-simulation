@@ -1,6 +1,7 @@
 """crema2014simulation
 
-A replication of the model described by Crema (2014).
+A replication of the fission-fusion model for hunter-gatherer population
+dynamics and migration described by Crema (2014).
 
 Crema, Enrico R. 2014. A Simulation Model of Fission–Fusion Dynamics and
 Long-Term Settlement Change. Journal of Archaeological Method and Theory 21(2).
@@ -238,6 +239,9 @@ def simulation(
     return run_results
 
 if __name__ == '__main__':
+    from drennan2004comparing import a_coefficient
     run_results = simulation()
-    plt.plot([x.sum() for x in run_results])
+    plt.show()
+    plt.plot([a_coefficient([pop for pop in x.flat if pop])
+              for x in run_results])
     plt.show()
