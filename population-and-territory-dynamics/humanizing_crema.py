@@ -19,9 +19,9 @@ model_parameters = dict(
     # Following Hamilton&Walker – This is only an initial state and matters little
     time_steps = 500,
     patches = 100,
-    basic_individual_payoff = 1,
-    # Make this a measure of how many individuals a forager could care for, and
-    # adjust corresponding sizes accordingly.
+    # Make basic_individual_payoff a measure of how many individuals a forager
+    # could care for (i.e. largely themself), and adjust corresponding sizes
+    # accordingly.
     payoff_standard_deviation = 0.1,
     # This parameter scales linearly with b_i_p.
     cooperative_benefit = (0.1, 0.5),
@@ -37,11 +37,10 @@ model_parameters = dict(
     death_parameter_one = 8,
     # This parameter scales linearly with 1/b_i_p, to keep probabilities the same.
     death_parameter_two = 5,
-    spatial_interaction_range = [1, 100],
-    decision_making_probability = [0.1, 0.5, 1.0],
+    decision_making_probability = 0.3,
     evidence_threshold = 0.3,
     # This parameter scales linearly with b_i_p.
-    observed_agents = [1e-7, 0.5, 1])
+    observed_agents = 0.2)
 
 
 def fission(cell, neighbors, modifyable_population_grid):
@@ -97,7 +96,7 @@ def fission(cell, neighbors, modifyable_population_grid):
         return
     modifyable_population_grid[cell] -= 1
     target = empty_cells[numpy.random.randint(len(empty_cells))]
-    assert population_grid[target] == 0
+    assert modifyable_population_grid[target] == 0
     modifyable_population_grid[target] = 1
 
 
@@ -139,14 +138,22 @@ def neighbors_within(cell, distance, shape, wrap=(False, False)):
             if 0 < (n1 - c1) ** 2 + (n2 - c2) ** 2 <= distance_sq:
                 yield n1 % shape[0], n2 % shape[1]
 
+def fitness(groupsize,
+            resources,
+            cooperative_benefit=model_parameters.pop("cooperative_benefit"),
+            payoff_standard_deviation=model_parameters.pop("payoff_standard_deviation")):
+    foraging_contribution = numpy.random.normal(
+        loc=groupsize * (
+            1 + cooperative_benefit[0] * (groupsize - 1) ** cooperative_benefit[1]),
+        scale=payoff_standard_deviation / groupsize ** 0.5)
+    return numpy.minimum(
+        foraging_contribution, resources) / groupsize
 
 def simulation(
         initial_agents = 10,
         time_steps = 500,
         patches = 100,
-        basic_individual_payoff = 10,
-        payoff_standard_deviation = 1.,
-        cooperative_benefit = 0.3,
+        fitness = fitness,
         resource_input = 200,
         basic_reproduction_rate = 0.05,
         death_parameter_one = 0.8,
@@ -164,6 +171,7 @@ def simulation(
     list(numpy.array)
         The list of the state of the population in each time step
     """
+
     grid_shape = int(patches ** 0.5), patches // int(patches ** 0.5)
     population_grid = numpy.zeros(grid_shape, dtype=int)
     resource_grid = resource_input * numpy.ones_like(population_grid)
@@ -172,15 +180,11 @@ def simulation(
                         numpy.random.randint(population_grid.shape[1])] += 1
     run_results = []
     for i in range(time_steps):
-        foraging_contribution = numpy.random.normal(
-            loc=population_grid * (
-                basic_individual_payoff + cooperative_benefit[0] * (population_grid - 1)**cooperative_benefit[1]),
-            scale=payoff_standard_deviation / population_grid ** 0.5)
-        fitness_grid = numpy.minimum(
-                foraging_contribution, resource_grid) / population_grid
+        fitness_grid = fitness(
+            population_grid,
+            resource_grid)
 
-        reproduction_prob = basic_reproduction_rate * (
-            fitness_grid / basic_individual_payoff)
+        reproduction_prob = basic_reproduction_rate * fitness_grid
         numpy.nan_to_num(reproduction_prob, copy=False)
         death_prob = 1 / (1 + numpy.exp(
             fitness_grid * death_parameter_one - death_parameter_two))
@@ -211,8 +215,8 @@ def simulation(
                 elif  population_grid[target_cell] == 1:
                     if fitness_grid[cell] >= other_fitness:
                         pass
-                    elif (fitness_grid[cell] < basic_individual_payoff and
-                        other_fitness < basic_individual_payoff):
+                    elif (fitness_grid[cell] < 1 and
+                        other_fitness < 1):
                         population_grid[cell] -= 1
                         population_grid[target_cell] += 1
                 else:
@@ -221,29 +225,29 @@ def simulation(
                         population_grid[target_cell] += 1
             else:
                 if target_cell is None:
-                    if fitness_grid[cell] <= basic_individual_payoff - evidence_threshold:
+                    if fitness_grid[cell] <= 1 - evidence_threshold:
                         fission(cell, neighbors, population_grid)
                 elif population_grid[target_cell] > 1:
-                    if other_fitness > basic_individual_payoff - evidence_threshold:
-                        if fitness_grid[cell] <= max(basic_individual_payoff, other_fitness):
+                    if other_fitness > 1 - evidence_threshold:
+                        if fitness_grid[cell] <= max(1, other_fitness):
                             population_grid[cell] -= 1
                             population_grid[target_cell] += 1
-                    elif other_fitness <= basic_individual_payoff - evidence_threshold:
-                        if fitness_grid[cell] <= basic_individual_payoff - evidence_threshold:
+                    elif other_fitness <= 1 - evidence_threshold:
+                        if fitness_grid[cell] <= 1 - evidence_threshold:
                             fission(cell, neighbors, population_grid)
                     elif fitness_grid[cell] >= other_fitness:
-                        if fitness_grid[cell] > basic_individual_payoff - evidence_threshold:
+                        if fitness_grid[cell] > 1 - evidence_threshold:
                             pass
                         else:
                             fission(cell, neighbors, population_grid)
                 else: # population_grid[target_cell] == 1:
                     if fitness_grid[cell] >= other_fitness:
-                        if fitness_grid[cell] > basic_individual_payoff - evidence_threshold:
+                        if fitness_grid[cell] > 1 - evidence_threshold:
                             pass
                         else:
                             fission(cell, neighbors, population_grid)
                     elif fitness_grid[cell] <= max(
-                            other_fitness, basic_individual_payoff) - evidence_threshold:
+                            other_fitness, 1) - evidence_threshold:
                         fission(cell, neighbors, population_grid)
 
         run_results.append(population_grid + 0)
@@ -251,6 +255,12 @@ def simulation(
     return run_results
 
 if __name__ == '__main__':
+    from drennan2004comparing import a_coefficient
     run_results = simulation(**model_parameters)
     plt.plot([x.sum() for x in run_results])
+    plt.show()
+    plt.plot([a_coefficient([pop for pop in x.flat if pop])
+              for x in run_results])
+    plt.show()
+    plt.plot(fitness(numpy.arange(40), 20))
     plt.show()
