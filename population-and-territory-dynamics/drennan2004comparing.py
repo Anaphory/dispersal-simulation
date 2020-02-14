@@ -53,6 +53,8 @@ def a_coefficient(sequence):
 
     """
     log_sizes = numpy.log(sorted(sequence, reverse=True))
+    if not len(log_sizes):
+        return numpy.nan
     log_rank = numpy.log(numpy.arange(1, len(log_sizes) + 1))
     area = 0
     z0 = log_sizes[0]
