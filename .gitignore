@@ -1,4 +1,3 @@
-worldclim/*.tif
-worldclim/readme.txt
-gavin2017processbased/output*.png
-.Rproj.user
+supplement/worldclim/*.tif
+supplement/worldclim/readme.txt
+supplement/gavin2017processbased/output*.png
