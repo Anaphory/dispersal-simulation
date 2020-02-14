@@ -17,7 +17,7 @@ from model import GridCell, BoundingBox, hexagonal_earth_grid
 model_parameters = dict(
     initial_agents = 100,
     # Following Hamilton&Walker – This is only an initial state and matters little
-    time_steps = 500,
+    time_steps = 10000,
     patches = 100,
     # Make basic_individual_payoff a measure of how many individuals a forager
     # could care for (i.e. largely themself), and adjust corresponding sizes
@@ -146,8 +146,8 @@ def fitness(groupsize,
         loc=groupsize * (
             1 + cooperative_benefit[0] * (groupsize - 1) ** cooperative_benefit[1]),
         scale=payoff_standard_deviation / groupsize ** 0.5)
-    return numpy.minimum(
-        foraging_contribution, resources) / groupsize
+    return numpy.nan_to_num(numpy.minimum(
+        foraging_contribution, resources) / groupsize)
 
 def simulation(
         initial_agents = 10,
@@ -163,6 +163,7 @@ def simulation(
         spatial_interaction_range = 1.5,
         decision_making_probability = 0.1,
         evidence_threshold = 3,
+        resource_recuperation = 20,
         observed_agents = 1e-7):
     """Run Crema's simulation
 
@@ -174,7 +175,8 @@ def simulation(
 
     grid_shape = int(patches ** 0.5), patches // int(patches ** 0.5)
     population_grid = numpy.zeros(grid_shape, dtype=int)
-    resource_grid = resource_input * numpy.ones_like(population_grid)
+    resource_limit_grid = resource_input * numpy.ones_like(population_grid)
+    resource_grid = resource_limit_grid * 0.9
     for _ in range(initial_agents):
         population_grid[numpy.random.randint(population_grid.shape[0]),
                         numpy.random.randint(population_grid.shape[1])] += 1
@@ -183,6 +185,9 @@ def simulation(
         fitness_grid = fitness(
             population_grid,
             resource_grid)
+        resource_grid -= numpy.nan_to_num(fitness_grid) * population_grid
+        resource_grid += resource_recuperation
+        numpy.clip(resource_grid, 0, resource_limit_grid, out=resource_grid)
 
         reproduction_prob = basic_reproduction_rate * fitness_grid
         numpy.nan_to_num(reproduction_prob, copy=False)
