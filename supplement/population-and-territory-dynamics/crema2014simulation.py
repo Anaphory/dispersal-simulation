@@ -19,6 +19,7 @@ Simulation in Archaeology (Advances in Geographic Information Science),
 import json
 import numpy
 import itertools
+from pathlib import Path
 from matplotlib import pyplot as plt
 
 model_parameters = dict(
@@ -173,6 +174,15 @@ def simulation(
         resource_threshold = 1.0 - resource_resilience
         change_resources = True
 
+    neighborhood_cache = {}
+    def cached_neighborhood(cell):
+        try:
+            return neighborhood_cache[cell]
+        except KeyError:
+            n = list(neighborhood(cell))
+            neighborhood_cache[cell] = n
+            return n
+
     grid_shape = int(patches ** 0.5), patches // int(patches ** 0.5)
     population_grid = numpy.zeros(grid_shape, dtype=int)
     max_resource_grid = resource_input * numpy.ones_like(population_grid, dtype=float)
@@ -216,9 +226,9 @@ def simulation(
             fitness = fitness_grid[cell]
 
             copy_candidates = []
-            neighbors = list(neighborhood(cell))
+            neighbors = cached_neighborhood(cell)
             for n in neighbors:
-                if numpy.random.binomial(population_grid[n], observed_agents):
+                if numpy.random.random() < (1 - observed_agents)**population_grid[n]:
                     copy_candidates.append((fitness_grid[n], numpy.random.random(), n))
             target_fitness, _, target_cell = max(
                 copy_candidates,
@@ -260,23 +270,29 @@ def simulation(
 
     return run_results
 
+RESUME = True
 if __name__ == '__main__':
     from drennan2004comparing import a_coefficient
     import csv
     results = {
-        "A coefficient mean over the last 200 steps": lambda a: numpy.mean(a[-200:]),
-        "A coefficient std over the last 200 steps": lambda a: numpy.std(a[-200:]),
-        "Maximum A coefficient over the last 200 steps": lambda a: max(a[-200:]),
-        "Minimum A coefficient over the last 200 steps": lambda a: min(a[-200:]),
+        "A coefficient mean over the last 200 steps": lambda a, p: numpy.mean(a[-200:]),
+        "A coefficient std over the last 200 steps": lambda a, p: numpy.std(a[-200:]),
+        "Maximum A coefficient over the last 200 steps": lambda a, p: max(a[-200:]),
+        "Minimum A coefficient over the last 200 steps": lambda a, p: min(a[-200:]),
+        "Mean total population size": lambda a, p: numpy.mean([x.sum() for x in p]),
     }
-    with open("summary.csv", "w") as csvfile:
+    with open("summary.csv", "a" if RESUME else "w") as csvfile:
         csvoutput = csv.DictWriter(
                 csvfile,
                 list(itertools.chain(["run"], model_parameters.keys(), results.keys())))
-        csvoutput.writeheader()
+        if not RESUME:
+            csvoutput.writeheader()
         for i, parameters in enumerate(itertools.product(*model_parameters.values())):
-            for j in range(10):
-                run_id = "run_{:05d}{:01d}".format(i, j)
+            for j in range(2):
+                run_id = "run_{:05d}{:01X}".format(i, j)
+                print(run_id)
+                if Path("{:s}-parameters.json".format(run_id)).exists():
+                    continue
                 named_parameters = dict(zip(model_parameters.keys(), parameters))
                 named_parameters["neighborhood"] = lambda x: neighbors_within(
                     x, named_parameters["spatial_interaction_range"] * 1.5, (10, 10), (True, True))
@@ -290,7 +306,7 @@ if __name__ == '__main__':
                                 for x in run_results]
                 plt.plot(a_coefficients)
                 named_parameters.update({
-                    key: val(a_coefficients)
+                    key: val(a_coefficients, run_results)
                     for key, val in results.items()})
                 named_parameters["run"] = run_id
                 csvoutput.writerow(named_parameters)
