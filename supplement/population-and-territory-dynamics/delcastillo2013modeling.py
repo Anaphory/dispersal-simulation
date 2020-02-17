@@ -25,7 +25,7 @@ import numpy
 if False:
     season                         # hot or cold
     weights_vector                 # [0.5 0.25 0.12 0.06 0.03 0.015 0.0075 0.00375 0.001875 0.0009375]
-    component_index                # counter of groups
+    self.component_index                # counter of groups
 
     #OUTPUT VARIABLES
     number_of_social_aggregates
@@ -48,9 +48,8 @@ if False:
 @attr.s
 class Family:
     collected_energy = attr.ib()      # energy obtained during the current tick
-    identity = attr.ib()              # 10-dimension vector with values 1 (no important) to 6 (very important)
+    identity = attr.ib(cmp=False)              # 10-dimension vector with values 1 (no important) to 6 (very important)
     labor = attr.ib()                 # number of individuals within a household
-    survival_threshold = attr.ib()    # 730 * labor
     technology = attr.ib()            # Gaussian_distributed: mean: average_technology; standard deviation: diversity
 
     my_neighborhood = attr.ib(default=[])       # list of families around
@@ -60,14 +59,35 @@ class Family:
     total_energy = attr.ib(default=0)          # total level of energy (self,including surplus)
     individual_capability = attr.ib(default=1) # fraction of the resource that the agent is able to obtain when working on their own
     cultural_distance = attr.ib(default=0)     # cooperation will be posible if similarity >= cultural_distance
-    cooperation = attr.ib(default=False)           # true if I have been involved in a cooperation process (self,i.e. I have helped someone or someone has helped me)
+    cooperation = attr.ib(default=False)           # True if I have been involved in a cooperation process (self,i.e. I have helped someone or someone has helped me)
     explored = attr.ib(default=False)              # needed for detecting components
     component = attr.ib(default=0)             # group (self,i.e. component in the network) where the family belongs
+    _patch = attr.ib(default=None)
 
     @property
     def conservation_factor(self):
         # current value of technology divided by two
         return self.technology / 2
+
+    @property
+    def survival_threshold(self):
+        # 730 * labor
+        return (730 * self.labor) / 2
+
+    @property
+    def patch(self):
+        return self._patch
+
+    @patch.setter
+    def patch(self, patch):
+        if self._patch is not None:
+            self._patch.families.remove(self)
+        self._patch = patch
+        self._patch.families.append(self)
+
+    def linked_neighbors(self):
+        return []
+
 
 @attr.s
 class Patch:
@@ -75,7 +95,14 @@ class Patch:
     max_resource = attr.ib()    # maximum amount of resource (in hot season)
     resource = attr.ib()        # current amount of resource
     amount_consumed = attr.ib() # amount of energy consumed during the current tick
-    exploited = attr.ib()       # true during one tick after been exploited
+    exploited = attr.ib()       # True during one tick after been exploited
+    coords = attr.ib()
+    families = attr.ib(default = [])
+
+
+def distance(patch1, patch2):
+    return ((patch1.coords[0] - patch2.coords[0]) ** 2 + (patch1.coords[1] - patch2.coords[1]) ** 2) ** 0.5
+
 
 class Simulation():
     def __init__(self):
@@ -87,91 +114,91 @@ class Simulation():
         self.average_technology = 0.22
         self.movement = 5
         self.max_resource_on_patches = 20000
+        self.cooperation_allowed = True
 
+        self.number_of_agents_that_died_of_starvation = 0
 
     def setup(self):
         #INITIALIZE PATCHES
-        patches = [
+        self.patches = [
             Patch(difficulty = numpy.random.random(),
-                        # Resources are uniformly distributed in [max_resource_on_patches / 1000, max_resource_on_patches]
-                        max_resource = (max_resource_on_patches / 1000) + numpy.random.random() * ( max_resource_on_patches - (max_resource_on_patches / 1000) ),
-                        resource = 10,
-                        amount_consumed = 0,
-                        exploited = False)
+                  # Resources are uniformly distributed in [max_resource_on_patches / 1000, max_resource_on_patches]
+                  max_resource = (self.max_resource_on_patches / 1000) + numpy.random.random() * ( self.max_resource_on_patches - (self.max_resource_on_patches / 1000) ),
+                  resource = 10,
+                  amount_consumed = 0,
+                  exploited = False,
+                  coords=(i, j))
             for i in range(50) for j in range(50)]
-        tick = 0
+        self.tick = 0
 
         #GLOBAL = VARIABLES
-        weights_vector = [0.5, 0.25, 0.12, 0.06, 0.03, 0.015, 0.0075, 0.00375, 0.001875, 0.0009375]
+        self.weights_vector = numpy.array([0.5, 0.25, 0.12, 0.06, 0.03, 0.015, 0.0075, 0.00375, 0.001875, 0.0009375])
 
         #CREATE AND INITIALIZE FAMILIES
-        initial_identity = numpy.random.randint(1, 7)  #all the families start with the same identity vector
+        initial_identity = numpy.random.randint(1, 7, size=len(self.weights_vector))  #all the families start with the same identity vector
 
         self.families = []
         randomstate = numpy.random.default_rng(0)
-        for i in randomstate.choice(patches, initial_population, replace=False):
-            labor = numpy.random.poisson(labor_average)
+        for patch in randomstate.choice(self.patches, self.initial_population, replace=False):
+            labor = numpy.random.poisson(self.labor_average)
             if labor < 2:
                 labor = 2 #(correction for cases with labor < 2)
             family = Family(
                 identity = initial_identity,
                 labor = labor,
-                survival_threshold = (730 * labor) / 2,
-                technology = max(min(numpy.random.normal( average_technology, diversity), 2), 0.02),
+                technology = max(min(numpy.random.normal(self.average_technology, self.diversity), 2), 0.02),
                         # correction to force technology to be in the interval [0 2] (and thus depreciation will be in [0 1]
                 collected_energy = 0,
                 my_group = []     # initialize my_group = nobody
                 )
             family.total_energy = 1 + family.survival_threshold * (1 + family.conservation_factor) / family.conservation_factor
+            family.patch = patch
             # this means that all the families will have enough energy to survive the first tick without hunting
             self.families.append(family)
 
 
-    def survive(self,families):
-        number_of_agents_that_died_of_starvation = 0
-        number_of_living_agents = len(families)
+    def survive(self):
+        self.number_of_living_agents = len(self.families)
 
         # 1. Substract survival_threshold. If they didn't reach their survival
         # threshold in the previous tick, their current level of total_energy will be
         # < 0 at this point; in this case their amount of labor is reduced by one
         # unit
-        for family in families:
-                family.total_energy -= family.survival_threshold
+        for family in self.families:
+            family.total_energy -= family.survival_threshold
 
-                if family.total_energy < 0:
-                    family.labor -= 1
-                    family.survival_threshold = (730 * family.labor) / 2
-                    family.total_energy = 0
+            if family.total_energy < 0:
+                family.labor -= 1
+                family.total_energy = 0
 
-                    #if their amount of labor goes below 2, the family (agent) dies
-                    if family.labor < 2:
-                        number_of_agents_that_died_of_starvation += 1
-                        family.die()
+                #if their amount of labor goes below 2, the family (agent) dies
+                if family.labor < 2:
+                    self.number_of_agents_that_died_of_starvation += 1
+                    self.families.remove(family)
+                    family.patch.families.remove(family)
 
         # 2. Vegatative reproduction: The amount of labor within a family goes up one
         # unit every 6 ticks – The code actually says ‘30’ instead of ‘6’
-        for family in families:
-            if ticks % 30 == 0:
+        for family in self.families:
+            if self.tick % 30 == 0:
                 family.labor += 1
-                family.survival_threshold = (730 * family.labor) / 2
 
         # if the amount of labor reaches the value 10, the family is split into two
         # families with probability 95% (provided there is enough room in the
         # neighbourhood for another family: there cannot be more than one family in
         # the same patch)
-        for family in families:
+        for family in self.families:
             if family.labor >= 10:
                 if numpy.random.random() < .95:
                     reachable_empty_patches = reachable_empty_patches_within(family.location, in_radius)
                     if reachable_empty_patches:
                             family.labor //= 2
-                            family.survival_threshold = (730 * family.labor) / 2
                             family.copy_to(reachable_empty_patches[numpy.random.randint(len(reachable_empty_patches))])
 
 
     def update_resources_on_patches(self):
-        season = ["hot", "cold"][ticks % 2]
-        for patch in patches:
+        season = ["hot", "cold"][self.tick % 2]
+        for patch in self.patches:
             if patch.exploited:
                 # patches that were exploited in the previous tick:
                 # if the current season is cold, the patch will not regenerate completely: (max_resource - amount_consumed)/2
@@ -187,94 +214,91 @@ class Simulation():
 
 
     def update_cultural_distance(self):
-        for family in families:
+        for family in self.families:
             if (family.patch.resource) <= family.survival_threshold:
                 # They will refuse to cooperate, as they are unable to reach their survival_threshold no matter the number of people who help them
                 family.cultural_distance = 1
             else:
                 extra_workers = max(
                     0,
-                    ((survival_threshold / (difficulty * (family.patch.resource - survival_threshold))) ** (1 / technology) - labor))
+                    ((family.survival_threshold / (family.patch.difficulty * (family.patch.resource - family.survival_threshold))) ** (1 / family.technology) - family.labor))
                 # extra_workers could be negative (if I have plenty of labor to obtain my survival threshold: I don't need any help from anyone)  --> in this case extra_workers = 0
                 cultural_distance = min(
                     1, ((1 / 100) * extra_workers)) # cultural distance could be greater than 1 if the number of extra workers goes above 100 --> --> in this case cultural distance = 1
 
 
     def hunt_and_gather(self):
-        for family in families:
-            total_energy = total_energy * conservation_factor #depreciate agents' energy at the beginning of the tick
-            cooperation = False
-            my_helpers = [] # (empty agentlist)
-            my_group = []   # (empty agentlist)
-            collected_energy = 0
-
-        links = []
-
+        for family in self.families:
+            family.total_energy = family.total_energy * family.conservation_factor #depreciate agents' energy at the beginning of the tick
+            family.cooperation = False
+            family.my_helpers = [] # (empty agentlist)
+            family.my_group = []   # (empty agentlist)
+            family.collected_energy = 0
 
         # families with total_energy > survival_threshold don't hunt or gather
 
-        for family in families:
-            if not total_energy < survival_threshold:
+        for family in self.families:
+            if not family.total_energy < family.survival_threshold:
                 continue
             # Try to act individually:
-            individual_capability = calculate_individual_capability
-            productivity = ( family.patch.resource) * individual_capability
+            individual_capability = self.calculate_individual_capability(family)
+            productivity = ( family.patch.resource) * family.individual_capability
 
-            if cooperation_allowed:
+            if self.cooperation_allowed:
                 # FAMILIES ARE ALLOWED TO ASK FOR HELP WHENEVER THEY ARE UNABLE TO REACH THEIR SURVIVAL THRESHOLD
-                if productivity >= survival_threshold:
+                if productivity >= family.survival_threshold:
                     # ACT INDIVIDUALLY
                     # I don't need to cooperate: I will act individually and collect as much energy as I need to reach my survival_threshold
-                    collected_energy = min ( (survival_threshold - total_energy), (individual_capability) * family.patch.resource)
-                    total_energy = total_energy + collected_energy
-                    with family.patch: #update resource on patch:
-                            amount_consumed = family.collected_energy
-                            resource = resource - amount_consumed
-                            exploited = true
+                    collected_energy = min((family.survival_threshold - family.total_energy), (family.individual_capability) * family.patch.resource)
+                    family.total_energy = family.total_energy + family.collected_energy
+                    p = family.patch #update resource on patch:
+                    amount_consumed = family.collected_energy
+                    p.resource = p.resource - p.amount_consumed
+                    p.exploited = True
                 else:
                     # COOPERATION (I need to ask for help)
                     capability = individual_capability
-                    identify_neighbors # define my_helpers (self,my_helpers contains a list of families that can potentially help me, i.e. our similarity is greater than their cultural_distance)
-                    agents_willing_to_help = ask_for_help
+                    self.identify_neighbors(family) # define my_helpers (self,my_helpers contains a list of families that can potentially help me, i.e. our similarity is greater than their cultural_distance)
+                    agents_willing_to_help = self.ask_for_help(family)
                     if agents_willing_to_help: # if someone helps me, my capability will be aggregated_capability. Otherwise it will be my individual_capability
                         capability = calculate_aggregated_capability(agents_willing_to_help)
 
                     collected_energy = (family.patch.resource) * capability
 
-                    total_energy = total_energy + collected_energy        #(therefore, total_energy might be greater than her survival_threshold
+                    family.total_energy = family.total_energy + family.collected_energy        #(therefore, total_energy might be greater than her survival_threshold
 
                     #update resource on patch:
-                    with family.patch:
-                            amount_consumed = family.collected_energy
-                            resource = resource - amount_consumed
-                            exploited = true
+                    p = family.patch
+                    amount_consumed = family.collected_energy
+                    p.resource = p.resource - amount_consumed
+                    p.exploited = True
                 # FAMILIES ARE NOT ALLOWED TO ASK FOR HELP IF THEY ARE UNABLE TO REACH THEIR SURVIVAL THRESHOLD. THEY WILL ACT INDIVIDUALLY
-                collected_energy = min ( (survival_threshold - total_energy) (individual_capability) * family.patch.resource)
-                total_energy = total_energy + collected_energy
-                with family.patch: #update resource on patch:
-                            amount_consumed = family.collected_energ
-                            resource = resource - amount_consumed
-                            exploited = true
+                collected_energy = min((family.survival_threshold - family.total_energy), (family.individual_capability) * family.patch.resource)
+                family.total_energy = family.total_energy + family.collected_energy
+                p = family.patch #update resource on patch:
+                amount_consumed = family.collected_energy
+                p.resource = p.resource - amount_consumed
+                p.exploited = True
 
 
-    def calculate_individual_capability(self):
-        return 1 / (1 + (1 / ((family.patch.difficulty) * (labor ** technology))))
+    def calculate_individual_capability(self, family):
+        return 1 / (1 + (1 / ((family.patch.difficulty) * (family.labor ** family.technology))))
 
 
-    def ask_for_help(self):
+    def ask_for_help(self, myself):
         # Determine the list of agents that are willing to cooperate
         agents_willing_to_cooperate = []
-        if my_helpers:  # if my list of helpers is not empty
+        if myself.my_helpers:  # if my list of helpers is not empty
             #each one of my helpers will help me with p=95%
-            for helper in my_helpers:
+            for helper in myself.my_helpers:
                 if random() < 0.95:
                     agents_willing_to_cooperate.append(helper)
             # The agents contained in the list agents_willing_to_cooperate will help me
             for agent in turtle_agents_willing_to_cooperate:
                 agent.create_link_with(family)   #helpers create a link with helped agents
-            cooperation = true # I have cooperated...
+            cooperation = True # I have cooperated...
             for agent in turtle_agents_willing_to_cooperate():
-                agent.cooperation = true  # ... and so have my helpers
+                agent.cooperation = True  # ... and so have my helpers
         return agents_willing_to_cooperate
 
 
@@ -286,28 +310,30 @@ class Simulation():
         return aggregated_capability
 
 
-    def identify_neighbors(self):
-        my_neighborhood = [family for family in families if distance(family.patch, this_family.patch) <= movement]
+    def identify_neighbors(self, myself):
+        my_neighborhood = [family
+                           for family in self.families
+                           if distance(family.patch, myself.patch) <= self.movement]
         my_helpers = [family
-                                    for family in my_neighborhood
-                                    if get_similarity(family.identity, this_family.identity) > cultural_distance ] # cultural_distance of my neighbors'
+                      for family in my_neighborhood
+                      if self.get_similarity(family.identity, myself.identity) > myself.cultural_distance ] # cultural_distance of my neighbors'
         # FIXME: YES, THE ORIGINAL SOURCE HAS A > THERE
 
 
     def get_similarity(self,a, b):
-        ap = a * weights_vector
-        bp = b * weights_vector
+        ap = a * self.weights_vector
+        bp = b * self.weights_vector
         numerator = (ap * bp).sum()
         denominator = (ap * ap).sum() ** 0.5 * (bp * bp).sum() ** 0.5
         return numerator / denominator
 
 
     def identify_groups(self):
-        find_all_components
-        for myself in families:
+        self.find_all_components()
+        for myself in self.families:
             if not myself.component > 0:
                 continue
-            my_group = [family for family in families if family.component == myself.component]
+            my_group = [family for family in self.families if family.component == myself.component]
             group_size = len(my_group)
 
 
@@ -315,38 +341,38 @@ class Simulation():
     ## http://ccl.northwestern.edu/netlogo/models/GiantComponent.
     ## Center for Connected Learning and Computer_Based Modeling, Northwestern University, Evanston, IL.
     def find_all_components(self):
-        for myself in families:
+        for myself in self.families:
             myself.explored = False
             myself.group_size = 0
-        for myself in families:
-            if not link_neighbors():
+        for myself in self.families:
+            if not myself.linked_neighbors():
                 component = 0
                 explored = True # families that don't cooperate (isolated agents) will have component = 0
-        component_index = 0
+        self.component_index = 0
         while True:
-            if [family for family in families if not family.explored]:
-                    start = numpy.random.choice([family for family in families if not family.explored])
-                    component_index = ( component_index + 1)
-                    explore(start)
+            if [family for family in self.families if not family.explored]:
+                    start = numpy.random.choice([family for family in self.families if not family.explored])
+                    self.component_index = ( self.component_index + 1)
+                    self.explore(start, self.component_index)
             else:
                 break
 
 
     ## Finds all families reachable from this node
-    def explore(self,myself):
+    def explore(self, myself, component_index):
         if myself.explored:
             return
-        myself.explored = true
-        myself.component = component_index
-        for neighbor in link_neighbors:
+        myself.explored = True
+        myself.component = self.component_index
+        for neighbor in myself.linked_neighbors():
             explore(neighbor)
 
 
     def decide_whether_to_move_or_stay(self):
-        for myself in families:
+        for myself in self.families:
             # 1. Calculate if I will be able to survive one more tick with my current level of energy (bearing in mind the depreciation factor) without working.
             # If that is the case, I leave with probability 0.05
-            if (total_energy - survival_threshold) * conservation_factor > survival_threshold:
+            if (myself.total_energy - myself.survival_threshold) * myself.conservation_factor > myself.survival_threshold:
                 if (numpy.random.random() < 0.05):
                     move()
                 # 2. I will have to work next tick because I will not be able to get by with my (depreciated) level of energy
@@ -368,95 +394,91 @@ class Simulation():
 
     def update_identity(self):
         # 1. Diffusion process (only for agents that have cooperated)
-        if families:
-            group_index = range(1, component_index + 1)
+        if self.families:
+            group_index = range(1, self.component_index + 1)
             for g in group_index:
-                consensual_identity = compute_consensual_identity([family for family in families if family.component == g])
-                for family in [family for family in families if family.component == g]:
+                consensual_identity = self.compute_consensual_identity([family for family in self.families if family.component == g])
+                for family in [family for family in self.families if family.component == g]:
                     if numpy.random.random() < 0.95:
                         family.identity = consensual_identity
         # 2. Mutation process (for all families)
-        for myself in families():
-            if numpy.random.random() < internal_change_rate:
+        for myself in self.families:
+            if numpy.random.random() < self.internal_change_rate:
                 index_vector = range(10)
                 for i in index_vector:
-                        if numpy.random.random() >= (weights_vector[i]):
+                        if numpy.random.random() >= (self.weights_vector[i]):
                             myself.identity[i] = numpy.random.randint(1, 7)
 
 
     def compute_consensual_identity(self,group):
         consensus = numpy.zeros(10, int)
         for n in range(10):
-                consensual_trait = random.choice([family.identity[n] for family in group])
+                consensual_trait = numpy.random.choice([family.identity[n] for family in group])
                 consensus[n] = consensual_trait
         return consensus
 
 
     def update_technology(self):
-        if families:
-            group_index = range(1, component_index + 1)
+        if self.families:
+            group_index = range(1, self.component_index + 1)
             for g in group_index:
-                this_group = [family for family in families if family.component == g]
+                this_group = [family for family in self.families if family.component == g]
                 average_technology_this_group = numpy.mean([family.technology for family in this_group])
                 for myself in this_group:
-                    if technology < 0.95 * average_technology_this_group:
+                    if myself.technology < 0.95 * average_technology_this_group:
                         if numpy.random.random() < 0.95:
-                            technology = technology + 0.1
-                            if technology > max([family.technology for family in this_group]):
+                            myself.technology = myself.technology + 0.1
+                            if myself.technology > max([family.technology for family in this_group]):
                                 myself.technology = max([family.technology for family in this_group])
                         if technology < 1.05 * average_technology_this_group:
                                 if numpy.random.random() < 0.95:
                                     technology = technology + 0.01
                                     if technology > max([family.technology for family in this_group]):
                                         myself.technology = max([family.technology for family in this_group])
-                for myself in this_group:
-                    myself.conservation_factor = technology / 2
 
         # 2. Mutation process (for all families)
-        for myself in families:
-            if numpy.random.random() < internal_change_rate:
-                technology = numpy.random.normal(average_technology, diversity)
+        for myself in self.families:
+            if numpy.random.random() < self.internal_change_rate:
+                myself.technology = numpy.random.normal(self.average_technology, self.diversity)
                 # possible correction to force technology to be in the interval [0 2] (and thus depreciation will be in [0 1]
-                if technology < 0.02:
-                    technology = 0.02
-                if technology > 2:
-                    technology = 2
-                conservation_factor = technology / 2
+                if myself.technology < 0.02:
+                    myself.technology = 0.02
+                if myself.technology > 2:
+                    myself.technology = 2
 
 
     def update_output_variables(self):
-        number_of_social_aggregates = component_index
-        number_of_agents_in_social_aggregates = len([family for family in families if family.cooperation])
-        number_of_agents_in_social_aggregates = len([family for family in families if not family.cooperation])
-        largest_group_size = max([families.group_size for family in families])
+        number_of_social_aggregates = self.component_index
+        number_of_agents_in_social_aggregates = len([family for family in self.families if family.cooperation])
+        number_of_agents_in_social_aggregates = len([family for family in self.families if not family.cooperation])
+        largest_group_size = max([family.group_size for family in self.families], default=None)
         if largest_group_size == 1:
             largest_group_size = "N/A"
-        total_collected_energy = sum([family.collected_energy for family in families])
-        total_collected_energy = numpy.std([family.collected_energy for family in families])
+        total_collected_energy = sum([family.collected_energy for family in self.families])
+        total_collected_energy = numpy.std([family.collected_energy for family in self.families])
         average_cultural_distance_in_aggregates = numpy.mean(
-            [cultural_distance for family in families if family.component > 0])
+            [family.cultural_distance for family in self.families if family.component > 0])
         average_cultural_distance_in_aggregates = numpy.std(
-            [cultural_distance for family in families if family.component > 0])
-        total_number_of_starvation_deaths = total_number_of_starvation_deaths + number_of_agents_that_died_of_starvation
-        sum_of_labor = sum([family.labor for family in families])
-        if len( families) >= 2:
-            mean_technology_of_families = numpy.mean([family.technology for family in families])
-            std_technology_of_families = numpy.std([family.technology for family in families])
+            [family.cultural_distance for family in self.families if family.component > 0])
+        sum_of_labor = sum([family.labor for family in self.families])
+        if len( self.families) >= 2:
+            mean_technology_of_families = numpy.mean([family.technology for family in self.families])
+            std_technology_of_families = numpy.std([family.technology for family in self.families])
 
 
     def simulate(self):
-        for step in range(1000):
-            survive()
-            update_resources_on_patches()
-            update_cultural_distance()
-            hunt_and_gather()
-            identify_groups()
-            update_identity()
-            update_technology()
-            decide_whether_to_move_or_stay()
-            update_output_variables()
-            tick()
-            if not families:
+        for step in range(self.steps):
+            self.survive()
+            self.update_resources_on_patches()
+            self.update_cultural_distance()
+            self.hunt_and_gather()
+            self.identify_groups()
+            self.update_identity()
+            self.update_technology()
+            self.decide_whether_to_move_or_stay()
+            self.update_output_variables()
+            self.tick += 1
+            if not self.families:
                 break
 
 
