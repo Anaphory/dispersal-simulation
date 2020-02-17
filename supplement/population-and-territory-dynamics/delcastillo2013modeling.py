@@ -88,12 +88,15 @@ class Patch:
 
 
 def setup():
-  patches = [Patch(difficulty = 1,
-                    max_resource = 10,
-                    resource = 10,
-                    amount_consumed = 0,
-                    exploited = False)
-             for i in range(50) for j in range(50)]
+  #INITIALIZE PATCHES
+  patches = [
+    Patch(difficulty = numpy.random.random(),
+          # Resources are uniformly distributed in [max_resource_on_patches / 1000, max_resource_on_patches]
+          max_resource = (max_resource_on_patches / 1000) + numpy.random.random() * ( max_resource_on_patches - (max_resource_on_patches / 1000) ),
+          resource = 10,
+          amount_consumed = 0,
+          exploited = False)
+    for i in range(50) for j in range(50)]
   tick = 0
 
   #GLOBAL = VARIABLES
@@ -116,16 +119,8 @@ def setup():
       collected_energy = 0,
       my_group = []     # initialize my_group = nobody
       )
-    family.total_energy = 1 + family.survival_threshold * (1 + family.conservation_factor) / family.conservation_factor,    # this means that all the families will have enough energy to survive the first tick without hunting
+    family.total_energy = 1 + family.survival_threshold * (1 + family.conservation_factor) / family.conservation_factor    # this means that all the families will have enough energy to survive the first tick without hunting
 
-  #INITIALIZE PATCHES
-  for patch in patches:
-    # Resources are uniformly distributed in [max_resource_on_patches / 1000, max_resource_on_patches]
-    max_resource = (max_resource_on_patches / 1000) + numpy.random.random() * ( max_resource_on_patches - (max_resource_on_patches / 1000) )
-    difficulty = numpy.random.random()
-    exploited = False
-    amount_consumed = 0
-    pcolor = 69
 
 def survive(families):
   number_of_agents_that_died_of_starvation = 0
