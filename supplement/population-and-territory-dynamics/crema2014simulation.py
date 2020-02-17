@@ -139,7 +139,6 @@ def neighbors_within(cell, distance, shape, wrap=(False, False)):
             if 0 < (n1 - c1) ** 2 + (n2 - c2) ** 2 <= distance_sq:
                 yield n1 % shape[0], n2 % shape[1]
 
-
 def simulation(
         initial_agents = 10,
         time_steps = 500,
@@ -227,12 +226,14 @@ def simulation(
 
             copy_candidates = []
             neighbors = cached_neighborhood(cell)
+            neighbors.sort(key=lambda n: fitness_grid[n])
+            # Neglect the effect of two cells having the same fitness
             for n in neighbors:
-                if numpy.random.random() < (1 - observed_agents)**population_grid[n]:
-                    copy_candidates.append((fitness_grid[n], numpy.random.random(), n))
-            target_fitness, _, target_cell = max(
-                copy_candidates,
-                default=(None, None, None))
+                if numpy.random.random() >= (1 - observed_agents)**population_grid[n]:
+                    continue
+                target_fitness = fitness_grid[n]
+                target_cell = n
+                break
             pop = population_grid[cell]
             target_pop = 0 if target_cell is None else population_grid[target_cell]
 
@@ -288,7 +289,7 @@ if __name__ == '__main__':
         if not RESUME:
             csvoutput.writeheader()
         for i, parameters in enumerate(itertools.product(*model_parameters.values())):
-            for j in range(2):
+            for j in range(16):
                 run_id = "run_{:05d}{:01X}".format(i, j)
                 print(run_id)
                 if Path("{:s}-parameters.json".format(run_id)).exists():
