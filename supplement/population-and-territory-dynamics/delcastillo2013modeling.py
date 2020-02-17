@@ -21,17 +21,20 @@ del Castillo, F. & Barceló, J. A. & Mameli, L. & Miguel, F. & Vila, X. 2013.
 
 import attr
 import numpy
+import networkx as nx
+import collections
+import matplotlib.pyplot as plt
 
 @attr.s
 class Family:
     collected_energy = attr.ib()      # energy obtained during the current tick
-    identity = attr.ib(cmp=False)              # 10-dimension vector with values 1 (no important) to 6 (very important)
+    identity = attr.ib(eq=False)              # 10-dimension vector with values 1 (no important) to 6 (very important)
     labor = attr.ib()                 # number of individuals within a household
     technology = attr.ib()            # Gaussian_distributed: mean: average_technology; standard deviation: diversity
 
-    my_neighborhood = attr.ib(default=[], repr=False)       # list of families around
-    my_helpers = attr.ib(default=[], repr=False)            # subof = my_neighborhood that will help me (self,with probability 95%)
-    my_group = attr.ib(default=[], repr=False)              # list of agents withins a social aggregate (self,i.e. families that belong to my group/component)
+    my_neighborhood = attr.ib(factory=list, repr=False)       # list of families around
+    my_helpers = attr.ib(factory=list, repr=False)            # subof = my_neighborhood that will help me (self,with probability 95%)
+    my_group = attr.ib(factory=list, repr=False)              # list of agents withins a social aggregate (self,i.e. families that belong to my group/component)
     group_size = attr.ib(default=0)            # size of the group (self,component) where I belong
     total_energy = attr.ib(default=0)          # total level of energy (self,including surplus)
     individual_capability = attr.ib(default=1) # fraction of the resource that the agent is able to obtain when working on their own
@@ -40,7 +43,7 @@ class Family:
     explored = attr.ib(default=False)              # needed for detecting components
     component = attr.ib(default=0)             # group (self,i.e. component in the network) where the family belongs
     _patch = attr.ib(default=None, repr=False)
-    _links = attr.ib(default=[], repr=False)
+    _links = attr.ib(factory=list, repr=False)
 
     @property
     def conservation_factor(self):
@@ -65,20 +68,31 @@ class Family:
 
     def linked_neighbors(self):
         return self._links
+
     def create_link_with(self, other):
+        if other == self:
+            return
         self._links.append(other)
         other._links.append(self)
 
+    def copy_to(self, patch):
+        new = Family(
+            collected_energy = 0,
+            identity = self.identity + 0,
+            labor = self.labor,
+            technology = self.technology,
+        )
+        new.patch = patch
+        new.create_link_with(self)
 
 @attr.s
 class Patch:
     difficulty = attr.ib()      # (h)
     max_resource = attr.ib()    # maximum amount of resource (in hot season)
     resource = attr.ib()        # current amount of resource
-    amount_consumed = attr.ib() # amount of energy consumed during the current tick
     exploited = attr.ib()       # True during one tick after been exploited
     coords = attr.ib()
-    families = attr.ib(default = [], repr=False)
+    families = attr.ib(factory=list, repr=False)
 
 
 def distance(patch1, patch2):
@@ -87,11 +101,11 @@ def distance(patch1, patch2):
 
 class Simulation():
     def __init__(self):
-        self.steps = 100
+        self.steps = 10000 # 100
         self.diversity = 0.5
         self.labor_average = 2
         self.internal_change_rate = 0.05
-        self.initial_population = 100
+        self.initial_population = 20 # 100
         self.average_technology = 0.22
         self.movement = 5
         self.max_resource_on_patches = 20000
@@ -106,7 +120,6 @@ class Simulation():
                   # Resources are uniformly distributed in [max_resource_on_patches / 1000, max_resource_on_patches]
                   max_resource = (self.max_resource_on_patches / 1000) + numpy.random.random() * ( self.max_resource_on_patches - (self.max_resource_on_patches / 1000) ),
                   resource = 10,
-                  amount_consumed = 0,
                   exploited = False,
                   coords=(i, j))
             for i in range(50) for j in range(50)]
@@ -159,9 +172,9 @@ class Simulation():
                     family.patch.families.remove(family)
 
         # 2. Vegatative reproduction: The amount of labor within a family goes up one
-        # unit every 6 ticks – The code actually says ‘30’ instead of ‘6’
-        for family in self.families:
-            if self.tick % 30 == 0:
+        # unit every 6 ticks – The original code actually says ‘30’ instead of ‘6’
+        if self.tick % 6 == 0:
+            for family in self.families:
                 family.labor += 1
 
         # if the amount of labor reaches the value 10, the family is split into two
@@ -175,11 +188,11 @@ class Simulation():
                     if reachable_empty_patches:
                             family.labor //= 2
                             family.copy_to(reachable_empty_patches[numpy.random.randint(len(reachable_empty_patches))])
-    def reachable_empty_patches_within(self, patch, distance):
-        for other in patches:
+    def reachable_empty_patches_within(self, patch, radius):
+        for other in self.patches:
             if other.families:
                 continue
-            if distance(patch, other) < distance:
+            if distance(patch, other) < radius:
                 yield other
 
     def update_resources_on_patches(self):
@@ -239,7 +252,7 @@ class Simulation():
                     family.total_energy = family.total_energy + family.collected_energy
                     p = family.patch #update resource on patch:
                     amount_consumed = family.collected_energy
-                    p.resource = p.resource - p.amount_consumed
+                    p.resource = p.resource - amount_consumed
                     p.exploited = True
                 else:
                     # COOPERATION (I need to ask for help)
@@ -281,6 +294,7 @@ class Simulation():
                     agents_willing_to_cooperate.append(helper)
             # The agents contained in the list agents_willing_to_cooperate will help me
             for agent in agents_willing_to_cooperate:
+                print("Creating link:", myself.patch.coords, agent.patch.coords, distance(agent.patch, myself.patch))
                 agent.create_link_with(myself)   #helpers create a link with helped agents
             myself.cooperation = True # I have cooperated...
             for agent in agents_willing_to_cooperate:
@@ -298,11 +312,13 @@ class Simulation():
 
     def identify_neighbors(self, myself):
         myself.my_neighborhood = [family
-                           for family in self.families
-                           if distance(family.patch, myself.patch) <= self.movement]
+                                  for family in self.families
+                                  if distance(family.patch, myself.patch) <= self.movement]
+        print(myself.patch.coords, [family.patch.coords for family in myself.my_neighborhood])
+        print([distance(myself.patch, family.patch) for family in myself.my_neighborhood])
         myself.my_helpers = [family
                       for family in myself.my_neighborhood
-                      if self.get_similarity(family.identity, myself.identity) > myself.cultural_distance ] # cultural_distance of my neighbors'
+                      if self.get_similarity(family.identity, myself.identity) > myself.cultural_distance] # cultural_distance of my neighbors'
         # FIXME: YES, THE ORIGINAL SOURCE HAS A > THERE
 
 
@@ -332,8 +348,8 @@ class Simulation():
             myself.group_size = 0
         for myself in self.families:
             if not myself.linked_neighbors():
-                family.component = 0
-                famliy.explored = True # families that don't cooperate (isolated agents) will have component = 0
+                myself.component = 0
+                myself.explored = True # families that don't cooperate (isolated agents) will have component = 0
         self.component_index = 0
         while True:
             if [family for family in self.families if not family.explored]:
@@ -441,7 +457,7 @@ class Simulation():
         if largest_group_size == 1:
             largest_group_size = "N/A"
         total_collected_energy = sum([family.collected_energy for family in self.families])
-        total_collected_energy = numpy.std([family.collected_energy for family in self.families])
+        std_collected_energy = numpy.std([family.collected_energy for family in self.families])
         average_cultural_distance_in_aggregates = numpy.mean(
             [family.cultural_distance for family in self.families if family.component > 0])
         average_cultural_distance_in_aggregates = numpy.std(
@@ -452,6 +468,23 @@ class Simulation():
             std_technology_of_families = numpy.std([family.technology for family in self.families])
         print(locals())
 
+    def plot(self):
+        resources = numpy.zeros((50, 50))
+        for p in self.patches:
+            resources[p.coords] = p.resource
+        plt.imshow(resources)
+        g = nx.Graph()
+        for family in self.families:
+            g.add_node(family.patch.coords)
+            for other in family.linked_neighbors():
+                g.add_edge(family.patch.coords, other.patch.coords)
+        nx.draw_networkx_nodes(g, mirror_dict(),
+                               node_color = "#dd0000",
+                               node_size = 10,
+                               node_shape = "d")
+        nx.draw_networkx_edges(g, mirror_dict())
+        plt.savefig("tick-{:09d}.png".format(self.tick))
+        plt.close()
 
     def simulate(self):
         for step in range(self.steps):
@@ -464,11 +497,17 @@ class Simulation():
             self.update_technology()
             self.decide_whether_to_move_or_stay()
             self.update_output_variables()
+            self.plot()
             self.tick += 1
             if not self.families:
                 break
 
 
-s = Simulation()
-s.setup()
-s.simulate()
+class mirror_dict(collections.defaultdict):
+    def __missing__(self, key):
+        return key
+
+for i in range(20):
+    s = Simulation()
+    s.setup()
+    s.simulate()
