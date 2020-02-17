@@ -29,9 +29,9 @@ class Family:
     labor = attr.ib()                 # number of individuals within a household
     technology = attr.ib()            # Gaussian_distributed: mean: average_technology; standard deviation: diversity
 
-    my_neighborhood = attr.ib(default=[])       # list of families around
-    my_helpers = attr.ib(default=[])            # subof = my_neighborhood that will help me (self,with probability 95%)
-    my_group = attr.ib(default=[])              # list of agents withins a social aggregate (self,i.e. families that belong to my group/component)
+    my_neighborhood = attr.ib(default=[], repr=False)       # list of families around
+    my_helpers = attr.ib(default=[], repr=False)            # subof = my_neighborhood that will help me (self,with probability 95%)
+    my_group = attr.ib(default=[], repr=False)              # list of agents withins a social aggregate (self,i.e. families that belong to my group/component)
     group_size = attr.ib(default=0)            # size of the group (self,component) where I belong
     total_energy = attr.ib(default=0)          # total level of energy (self,including surplus)
     individual_capability = attr.ib(default=1) # fraction of the resource that the agent is able to obtain when working on their own
@@ -39,7 +39,8 @@ class Family:
     cooperation = attr.ib(default=False)           # True if I have been involved in a cooperation process (self,i.e. I have helped someone or someone has helped me)
     explored = attr.ib(default=False)              # needed for detecting components
     component = attr.ib(default=0)             # group (self,i.e. component in the network) where the family belongs
-    _patch = attr.ib(default=None)
+    _patch = attr.ib(default=None, repr=False)
+    _links = attr.ib(default=[], repr=False)
 
     @property
     def conservation_factor(self):
@@ -63,7 +64,10 @@ class Family:
         self._patch.families.append(self)
 
     def linked_neighbors(self):
-        return []
+        return self._links
+    def create_link_with(self, other):
+        self._links.append(other)
+        other._links.append(self)
 
 
 @attr.s
@@ -74,7 +78,7 @@ class Patch:
     amount_consumed = attr.ib() # amount of energy consumed during the current tick
     exploited = attr.ib()       # True during one tick after been exploited
     coords = attr.ib()
-    families = attr.ib(default = [])
+    families = attr.ib(default = [], repr=False)
 
 
 def distance(patch1, patch2):
@@ -167,11 +171,16 @@ class Simulation():
         for family in self.families:
             if family.labor >= 10:
                 if numpy.random.random() < .95:
-                    reachable_empty_patches = reachable_empty_patches_within(family.location, in_radius)
+                    reachable_empty_patches = list(self.reachable_empty_patches_within(family.patch, self.movement))
                     if reachable_empty_patches:
                             family.labor //= 2
                             family.copy_to(reachable_empty_patches[numpy.random.randint(len(reachable_empty_patches))])
-
+    def reachable_empty_patches_within(self, patch, distance):
+        for other in patches:
+            if other.families:
+                continue
+            if distance(patch, other) < distance:
+                yield other
 
     def update_resources_on_patches(self):
         season = ["hot", "cold"][self.tick % 2]
@@ -223,7 +232,7 @@ class Simulation():
 
             if self.cooperation_allowed:
                 # FAMILIES ARE ALLOWED TO ASK FOR HELP WHENEVER THEY ARE UNABLE TO REACH THEIR SURVIVAL THRESHOLD
-                if productivity >= family.survival_threshold:
+                if family.productivity >= family.survival_threshold:
                     # ACT INDIVIDUALLY
                     # I don't need to cooperate: I will act individually and collect as much energy as I need to reach my survival_threshold
                     family.collected_energy = min((family.survival_threshold - family.total_energy), (family.individual_capability) * family.patch.resource)
@@ -234,13 +243,13 @@ class Simulation():
                     p.exploited = True
                 else:
                     # COOPERATION (I need to ask for help)
-                    family.capability = individual_capability
+                    family.capability = family.individual_capability
                     self.identify_neighbors(family) # define my_helpers (self,my_helpers contains a list of families that can potentially help me, i.e. our similarity is greater than their cultural_distance)
                     agents_willing_to_help = self.ask_for_help(family)
                     if agents_willing_to_help: # if someone helps me, my capability will be aggregated_capability. Otherwise it will be my individual_capability
-                        family.capability = calculate_aggregated_capability(agents_willing_to_help)
+                        family.capability = self.calculate_aggregated_capability(family, agents_willing_to_help)
 
-                    family.collected_energy = (family.patch.resource) * capability
+                    family.collected_energy = (family.patch.resource) * family.capability
 
                     family.total_energy = family.total_energy + family.collected_energy        #(therefore, total_energy might be greater than her survival_threshold
 
@@ -268,31 +277,31 @@ class Simulation():
         if myself.my_helpers:  # if my list of helpers is not empty
             #each one of my helpers will help me with p=95%
             for helper in myself.my_helpers:
-                if random() < 0.95:
+                if numpy.random.random() < 0.95:
                     agents_willing_to_cooperate.append(helper)
             # The agents contained in the list agents_willing_to_cooperate will help me
-            for agent in turtle_agents_willing_to_cooperate:
-                agent.create_link_with(family)   #helpers create a link with helped agents
-            family.cooperation = True # I have cooperated...
-            for agent in turtle_agents_willing_to_cooperate():
+            for agent in agents_willing_to_cooperate:
+                agent.create_link_with(myself)   #helpers create a link with helped agents
+            myself.cooperation = True # I have cooperated...
+            for agent in agents_willing_to_cooperate:
                 agent.cooperation = True  # ... and so have my helpers
         return agents_willing_to_cooperate
 
 
-    def calculate_aggregated_capability(self,agents_willing_to_cooperate):
-        max_technology_within_my_local_group = max(family.technology for family in agents_willing_to_cooperate())   # maximum technology within my group (including myself)
-        returns_to_cooperation = 2 - (family.patch.resource / max_resource_on_patches)
-        total_labor = family.labor + sum(family.labor for family in agents_willing_to_cooperate()) # total labor within my group (including myself)
+    def calculate_aggregated_capability(self, family, agents_willing_to_cooperate):
+        max_technology_within_my_local_group = max(family.technology for family in agents_willing_to_cooperate)   # maximum technology within my group (including myself)
+        returns_to_cooperation = 2 - (family.patch.resource / self.max_resource_on_patches)
+        total_labor = family.labor + sum(family.labor for family in agents_willing_to_cooperate) # total labor within my group (including my)self)
         aggregated_capability = 1 / (1 + ( 1 / ( ( (family.patch.difficulty) * (total_labor ** max_technology_within_my_local_group)) ** returns_to_cooperation ) ) )
         return aggregated_capability
 
 
     def identify_neighbors(self, myself):
-        family.my_neighborhood = [family
+        myself.my_neighborhood = [family
                            for family in self.families
                            if distance(family.patch, myself.patch) <= self.movement]
-        family.my_helpers = [family
-                      for family in my_neighborhood
+        myself.my_helpers = [family
+                      for family in myself.my_neighborhood
                       if self.get_similarity(family.identity, myself.identity) > myself.cultural_distance ] # cultural_distance of my neighbors'
         # FIXME: YES, THE ORIGINAL SOURCE HAS A > THERE
 
@@ -310,8 +319,8 @@ class Simulation():
         for myself in self.families:
             if not myself.component > 0:
                 continue
-            family.my_group = [family for family in self.families if family.component == myself.component]
-            family.group_size = len(my_group)
+            myself.my_group = [family for family in self.families if family.component == myself.component]
+            myself.group_size = len(myself.my_group)
 
 
     ## The following two procedures are an adaptation from: Wilensky, U. (2005). NetLogo Giant Component model.
@@ -342,7 +351,7 @@ class Simulation():
         myself.explored = True
         myself.component = self.component_index
         for neighbor in myself.linked_neighbors():
-            explore(neighbor)
+            self.explore(neighbor, component_index)
 
 
     def decide_whether_to_move_or_stay(self):
@@ -407,11 +416,11 @@ class Simulation():
                             myself.technology = myself.technology + 0.1
                             if myself.technology > max([family.technology for family in this_group]):
                                 myself.technology = max([family.technology for family in this_group])
-                        if technology < 1.05 * average_technology_this_group:
-                                if numpy.random.random() < 0.95:
-                                    family.technology = family.technology + 0.01
-                                    if technology > max([family.technology for family in this_group]):
-                                        myself.technology = max([family.technology for family in this_group])
+                        if myself.technology < 1.05 * average_technology_this_group:
+                            if numpy.random.random() < 0.95:
+                                myself.technology = myself.technology + 0.01
+                                if myself.technology > max([family.technology for family in this_group]):
+                                    myself.technology = max([family.technology for family in this_group])
 
         # 2. Mutation process (for all families)
         for myself in self.families:
@@ -441,6 +450,7 @@ class Simulation():
         if len( self.families) >= 2:
             mean_technology_of_families = numpy.mean([family.technology for family in self.families])
             std_technology_of_families = numpy.std([family.technology for family in self.families])
+        print(locals())
 
 
     def simulate(self):
