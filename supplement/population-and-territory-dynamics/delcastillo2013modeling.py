@@ -22,29 +22,6 @@ del Castillo, F. & Barceló, J. A. & Mameli, L. & Miguel, F. & Vila, X. 2013.
 import attr
 import numpy
 
-if False:
-    season                         # hot or cold
-    weights_vector                 # [0.5 0.25 0.12 0.06 0.03 0.015 0.0075 0.00375 0.001875 0.0009375]
-    self.component_index                # counter of groups
-
-    #OUTPUT VARIABLES
-    number_of_social_aggregates
-    number_of_agents_in_social_aggregates
-    number_of_isolated_agents
-    number_of_agents_that_died_of_starvation
-    number_of_living_agents      #(at the beginning of the tick)
-    total_collected_energy
-    collected_energy_standard_deviation
-    average_cultural_distance_in_aggregates
-    sd_cultural_distance_in_aggregates
-    largest_group_size
-    number_of_movements
-    total_number_of_starvation_deaths
-    sum_of_labor
-    mean_technology_of_families
-    std_technology_of_families
-
-
 @attr.s
 class Family:
     collected_energy = attr.ib()      # energy obtained during the current tick
@@ -223,7 +200,7 @@ class Simulation():
                     0,
                     ((family.survival_threshold / (family.patch.difficulty * (family.patch.resource - family.survival_threshold))) ** (1 / family.technology) - family.labor))
                 # extra_workers could be negative (if I have plenty of labor to obtain my survival threshold: I don't need any help from anyone)  --> in this case extra_workers = 0
-                cultural_distance = min(
+                family.cultural_distance = min(
                     1, ((1 / 100) * extra_workers)) # cultural distance could be greater than 1 if the number of extra workers goes above 100 --> --> in this case cultural distance = 1
 
 
@@ -241,15 +218,15 @@ class Simulation():
             if not family.total_energy < family.survival_threshold:
                 continue
             # Try to act individually:
-            individual_capability = self.calculate_individual_capability(family)
-            productivity = ( family.patch.resource) * family.individual_capability
+            family.individual_capability = self.calculate_individual_capability(family)
+            family.productivity = ( family.patch.resource) * family.individual_capability
 
             if self.cooperation_allowed:
                 # FAMILIES ARE ALLOWED TO ASK FOR HELP WHENEVER THEY ARE UNABLE TO REACH THEIR SURVIVAL THRESHOLD
                 if productivity >= family.survival_threshold:
                     # ACT INDIVIDUALLY
                     # I don't need to cooperate: I will act individually and collect as much energy as I need to reach my survival_threshold
-                    collected_energy = min((family.survival_threshold - family.total_energy), (family.individual_capability) * family.patch.resource)
+                    family.collected_energy = min((family.survival_threshold - family.total_energy), (family.individual_capability) * family.patch.resource)
                     family.total_energy = family.total_energy + family.collected_energy
                     p = family.patch #update resource on patch:
                     amount_consumed = family.collected_energy
@@ -257,13 +234,13 @@ class Simulation():
                     p.exploited = True
                 else:
                     # COOPERATION (I need to ask for help)
-                    capability = individual_capability
+                    family.capability = individual_capability
                     self.identify_neighbors(family) # define my_helpers (self,my_helpers contains a list of families that can potentially help me, i.e. our similarity is greater than their cultural_distance)
                     agents_willing_to_help = self.ask_for_help(family)
                     if agents_willing_to_help: # if someone helps me, my capability will be aggregated_capability. Otherwise it will be my individual_capability
-                        capability = calculate_aggregated_capability(agents_willing_to_help)
+                        family.capability = calculate_aggregated_capability(agents_willing_to_help)
 
-                    collected_energy = (family.patch.resource) * capability
+                    family.collected_energy = (family.patch.resource) * capability
 
                     family.total_energy = family.total_energy + family.collected_energy        #(therefore, total_energy might be greater than her survival_threshold
 
@@ -273,7 +250,7 @@ class Simulation():
                     p.resource = p.resource - amount_consumed
                     p.exploited = True
                 # FAMILIES ARE NOT ALLOWED TO ASK FOR HELP IF THEY ARE UNABLE TO REACH THEIR SURVIVAL THRESHOLD. THEY WILL ACT INDIVIDUALLY
-                collected_energy = min((family.survival_threshold - family.total_energy), (family.individual_capability) * family.patch.resource)
+                family.collected_energy = min((family.survival_threshold - family.total_energy), (family.individual_capability) * family.patch.resource)
                 family.total_energy = family.total_energy + family.collected_energy
                 p = family.patch #update resource on patch:
                 amount_consumed = family.collected_energy
@@ -296,7 +273,7 @@ class Simulation():
             # The agents contained in the list agents_willing_to_cooperate will help me
             for agent in turtle_agents_willing_to_cooperate:
                 agent.create_link_with(family)   #helpers create a link with helped agents
-            cooperation = True # I have cooperated...
+            family.cooperation = True # I have cooperated...
             for agent in turtle_agents_willing_to_cooperate():
                 agent.cooperation = True  # ... and so have my helpers
         return agents_willing_to_cooperate
@@ -311,10 +288,10 @@ class Simulation():
 
 
     def identify_neighbors(self, myself):
-        my_neighborhood = [family
+        family.my_neighborhood = [family
                            for family in self.families
                            if distance(family.patch, myself.patch) <= self.movement]
-        my_helpers = [family
+        family.my_helpers = [family
                       for family in my_neighborhood
                       if self.get_similarity(family.identity, myself.identity) > myself.cultural_distance ] # cultural_distance of my neighbors'
         # FIXME: YES, THE ORIGINAL SOURCE HAS A > THERE
@@ -333,8 +310,8 @@ class Simulation():
         for myself in self.families:
             if not myself.component > 0:
                 continue
-            my_group = [family for family in self.families if family.component == myself.component]
-            group_size = len(my_group)
+            family.my_group = [family for family in self.families if family.component == myself.component]
+            family.group_size = len(my_group)
 
 
     ## The following two procedures are an adaptation from: Wilensky, U. (2005). NetLogo Giant Component model.
@@ -346,8 +323,8 @@ class Simulation():
             myself.group_size = 0
         for myself in self.families:
             if not myself.linked_neighbors():
-                component = 0
-                explored = True # families that don't cooperate (isolated agents) will have component = 0
+                family.component = 0
+                famliy.explored = True # families that don't cooperate (isolated agents) will have component = 0
         self.component_index = 0
         while True:
             if [family for family in self.families if not family.explored]:
@@ -377,7 +354,7 @@ class Simulation():
                     move()
                 # 2. I will have to work next tick because I will not be able to get by with my (depreciated) level of energy
                 # Before moving, I will check if I will be able to get enough resources if I stay in the same patch
-                resources_next_tick =  (myself.patch.max_resource - collected_energy) / 2 if (season == "hot") else myself.patch.max_resource
+                myself.patch.resources_next_tick =  (myself.patch.max_resource - collected_energy) / 2 if (season == "hot") else myself.patch.max_resource
                 if resources_next_tick * individual_capability  > survival_threshold:
                     # If I can survive here, I will probably stay, but I will leave with probability 0.05
                     if (numpy.random.random() < 0.05):
@@ -388,7 +365,7 @@ class Simulation():
 
     def move(self):
         if [patch for patch in patches if distance(patch, this_family.patch) <= movement if not patch.families]:
-            number_of_movements = number_of_movements + 1
+            self.number_of_movements = self.number_of_movements + 1
             move_to(numpy.random.choice([patch for patch in patches if distance(patch, this_family.patch) <= movement if not patch.families]))
 
 
@@ -432,7 +409,7 @@ class Simulation():
                                 myself.technology = max([family.technology for family in this_group])
                         if technology < 1.05 * average_technology_this_group:
                                 if numpy.random.random() < 0.95:
-                                    technology = technology + 0.01
+                                    family.technology = family.technology + 0.01
                                     if technology > max([family.technology for family in this_group]):
                                         myself.technology = max([family.technology for family in this_group])
 
