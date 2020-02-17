@@ -1,7 +1,7 @@
 """delcastillo2013modeling
 
-Implement a geographic (abstracted) agent-based model of migrating
-hunter-gatherer bands with culture. The implementation is based on the NetLogo
+Implement a geographic (abstracted) agent_based model of migrating
+hunter_gatherer bands with culture. The implementation is based on the NetLogo
 implementation of PSMED, published by Baceló et al. (2013), while making sure
 to implement the specifics of del Castillo (2013).
 
@@ -22,37 +22,33 @@ del Castillo, F. & Barceló, J. A. & Mameli, L. & Miguel, F. & Vila, X. 2013.
 import attr
 import numpy
 
-breed [families family]
-
-globals
-[
-  season                         ; hot or cold
-  weights-vector                 ; [0.5 0.25 0.12 0.06 0.03 0.015 0.0075 0.00375 0.001875 0.0009375]
-  component-index                ; counter of groups
+if False:
+  season                         # hot or cold
+  weights_vector                 # [0.5 0.25 0.12 0.06 0.03 0.015 0.0075 0.00375 0.001875 0.0009375]
+  component_index                # counter of groups
 
   #OUTPUT VARIABLES
-  number-of-social-aggregates
-  number-of-agents-in-social-aggregates
-  number-of-isolated-agents
-  number-of-agents-that-died-of-starvation
-  number-of-living-agents      #(at the beginning of the tick)
-  total-collected-energy
-  collected-energy-standard-deviation
-  average-cultural-distance-in-aggregates
-  sd-cultural-distance-in-aggregates
-  largest-group-size
-  number-of-movements
-  total-number-of-starvation-deaths
-  sum-of-labor
-  mean-technology-of-families
-  std-technology-of-families
-]
+  number_of_social_aggregates
+  number_of_agents_in_social_aggregates
+  number_of_isolated_agents
+  number_of_agents_that_died_of_starvation
+  number_of_living_agents      #(at the beginning of the tick)
+  total_collected_energy
+  collected_energy_standard_deviation
+  average_cultural_distance_in_aggregates
+  sd_cultural_distance_in_aggregates
+  largest_group_size
+  number_of_movements
+  total_number_of_starvation_deaths
+  sum_of_labor
+  mean_technology_of_families
+  std_technology_of_families
 
 
 @attr.s
 class Family:
   my_neighborhood = attr.ib()       # list of families around
-  my_helpers = attr.ib()            # subset of my-neighborhood that will help me (with probability 95%)
+  my_helpers = attr.ib()            # subset of my_neighborhood that will help me (with probability 95%)
   my_group = attr.ib()              # list of agents withins a social aggregate (i.e. families that belong to my group/component)
   group_size = attr.ib()            # size of the group (component) where I belong
   collected_energy = attr.ib()      # energy obtained during the current tick
@@ -60,10 +56,10 @@ class Family:
   identity = attr.ib()              # 10-dimension vector with values 1 (no important) to 6 (very important)
   labor = attr.ib()                 # number of individuals within a household
   survival_threshold = attr.ib()    # 730 * labor
-  technology = attr.ib()            # Gaussian-distributed: mean: average-technology; standard deviation: diversity
+  technology = attr.ib()            # Gaussian_distributed: mean: average_technology; standard deviation: diversity
   conservation_factor = attr.ib()   # current value of technology divided by two
   individual_capability = attr.ib() # fraction of the resource that the agent is able to obtain when working on their own
-  cultural_distance = attr.ib()     # cooperation will be posible if similarity >= cultural-distance
+  cultural_distance = attr.ib()     # cooperation will be posible if similarity >= cultural_distance
   cooperation = attr.ib()           # true if I have been involved in a cooperation process (i.e. I have helped someone or someone has helped me)
   explored = attr.ib()              # needed for detecting components
   component = attr.ib()             # group (i.e. component in the network) where the family belongs
@@ -74,7 +70,7 @@ class Patch:
   difficulty = attr.ib()      # (h)
   max_resource = attr.ib()    # maximum amount of resource (in hot season)
   resource = attr.ib()        # current amount of resource
-  amount-consumed = attr.ib() # amount of energy consumed during the current tick
+  amount_consumed = attr.ib() # amount of energy consumed during the current tick
   exploited = attr.ib()       # true during one tick after been exploited
 
 
@@ -88,23 +84,23 @@ def setup():
   #CREATE AND INITIALIZE FAMILIES
   initial_identity = numpy.random.randint(1, 7)  #all the families start with the same identity vector
 
-  ask n-of initial-population patches
+  ask n_of initial_population patches
   [
-    sprout-families 1
+    sprout_families 1
     [
       set shape "person"
       set color red
-      set identity initial-identity
-      set labor random-poisson labor-average if labor < 2 [set labor 2] #(correction for cases with labor < 2)
-      set survival-threshold (730 * labor) / 2
-      set technology random-normal average-technology diversity
+      set identity initial_identity
+      set labor random_poisson labor_average if labor < 2 [set labor 2] #(correction for cases with labor < 2)
+      set survival_threshold (730 * labor) / 2
+      set technology random_normal average_technology diversity
           # correction to force technology to be in the interval [0 2] (and thus depreciation will be in [0 1]
           if technology < 0.02 [set technology 0.02]
           if technology > 2 [set technology 2]
-      set conservation-factor technology / 2
-      set total-energy 1 + survival-threshold * (1 + conservation-factor) / conservation-factor    # this means that all the families will have enough energy to survive the first tick without hunting
-      set collected-energy 0
-      set my-group families with [who < 0]     # initialize my-group = nobody
+      set conservation_factor technology / 2
+      set total_energy 1 + survival_threshold * (1 + conservation_factor) / conservation_factor    # this means that all the families will have enough energy to survive the first tick without hunting
+      set collected_energy 0
+      set my_group families with [who < 0]     # initialize my_group = nobody
     ]
   ]
 
@@ -112,50 +108,50 @@ def setup():
   #INITIALIZE PATCHES
   ask patches
   [
-    # Resources are uniformly distributed in [max-resource-on-patches / 1000, max-resource-on-patches]
-    set max-resource (max-resource-on-patches / 1000) + random ( max-resource-on-patches - (max-resource-on-patches / 1000) )
-    set difficulty random-float 1
+    # Resources are uniformly distributed in [max_resource_on_patches / 1000, max_resource_on_patches]
+    set max_resource (max_resource_on_patches / 1000) + random ( max_resource_on_patches - (max_resource_on_patches / 1000) )
+    set difficulty random_float 1
     set exploited? false
-    set amount-consumed 0
+    set amount_consumed 0
     set pcolor 69
   ]
 
 
 def go():
   survive
-  update-resources-on-patches
-  update-cultural-distance
-  hunt-and-gather
-  identify-groups
-  update-identity
-  update-technology
-  decide-whether-to-move-or-stay
-  update-output-variables
+  update_resources_on_patches
+  update_cultural_distance
+  hunt_and_gather
+  identify_groups
+  update_identity
+  update_technology
+  decide_whether_to_move_or_stay
+  update_output_variables
   tick
   #if not any? families [stop]
   if ticks = 1000 or not any? families [stop]
 
 
 def survive():
-  set number-of-agents-that-died-of-starvation 0
-  set number-of-living-agents count families
+  set number_of_agents_that_died_of_starvation 0
+  set number_of_living_agents count families
 
-  # 1. Substract survival-threshold. If they didn't reach their survival threshold in the previous tick, their current level of total-energy will be < 0 at this point;
+  # 1. Substract survival_threshold. If they didn't reach their survival threshold in the previous tick, their current level of total_energy will be < 0 at this point;
   # in this case their amount of labor is reduced by one unit
   ask families
     [
-      set total-energy total-energy - survival-threshold
+      set total_energy total_energy - survival_threshold
 
-      if total-energy < 0
+      if total_energy < 0
       [
         set labor labor - 1
-        set survival-threshold (730 * labor) / 2
-        set total-energy 0
+        set survival_threshold (730 * labor) / 2
+        set total_energy 0
 
         #if their amount of labor goes below 2, the family (agent) dies
         if labor < 2
         [
-          set number-of-agents-that-died-of-starvation number-of-agents-that-died-of-starvation + 1
+          set number_of_agents_that_died_of_starvation number_of_agents_that_died_of_starvation + 1
           die
         ]
       ]
@@ -167,7 +163,7 @@ def survive():
     if ticks > 1 and remainder ticks 30 = 0
     [
       set labor labor + 1
-      set survival-threshold (730 * labor) / 2
+      set survival_threshold (730 * labor) / 2
     ]
   ]
 
@@ -177,115 +173,115 @@ def survive():
   [
     if labor >= 10
     [
-      if random-float 1 < .95
+      if random_float 1 < .95
       [
-        if any? patches in-radius movement with [not any? turtles-here]
+        if any? patches in_radius movement with [not any? turtles_here]
           [
             set labor floor (labor / 2)
-            set survival-threshold (730 * labor) / 2
-            hatch-families 1 [move-to one-of patches in-radius movement with [not any? turtles-here]]
+            set survival_threshold (730 * labor) / 2
+            hatch_families 1 [move_to one_of patches in_radius movement with [not any? turtles_here]]
           ]
       ]
     ]
   ]
 
 
-def update-resources-on-patches():
-  set season ifelse-value (remainder ticks  2 = 0) ["hot"] ["cold"]
+def update_resources_on_patches():
+  set season ifelse_value (remainder ticks  2 = 0) ["hot"] ["cold"]
   ask patches
   [
     ifelse exploited?
     [
       # patches that were exploited in the previous tick:
-      # if the current season is cold, the patch will not regenerate completely: (max-resource - amount-consumed)/2
-      # if the current season is hot, the level of resource will be max-resource (no matter whether it was exploited during the previous tick or not)
-      if season = "hot" [set resource max-resource]
-      if season = "cold" [set resource (max-resource - amount-consumed) / 2]
+      # if the current season is cold, the patch will not regenerate completely: (max_resource - amount_consumed)/2
+      # if the current season is hot, the level of resource will be max_resource (no matter whether it was exploited during the previous tick or not)
+      if season = "hot" [set resource max_resource]
+      if season = "cold" [set resource (max_resource - amount_consumed) / 2]
     ]
     [
-      set resource ifelse-value (season = "hot") [max-resource] [max-resource / 2]
+      set resource ifelse_value (season = "hot") [max_resource] [max_resource / 2]
     ]
     set exploited? false
-    set amount-consumed 0
+    set amount_consumed 0
   ]
-  ifelse (display-resorces?) [ask patches [set pcolor scale-color green resource 100000 100]] [ask patches [set pcolor 69]]
+  ifelse (display_resorces?) [ask patches [set pcolor scale_color green resource 100000 100]] [ask patches [set pcolor 69]]
 
 
-def update-cultural-distance:
+def update_cultural_distance:
   ask families
   [
-    ifelse ([resource] of patch-here) <= survival-threshold
+    ifelse ([resource] of patch_here) <= survival_threshold
     [
-      # They will refuse to cooperate, as they are unable to reach their survival-threshold no matter the number of people who help them
-      set cultural-distance 1
+      # They will refuse to cooperate, as they are unable to reach their survival_threshold no matter the number of people who help them
+      set cultural_distance 1
     ]
     [
-      let extra-workers max list 0 (  (survival-threshold / (difficulty * (([resource] of patch-here) - survival-threshold) ) ) ^ ( 1 / technology) - labor)
-      # extra-workers could be negative (if I have plenty of labor to obtain my survival threshold: I don't need any help from anyone)  --> in this case extra-workers = 0
-      set cultural-distance min list 1 ((1 / 100) * extra-workers) # cultural distance could be greater than 1 if the number of extra workers goes above 100 --> --> in this case cultural distance = 1
+      let extra_workers max list 0 (  (survival_threshold / (difficulty * (([resource] of patch_here) - survival_threshold) ) ) ^ ( 1 / technology) - labor)
+      # extra_workers could be negative (if I have plenty of labor to obtain my survival threshold: I don't need any help from anyone)  --> in this case extra_workers = 0
+      set cultural_distance min list 1 ((1 / 100) * extra_workers) # cultural distance could be greater than 1 if the number of extra workers goes above 100 --> --> in this case cultural distance = 1
     ]
   ]
 
 
-def hunt-and-gather():
+def hunt_and_gather():
   ask families
   [
-    set total-energy total-energy * conservation-factor #depreciate agents' energy at the beginning of the tick
+    set total_energy total_energy * conservation_factor #depreciate agents' energy at the beginning of the tick
     set cooperation? false
-    set my-helpers families with [who < 0] # (empty agentlist)
-    set my-group families with [who < 0]   # (empty agentlist)
-    set collected-energy 0
+    set my_helpers families with [who < 0] # (empty agentlist)
+    set my_group families with [who < 0]   # (empty agentlist)
+    set collected_energy 0
   ]
 
   ask links [die]
 
 
-  # families with total-energy > survival-threshold don't hunt or gather
+  # families with total_energy > survival_threshold don't hunt or gather
 
-  ask families with [total-energy < survival-threshold]
+  ask families with [total_energy < survival_threshold]
   [
     # Try to act individually:
-    set individual-capability calculate-individual-capability
-    let productivity ([resource] of patch-here) * individual-capability
+    set individual_capability calculate_individual_capability
+    let productivity ([resource] of patch_here) * individual_capability
 
-    ifelse cooperation-allowed?
+    ifelse cooperation_allowed?
 
 
     [
       # FAMILIES ARE ALLOWED TO ASK FOR HELP WHENEVER THEY ARE UNABLE TO REACH THEIR SURVIVAL THRESHOLD
-      ifelse productivity >= survival-threshold
+      ifelse productivity >= survival_threshold
       [
         # ACT INDIVIDUALLY
-        # I don't need to cooperate: I will act individually and collect as much energy as I need to reach my survival-threshold
+        # I don't need to cooperate: I will act individually and collect as much energy as I need to reach my survival_threshold
 
-        set collected-energy min list (survival-threshold - total-energy) (individual-capability) * [resource] of patch-here
-        set total-energy total-energy + collected-energy
-        ask patch-here #update resource on patch:
+        set collected_energy min list (survival_threshold - total_energy) (individual_capability) * [resource] of patch_here
+        set total_energy total_energy + collected_energy
+        ask patch_here #update resource on patch:
           [
-            set amount-consumed [collected-energy] of myself
-            set resource resource - amount-consumed
+            set amount_consumed [collected_energy] of myself
+            set resource resource - amount_consumed
             set exploited? true
           ]
       ]
       [
         # COOPERATION (I need to ask for help)
-        let capability individual-capability
-        identify-neighbors # define my-helpers (my-helpers contains a list of families that can potentially help me, i.e. our similarity is greater than their cultural-distance)
-        let agents-willing-to-help ask-for-help
-        if length agents-willing-to-help > 0 # if someone helps me, my capability will be aggregated-capability. Otherwise it will be my individual-capability
+        let capability individual_capability
+        identify_neighbors # define my_helpers (my_helpers contains a list of families that can potentially help me, i.e. our similarity is greater than their cultural_distance)
+        let agents_willing_to_help ask_for_help
+        if length agents_willing_to_help > 0 # if someone helps me, my capability will be aggregated_capability. Otherwise it will be my individual_capability
         [
-          set capability calculate-aggregated-capability agents-willing-to-help
+          set capability calculate_aggregated_capability agents_willing_to_help
         ]
 
-        set collected-energy ([resource] of patch-here) * capability
+        set collected_energy ([resource] of patch_here) * capability
 
-        set total-energy total-energy + collected-energy        #(therefore, total-energy might be greater than her survival-threshold
+        set total_energy total_energy + collected_energy        #(therefore, total_energy might be greater than her survival_threshold
 
         #update resource on patch:
-        ask patch-here
+        ask patch_here
           [
-            set amount-consumed [collected-energy] of myself
-            set resource resource - amount-consumed
+            set amount_consumed [collected_energy] of myself
+            set resource resource - amount_consumed
             set exploited? true
           ]
       ]
@@ -296,86 +292,86 @@ def hunt-and-gather():
     [
       # FAMILIES ARE NOT ALLOWED TO ASK FOR HELP IF THEY ARE UNABLE TO REACH THEIR SURVIVAL THRESHOLD. THEY WILL ACT INDIVIDUALLY
 
-      set collected-energy min list (survival-threshold - total-energy) (individual-capability) * [resource] of patch-here
-      set total-energy total-energy + collected-energy
-      ask patch-here #update resource on patch:
+      set collected_energy min list (survival_threshold - total_energy) (individual_capability) * [resource] of patch_here
+      set total_energy total_energy + collected_energy
+      ask patch_here #update resource on patch:
           [
-            set amount-consumed [collected-energy] of myself
-            set resource resource - amount-consumed
+            set amount_consumed [collected_energy] of myself
+            set resource resource - amount_consumed
             set exploited? true
           ]
     ]
   ]
 
 
-def -report calculate-individual-capability
-  report 1 / (1 + (1 / (([difficulty] of patch-here) * (labor ^ technology))))
+def -report calculate_individual_capability
+  report 1 / (1 + (1 / (([difficulty] of patch_here) * (labor ^ technology))))
 
 
-def -report ask-for-help
+def -report ask_for_help
   # Determine the list of agents that are willing to cooperate
-  let agents-willing-to-cooperate []
-  if count my-helpers > 0  # if my list of helpers is not empty
+  let agents_willing_to_cooperate []
+  if count my_helpers > 0  # if my list of helpers is not empty
   [
     #each one of my helpers will help me with p=95%
-    foreach [self] of my-helpers
+    foreach [self] of my_helpers
     [
-      if random-float 1 < 0.95
+      if random_float 1 < 0.95
       [
-        set agents-willing-to-cooperate fput ? agents-willing-to-cooperate
+        set agents_willing_to_cooperate fput ? agents_willing_to_cooperate
       ]
     ]
-    # The agents contained in the list agents-willing-to-cooperate will help me
-    ask turtle-set agents-willing-to-cooperate [create-link-with myself]   #helpers create a link with helped agents
+    # The agents contained in the list agents_willing_to_cooperate will help me
+    ask turtle_set agents_willing_to_cooperate [create_link_with myself]   #helpers create a link with helped agents
     ask links [set color black set thickness .1]
     set cooperation? true # I have cooperated...
-    ask turtle-set agents-willing-to-cooperate [set cooperation? true]  # ... and so have my helpers
+    ask turtle_set agents_willing_to_cooperate [set cooperation? true]  # ... and so have my helpers
   ]
-  report agents-willing-to-cooperate
+  report agents_willing_to_cooperate
 
 
-def -report calculate-aggregated-capability [agents-willing-to-cooperate]
-  let max-technology-within-my-local-group max [technology] of (turtle-set agents-willing-to-cooperate self)   # maximum technology within my group (including myself)
-  let returns-to-cooperation 2 - ([resource] of patch-here / max-resource-on-patches)
-  let total-labor labor + sum [labor] of turtle-set agents-willing-to-cooperate                                  # total labor within my group (including myself)
-  let aggregated-capability 1 / (1 + ( 1 / ( ( ([difficulty] of patch-here) * (total-labor ^ max-technology-within-my-local-group)) ^ returns-to-cooperation ) ) )
-  report aggregated-capability
+def -report calculate_aggregated_capability [agents_willing_to_cooperate]
+  let max_technology_within_my_local_group max [technology] of (turtle_set agents_willing_to_cooperate self)   # maximum technology within my group (including myself)
+  let returns_to_cooperation 2 - ([resource] of patch_here / max_resource_on_patches)
+  let total_labor labor + sum [labor] of turtle_set agents_willing_to_cooperate                                  # total labor within my group (including myself)
+  let aggregated_capability 1 / (1 + ( 1 / ( ( ([difficulty] of patch_here) * (total_labor ^ max_technology_within_my_local_group)) ^ returns_to_cooperation ) ) )
+  report aggregated_capability
 
 
-def identify-neighbors
-  set my-neighborhood other families-on patches in-radius movement
-  set my-helpers my-neighborhood with [(get-similarity identity ([identity] of myself)) > cultural-distance ] # cultural-distance of my neighbors'
+def identify_neighbors
+  set my_neighborhood other families_on patches in_radius movement
+  set my_helpers my_neighborhood with [(get_similarity identity ([identity] of myself)) > cultural_distance ] # cultural_distance of my neighbors'
 
 
-def -report get-similarity [a b]
-  let ap (map [?1 * ?2] a weights-vector)
-  let bp (map [?1 * ?2] b weights-vector)
+def -report get_similarity [a b]
+  let ap (map [?1 * ?2] a weights_vector)
+  let bp (map [?1 * ?2] b weights_vector)
   let numerator sum (map [?1 * ?2] ap bp)
   let denominator sqrt((sum map [? * ?] ap)) * sqrt((sum map [? * ?] bp))
   report numerator / denominator
 
 
-def identify-groups
-  find-all-components
+def identify_groups
+  find_all_components
   ask families with [component > 0]
   [
-    set my-group families with [component = [component] of myself]
-    set group-size count my-group
+    set my_group families with [component = [component] of myself]
+    set group_size count my_group
   ]
 
 
 ## The following two procedures are an adaptation from: Wilensky, U. (2005). NetLogo Giant Component model.
 ## http://ccl.northwestern.edu/netlogo/models/GiantComponent.
-## Center for Connected Learning and Computer-Based Modeling, Northwestern University, Evanston, IL.
-def find-all-components
-  ask families [set explored? false set group-size 0]
-  ask families with [not any? link-neighbors] [set component 0 set explored? true] # families that don't cooperate (isolated agents) will have component = 0
-  set component-index 0
+## Center for Connected Learning and Computer_Based Modeling, Northwestern University, Evanston, IL.
+def find_all_components
+  ask families [set explored? false set group_size 0]
+  ask families with [not any? link_neighbors] [set component 0 set explored? true] # families that don't cooperate (isolated agents) will have component = 0
+  set component_index 0
   loop
   [ ifelse any? families with [not explored?]
       [
-        let start one-of sort families with [ not explored? ]
-        set component-index ( component-index + 1)
+        let start one_of sort families with [ not explored? ]
+        set component_index ( component_index + 1)
         ask start [ explore ]
       ]
       [stop]
@@ -386,27 +382,27 @@ def find-all-components
 def explore
   if explored? [stop]
   set explored? true
-  set component component-index
-  ask link-neighbors [explore]
+  set component component_index
+  ask link_neighbors [explore]
 
 
-def decide-whether-to-move-or-stay
+def decide_whether_to_move_or_stay
   ask families
   [
     # 1. Calculate if I will be able to survive one more tick with my current level of energy (bearing in mind the depreciation factor) without working.
     # If that is the case, I leave with probability 0.05
-    ifelse (total-energy - survival-threshold) * conservation-factor > survival-threshold
+    ifelse (total_energy - survival_threshold) * conservation_factor > survival_threshold
     [
-      if (random-float 1 < 0.05) [move]
+      if (random_float 1 < 0.05) [move]
     ]
     [
       # 2. I will have to work next tick because I will not be able to get by with my (depreciated) level of energy
       # Before moving, I will check if I will be able to get enough resources if I stay in the same patch
-      let resources-next-tick ifelse-value (season = "hot") [([max-resource] of patch-here - collected-energy) / 2] [[max-resource] of patch-here]
-      ifelse resources-next-tick * individual-capability  > survival-threshold
+      let resources_next_tick ifelse_value (season = "hot") [([max_resource] of patch_here - collected_energy) / 2] [[max_resource] of patch_here]
+      ifelse resources_next_tick * individual_capability  > survival_threshold
       [
         # If I can survive here, I will probably stay, but I will leave with probability 0.05
-        if (random-float 1 < 0.05) [move]
+        if (random_float 1 < 0.05) [move]
       ]
       [
         move
@@ -416,83 +412,83 @@ def decide-whether-to-move-or-stay
 
 
 def move
-  if any? patches in-radius movement with [not any? turtles-here]
+  if any? patches in_radius movement with [not any? turtles_here]
   [
-    set number-of-movements number-of-movements + 1
-    move-to one-of patches in-radius movement with [not any? turtles-here]
+    set number_of_movements number_of_movements + 1
+    move_to one_of patches in_radius movement with [not any? turtles_here]
   ]
 
 
-def update-identity
+def update_identity
   # 1. Diffusion process (only for agents that have cooperated)
   if any? families
   [
-    let group-index n-values component-index [1 + ?]
-    foreach group-index
+    let group_index n_values component_index [1 + ?]
+    foreach group_index
     [
-      let consensual-identity compute-consensual-identity families with [component = ?]
+      let consensual_identity compute_consensual_identity families with [component = ?]
       ask families with [component = ?]
       [
-        if random-float 1 < 0.95 [set identity consensual-identity]
+        if random_float 1 < 0.95 [set identity consensual_identity]
       ]
     ]
   ]
   # 2. Mutation process (for all families)
   ask families
   [
-    if random-float 1 < internal-change-rate
+    if random_float 1 < internal_change_rate
     [
-      let index-vector n-values 10 [?]
-      foreach index-vector
+      let index_vector n_values 10 [?]
+      foreach index_vector
         [
-          if random-float 1 >= (item ? weights-vector) [set identity replace-item ? identity (1 + random 5)]
+          if random_float 1 >= (item ? weights_vector) [set identity replace_item ? identity (1 + random 5)]
         ]
     ]
   ]
 
 
-def -report compute-consensual-identity [group]
+def -report compute_consensual_identity [group]
   let consensus []
-  foreach n-values 10 [?]
+  foreach n_values 10 [?]
     [
-      let consensual-trait one-of modes [ item ? identity] of group
-      set consensus fput consensual-trait consensus
+      let consensual_trait one_of modes [ item ? identity] of group
+      set consensus fput consensual_trait consensus
     ]
   set consensus reverse consensus
   report consensus
 
 
-def update-technology
+def update_technology
   if any? families
   [
     # 1. Diffusion process (only for agents that have cooperated)
-    let group-index n-values component-index [1 + ?]
-    foreach group-index
+    let group_index n_values component_index [1 + ?]
+    foreach group_index
     [
-      let this-group families with [component = ?]
-      let average-technology-this-group mean [technology] of this-group
-      ask this-group
+      let this_group families with [component = ?]
+      let average_technology_this_group mean [technology] of this_group
+      ask this_group
       [
-        ifelse technology < 0.95 * average-technology-this-group
+        ifelse technology < 0.95 * average_technology_this_group
         [
-          if random-float 1 < 0.95
+          if random_float 1 < 0.95
           [
             set technology technology + 0.1
-            if technology > max [technology] of this-group [set technology max [technology] of this-group]
+            if technology > max [technology] of this_group [set technology max [technology] of this_group]
           ]
         ]
         [
-          if technology < 1.05 * average-technology-this-group
+          if technology < 1.05 * average_technology_this_group
             [
-              if random-float 1 < 0.95
+              if random_float 1 < 0.95
               [
                 set technology technology + 0.01
-                if technology > max [technology] of this-group [set technology max [technology] of this-group]
+                if technology > max [technology] of this_group [set technology max [technology] of this_group]
               ]
             ]
         ]
       ]
-      ask this-group [set conservation-factor technology / 2]
+      ask this_group [set conservation_factor technology / 2]
     ]
   ]
 
@@ -501,30 +497,30 @@ def update-technology
   # 2. Mutation process (for all families)
   ask families
   [
-    if random-float 1 < internal-change-rate
+    if random_float 1 < internal_change_rate
     [
-      set technology random-normal average-technology diversity
+      set technology random_normal average_technology diversity
       # possible correction to force technology to be in the interval [0 2] (and thus depreciation will be in [0 1]
       if technology < 0.02 [set technology 0.02]
       if technology > 2 [set technology 2]
-      set conservation-factor technology / 2
+      set conservation_factor technology / 2
     ]
   ]
 
 
-def update-output-variables
-  set number-of-social-aggregates component-index
-  set number-of-agents-in-social-aggregates count families with [cooperation?]
-  set number-of-isolated-agents count families with [not cooperation?]
-  set largest-group-size ifelse-value any? (families with [group-size > 1]) [[group-size] of one-of families with-max [group-size]] ["N/A"]
-  set total-collected-energy ifelse-value (any? families) [sum [collected-energy] of families] [0]
-  set collected-energy-standard-deviation ifelse-value (count families >= 2) [standard-deviation [collected-energy] of families] [0]
-  set average-cultural-distance-in-aggregates ifelse-value any? (families with [component > 0]) [mean [cultural-distance] of families with [component > 0]] ["N/A"]
-  set sd-cultural-distance-in-aggregates ifelse-value any? (families with [component > 0]) [standard-deviation [cultural-distance] of families with [component > 0]] ["N/A"]
-  set total-number-of-starvation-deaths total-number-of-starvation-deaths + number-of-agents-that-died-of-starvation
-  set sum-of-labor sum [labor] of families
+def update_output_variables
+  set number_of_social_aggregates component_index
+  set number_of_agents_in_social_aggregates count families with [cooperation?]
+  set number_of_isolated_agents count families with [not cooperation?]
+  set largest_group_size ifelse_value any? (families with [group_size > 1]) [[group_size] of one_of families with_max [group_size]] ["N/A"]
+  set total_collected_energy ifelse_value (any? families) [sum [collected_energy] of families] [0]
+  set collected_energy_standard_deviation ifelse_value (count families >= 2) [standard_deviation [collected_energy] of families] [0]
+  set average_cultural_distance_in_aggregates ifelse_value any? (families with [component > 0]) [mean [cultural_distance] of families with [component > 0]] ["N/A"]
+  set sd_cultural_distance_in_aggregates ifelse_value any? (families with [component > 0]) [standard_deviation [cultural_distance] of families with [component > 0]] ["N/A"]
+  set total_number_of_starvation_deaths total_number_of_starvation_deaths + number_of_agents_that_died_of_starvation
+  set sum_of_labor sum [labor] of families
   if count families >= 2
   [
-    set mean-technology-of-families mean [technology] of families
-    set std-technology-of-families  standard-deviation [technology] of families
+    set mean_technology_of_families mean [technology] of families
+    set std_technology_of_families  standard_deviation [technology] of families
   ]
