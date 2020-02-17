@@ -22,6 +22,15 @@ del Castillo, F. & Barceló, J. A. & Mameli, L. & Miguel, F. & Vila, X. 2013.
 import attr
 import numpy
 
+steps = 100
+diversity = 0.5
+labor_average = 2
+internal_change_rate = 0.05
+initial_population = 100
+average_technology = 0.22
+movement = 5
+max_resource_on_patches = 20000
+
 if False:
   season                         # hot or cold
   weights_vector                 # [0.5 0.25 0.12 0.06 0.03 0.015 0.0075 0.00375 0.001875 0.0009375]
@@ -47,23 +56,27 @@ if False:
 
 @attr.s
 class Family:
-  my_neighborhood = attr.ib()       # list of families around
-  my_helpers = attr.ib()            # subof = my_neighborhood that will help me (with probability 95%)
-  my_group = attr.ib()              # list of agents withins a social aggregate (i.e. families that belong to my group/component)
-  group_size = attr.ib()            # size of the group (component) where I belong
   collected_energy = attr.ib()      # energy obtained during the current tick
-  total_energy = attr.ib()          # total level of energy (including surplus)
   identity = attr.ib()              # 10-dimension vector with values 1 (no important) to 6 (very important)
   labor = attr.ib()                 # number of individuals within a household
   survival_threshold = attr.ib()    # 730 * labor
   technology = attr.ib()            # Gaussian_distributed: mean: average_technology; standard deviation: diversity
-  conservation_factor = attr.ib()   # current value of technology divided by two
-  individual_capability = attr.ib() # fraction of the resource that the agent is able to obtain when working on their own
-  cultural_distance = attr.ib()     # cooperation will be posible if similarity >= cultural_distance
-  cooperation = attr.ib()           # true if I have been involved in a cooperation process (i.e. I have helped someone or someone has helped me)
-  explored = attr.ib()              # needed for detecting components
-  component = attr.ib()             # group (i.e. component in the network) where the family belongs
 
+  my_neighborhood = attr.ib(default=[])       # list of families around
+  my_helpers = attr.ib(default=[])            # subof = my_neighborhood that will help me (with probability 95%)
+  my_group = attr.ib(default=[])              # list of agents withins a social aggregate (i.e. families that belong to my group/component)
+  group_size = attr.ib(default=0)            # size of the group (component) where I belong
+  total_energy = attr.ib(default=0)          # total level of energy (including surplus)
+  individual_capability = attr.ib(default=1) # fraction of the resource that the agent is able to obtain when working on their own
+  cultural_distance = attr.ib(default=0)     # cooperation will be posible if similarity >= cultural_distance
+  cooperation = attr.ib(default=False)           # true if I have been involved in a cooperation process (i.e. I have helped someone or someone has helped me)
+  explored = attr.ib(default=False)              # needed for detecting components
+  component = attr.ib(default=0)             # group (i.e. component in the network) where the family belongs
+
+  @property
+  def conservation_factor(self):
+    # current value of technology divided by two
+    return self.technology / 2
 
 @attr.s
 class Patch:
@@ -75,8 +88,13 @@ class Patch:
 
 
 def setup():
-  clear_all()
-  reset_ticks()
+  patches = [Patch(difficulty = 1,
+                    max_resource = 10,
+                    resource = 10,
+                    amount_consumed = 0,
+                    exploited = False)
+             for i in range(50) for j in range(50)]
+  tick = 0
 
   #GLOBAL = VARIABLES
   weights_vector = [0.5, 0.25, 0.12, 0.06, 0.03, 0.015, 0.0075, 0.00375, 0.001875, 0.0009375]
@@ -84,31 +102,28 @@ def setup():
   #CREATE AND INITIALIZE FAMILIES
   initial_identity = numpy.random.randint(1, 7)  #all the families start with the same identity vector
 
-  randomstate = np.random.default_rng()
+  randomstate = numpy.random.default_rng()
   for i in randomstate.choice(patches, initial_population, replace=False):
     labor = numpy.random.poisson(labor_average)
     if labor < 2:
       labor = 2 #(correction for cases with labor < 2)
-    Family(
-      shape = "person",
-      color = red,
+    family = Family(
       identity = initial_identity,
       labor = labor,
       survival_threshold = (730 * labor) / 2,
-      technology = max(min(random_normal( average_technology, diversity), 2), 0.02),
+      technology = max(min(numpy.random.normal( average_technology, diversity), 2), 0.02),
           # correction to force technology to be in the interval [0 2] (and thus depreciation will be in [0 1]
-      conservation_factor = technology / 2,
-      total_energy = 1 + survival_threshold * (1 + conservation_factor) / conservation_factor,    # this means that all the families will have enough energy to survive the first tick without hunting
       collected_energy = 0,
       my_group = []     # initialize my_group = nobody
       )
+    family.total_energy = 1 + family.survival_threshold * (1 + family.conservation_factor) / family.conservation_factor,    # this means that all the families will have enough energy to survive the first tick without hunting
 
   #INITIALIZE PATCHES
   for patch in patches:
     # Resources are uniformly distributed in [max_resource_on_patches / 1000, max_resource_on_patches]
-    max_resource = (max_resource_on_patches / 1000) + random ( max_resource_on_patches - (max_resource_on_patches / 1000) )
+    max_resource = (max_resource_on_patches / 1000) + numpy.random.random() * ( max_resource_on_patches - (max_resource_on_patches / 1000) )
     difficulty = numpy.random.random()
-    exploited = false
+    exploited = False
     amount_consumed = 0
     pcolor = 69
 
@@ -188,7 +203,7 @@ def update_cultural_distance():
 def hunt_and_gather():
   for family in families:
     total_energy = total_energy * conservation_factor #depreciate agents' energy at the beginning of the tick
-    cooperation = false
+    cooperation = False
     my_helpers = [] # (empty agentlist)
     my_group = []   # (empty agentlist)
     collected_energy = 0
@@ -301,7 +316,7 @@ def identify_groups():
 ## Center for Connected Learning and Computer_Based Modeling, Northwestern University, Evanston, IL.
 def find_all_components():
   for myself in families:
-    myself.explored = false
+    myself.explored = False
     myself.group_size = 0
   for myself in families:
     if not link_neighbors():
@@ -320,7 +335,7 @@ def find_all_components():
 ## Finds all families reachable from this node
 def explore(myself):
   if myself.explored:
-    break
+    return
   myself.explored = true
   myself.component = component_index
   for neighbor in link_neighbors:
@@ -357,7 +372,7 @@ def update_identity():
     group_index = range(1, component_index + 1)
     for g in group_index:
       consensual_identity = compute_consensual_identity([family for family in families if family.component == g])
-      for family in [family for family in families if family.component == g]
+      for family in [family for family in families if family.component == g]:
         if numpy.random.random() < 0.95:
           family.identity = consensual_identity
   # 2. Mutation process (for all families)
@@ -370,82 +385,63 @@ def update_identity():
 
 
 def compute_consensual_identity(group):
-  let consensus []
-  foreach n_values 10 [?]
-    [
-      let consensual_trait one_of modes [ item ? identity] of group
-      consensus = fput consensual_trait consensus
-    ]
-  consensus = reverse consensus
-  report consensus
+  consensus = numpy.zeros(10, int)
+  for n in range(10):
+      consensual_trait = random.choice([family.identity[n] for family in group])
+      consensus[n] = consensual_trait
+  return consensus
 
 
-def update_technology
-  if any? families
-  [
-    # 1. Diffusion process (only for agents that have cooperated)
-    let group_index n_values component_index [1 + ?]
-    foreach group_index
-    [
-      let this_group families with [component = ?]
-      let average_technology_this_group mean [technology] of this_group
-      ask this_group
-      [
-        ifelse technology < 0.95 * average_technology_this_group
-        [
-          if numpy.random.random() < 0.95
-          [
+def update_technology():
+  if families:
+    group_index = range(1, component_index + 1)
+    for g in group_index:
+      this_group = [family for family in families if family.component == g]
+      average_technology_this_group = numpy.mean([family.technology for family in this_group])
+      for myself in this_group:
+        if technology < 0.95 * average_technology_this_group:
+          if numpy.random.random() < 0.95:
             technology = technology + 0.1
-            if technology > max [technology] of this_group [technology = max [technology] of this_group]
-          ]
-        ]
-        [
-          if technology < 1.05 * average_technology_this_group
-            [
-              if numpy.random.random() < 0.95
-              [
+            if technology > max([family.technology for family in this_group]):
+              myself.technology = max([family.technology for family in this_group])
+          if technology < 1.05 * average_technology_this_group:
+              if numpy.random.random() < 0.95:
                 technology = technology + 0.01
-                if technology > max [technology] of this_group [technology = max [technology] of this_group]
-              ]
-            ]
-        ]
-      ]
-      ask this_group [conservation_factor = technology / 2]
-    ]
-  ]
-
-
+                if technology > max([family.technology for family in this_group]):
+                  myself.technology = max([family.technology for family in this_group])
+      for myself in this_group:
+        myself.conservation_factor = technology / 2
 
   # 2. Mutation process (for all families)
-  ask families
-  [
-    if numpy.random.random() < internal_change_rate
-    [
-      technology = random_normal average_technology diversity
+  for myself in families:
+    if numpy.random.random() < internal_change_rate:
+      technology = numpy.random.normal(average_technology, diversity)
       # possible correction to force technology to be in the interval [0 2] (and thus depreciation will be in [0 1]
-      if technology < 0.02 [technology = 0.02]
-      if technology > 2 [technology = 2]
+      if technology < 0.02:
+        technology = 0.02
+      if technology > 2:
+        technology = 2
       conservation_factor = technology / 2
-    ]
-  ]
 
 
-def update_output_variables
+def update_output_variables():
   number_of_social_aggregates = component_index
-  number_of_agents_in_social_aggregates = count families with [cooperation?]
-  number_of_isolated_agents = count families with [not cooperation?]
-  largest_group_size = ifelse_value any? (families with [group_size > 1]) [[group_size] of one_of families with_max [group_size]] ["N/A"]
-  total_collected_energy = ifelse_value (any? families) [sum [collected_energy] of families] [0]
-  collected_energy_standard_deviation = ifelse_value (count families >= 2) [standard_deviation [collected_energy] of families] [0]
-  average_cultural_distance_in_aggregates = ifelse_value any? (families with [component > 0]) [mean [cultural_distance] of families with [component > 0]] ["N/A"]
-  sd_cultural_distance_in_aggregates = ifelse_value any? (families with [component > 0]) [standard_deviation [cultural_distance] of families with [component > 0]] ["N/A"]
+  number_of_agents_in_social_aggregates = len([family for family in families if family.cooperation])
+  number_of_agents_in_social_aggregates = len([family for family in families if not family.cooperation])
+  largest_group_size = max([families.group_size for family in families])
+  if largest_group_size == 1:
+    largest_group_size = "N/A"
+  total_collected_energy = sum([family.collected_energy for family in families])
+  total_collected_energy = numpy.std([family.collected_energy for family in families])
+  average_cultural_distance_in_aggregates = numpy.mean(
+    [cultural_distance for family in families if family.component > 0])
+  average_cultural_distance_in_aggregates = numpy.std(
+    [cultural_distance for family in families if family.component > 0])
   total_number_of_starvation_deaths = total_number_of_starvation_deaths + number_of_agents_that_died_of_starvation
-  sum_of_labor = sum [labor] of families
-  if count families >= 2
-  [
-    mean_technology_of_families = mean [technology] of families
-    std_technology_of_families = standard_deviation [technology] of families
-  ]
+  sum_of_labor = sum([family.labor for family in families])
+  if len( families) >= 2:
+    mean_technology_of_families = numpy.mean([family.technology for family in families])
+    std_technology_of_families = numpy.std([family.technology for family in families])
 
 
 def simulate():
@@ -464,3 +460,6 @@ def simulate():
       break
 
 
+
+setup()
+simulate()
