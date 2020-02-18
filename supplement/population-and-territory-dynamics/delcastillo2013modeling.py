@@ -389,6 +389,7 @@ class Simulation():
             if (myself.total_energy - myself.survival_threshold) * myself.conservation_factor > myself.survival_threshold:
                 if (numpy.random.random() < 0.05):
                     self.move(myself)
+            else:
                 # 2. I will have to work next tick because I will not be able to get by with my (depreciated) level of energy
                 # Before moving, I will check if I will be able to get enough resources if I stay in the same patch
                 myself.patch.resources_next_tick =  (myself.patch.max_resource - myself.collected_energy) / 2 if (self.season == "hot") else myself.patch.max_resource
