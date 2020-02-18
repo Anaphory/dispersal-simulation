@@ -42,7 +42,7 @@ class Family:
     cooperation = attr.ib(default=False)           # True if I have been involved in a cooperation process (self,i.e. I have helped someone or someone has helped me)
     explored = attr.ib(default=False)              # needed for detecting components
     component = attr.ib(default=0)             # group (self,i.e. component in the network) where the family belongs
-    _patch = attr.ib(default=None, repr=False)
+    _patch = attr.ib(default=None)
     _links = attr.ib(factory=list, repr=False)
 
     @property
@@ -75,15 +75,23 @@ class Family:
         self._links.append(other)
         other._links.append(self)
 
-    def copy_to(self, patch):
+    def split_to(self, patch):
+        self.collected_energy /= 2
+        self.labor //= 2
+        self.total_energy /= 2
         new = Family(
-            collected_energy = 0,
+            collected_energy = self.collected_energy,
             identity = self.identity + 0,
             labor = self.labor,
             technology = self.technology,
+            total_energy = self.total_energy,
+            individual_capability = self.individual_capability,
+            explored = False,
+            component = self.component
         )
         new.patch = patch
         new.create_link_with(self)
+        return new
 
 @attr.s
 class Patch:
@@ -186,8 +194,10 @@ class Simulation():
                 if numpy.random.random() < .95:
                     reachable_empty_patches = list(self.reachable_empty_patches_within(family.patch, self.movement))
                     if reachable_empty_patches:
-                            family.labor //= 2
-                            family.copy_to(reachable_empty_patches[numpy.random.randint(len(reachable_empty_patches))])
+                        self.families.append(
+                            family.split_to(
+                                reachable_empty_patches[numpy.random.randint(len(reachable_empty_patches))]))
+
     def reachable_empty_patches_within(self, patch, radius):
         for other in self.patches:
             if other.families:
@@ -195,19 +205,20 @@ class Simulation():
             if distance(patch, other) < radius:
                 yield other
 
+    import pdb; pdb.set_trace()
     def update_resources_on_patches(self):
-        season = ["hot", "cold"][self.tick % 2]
+        self.season = ["hot", "cold"][self.tick % 2]
         for patch in self.patches:
             if patch.exploited:
                 # patches that were exploited in the previous tick:
                 # if the current season is cold, the patch will not regenerate completely: (max_resource - amount_consumed)/2
                 # if the current season is hot, the level of resource will be max_resource (no matter whether it was exploited during the previous tick or not)
-                if season == "hot":
+                if self.season == "hot":
                     patch.resource = patch.max_resource
                 else:
                     patch.resource = (patch.max_resource - patch.amount_consumed) / 2
             else:
-                patch.resource = patch.max_resource if (season == "hot") else (patch.max_resource / 2)
+                patch.resource = patch.max_resource if (self.season == "hot") else (patch.max_resource / 2)
             patch.exploited = False
             patch.amount_consumed = 0
 
@@ -251,8 +262,8 @@ class Simulation():
                     family.collected_energy = min((family.survival_threshold - family.total_energy), (family.individual_capability) * family.patch.resource)
                     family.total_energy = family.total_energy + family.collected_energy
                     p = family.patch #update resource on patch:
-                    amount_consumed = family.collected_energy
-                    p.resource = p.resource - amount_consumed
+                    p.amount_consumed = family.collected_energy
+                    p.resource = p.resource - p.amount_consumed
                     p.exploited = True
                 else:
                     # COOPERATION (I need to ask for help)
@@ -268,15 +279,16 @@ class Simulation():
 
                     #update resource on patch:
                     p = family.patch
-                    amount_consumed = family.collected_energy
-                    p.resource = p.resource - amount_consumed
+                    p.amount_consumed = family.collected_energy
+                    p.resource = p.resource - p.amount_consumed
                     p.exploited = True
+            else:
                 # FAMILIES ARE NOT ALLOWED TO ASK FOR HELP IF THEY ARE UNABLE TO REACH THEIR SURVIVAL THRESHOLD. THEY WILL ACT INDIVIDUALLY
                 family.collected_energy = min((family.survival_threshold - family.total_energy), (family.individual_capability) * family.patch.resource)
                 family.total_energy = family.total_energy + family.collected_energy
                 p = family.patch #update resource on patch:
-                amount_consumed = family.collected_energy
-                p.resource = p.resource - amount_consumed
+                p.amount_consumed = family.collected_energy
+                p.resource = p.resource - p.amount_consumed
                 p.exploited = True
 
 
@@ -376,23 +388,26 @@ class Simulation():
             # If that is the case, I leave with probability 0.05
             if (myself.total_energy - myself.survival_threshold) * myself.conservation_factor > myself.survival_threshold:
                 if (numpy.random.random() < 0.05):
-                    move()
+                    self.move(myself)
                 # 2. I will have to work next tick because I will not be able to get by with my (depreciated) level of energy
                 # Before moving, I will check if I will be able to get enough resources if I stay in the same patch
-                myself.patch.resources_next_tick =  (myself.patch.max_resource - collected_energy) / 2 if (season == "hot") else myself.patch.max_resource
-                if resources_next_tick * individual_capability  > survival_threshold:
+                myself.patch.resources_next_tick =  (myself.patch.max_resource - myself.collected_energy) / 2 if (self.season == "hot") else myself.patch.max_resource
+                if myself.patch.resources_next_tick * myself.individual_capability  > myself.survival_threshold:
                     # If I can survive here, I will probably stay, but I will leave with probability 0.05
                     if (numpy.random.random() < 0.05):
-                        move()
+                        self.move(myself)
                 else:
-                    move()
+                    self.move(myself)
 
 
-    def move(self):
-        if [patch for patch in patches if distance(patch, this_family.patch) <= movement if not patch.families]:
+    def move(self, myself):
+        destinations = [patch
+                        for patch in self.patches
+                        if distance(patch, myself.patch) <= self.movement
+                        if not patch.families]
+        if destinations:
             self.number_of_movements = self.number_of_movements + 1
-            move_to(numpy.random.choice([patch for patch in patches if distance(patch, this_family.patch) <= movement if not patch.families]))
-
+            myself.patch = numpy.random.choice(destinations)
 
     def update_identity(self):
         # 1. Diffusion process (only for agents that have cooperated)
@@ -472,7 +487,7 @@ class Simulation():
         resources = numpy.zeros((50, 50))
         for p in self.patches:
             resources[p.coords] = p.resource
-        plt.imshow(resources)
+        plt.imshow(resources.T)
         g = nx.Graph()
         for family in self.families:
             g.add_node(family.patch.coords)
