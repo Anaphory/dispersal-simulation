@@ -406,7 +406,6 @@ class Simulation():
                         if distance(patch, myself.patch) <= self.movement
                         if not patch.families]
         if destinations:
-            self.number_of_movements = self.number_of_movements + 1
             myself.patch = numpy.random.choice(destinations)
 
     def update_identity(self):
