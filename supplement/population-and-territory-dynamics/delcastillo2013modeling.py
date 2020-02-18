@@ -181,6 +181,7 @@ class Simulation():
 
         # 2. Vegatative reproduction: The amount of labor within a family goes up one
         # unit every 6 ticks – The original code actually says ‘30’ instead of ‘6’
+        # FIXME: Original models skipped this step in tick 0
         if self.tick % 6 == 0:
             for family in self.families:
                 family.labor += 1
@@ -306,7 +307,6 @@ class Simulation():
                     agents_willing_to_cooperate.append(helper)
             # The agents contained in the list agents_willing_to_cooperate will help me
             for agent in agents_willing_to_cooperate:
-                print("Creating link:", myself.patch.coords, agent.patch.coords, distance(agent.patch, myself.patch))
                 agent.create_link_with(myself)   #helpers create a link with helped agents
             myself.cooperation = True # I have cooperated...
             for agent in agents_willing_to_cooperate:
@@ -326,8 +326,6 @@ class Simulation():
         myself.my_neighborhood = [family
                                   for family in self.families
                                   if distance(family.patch, myself.patch) <= self.movement]
-        print(myself.patch.coords, [family.patch.coords for family in myself.my_neighborhood])
-        print([distance(myself.patch, family.patch) for family in myself.my_neighborhood])
         myself.my_helpers = [family
                       for family in myself.my_neighborhood
                       if self.get_similarity(family.identity, myself.identity) > myself.cultural_distance] # cultural_distance of my neighbors'
@@ -487,7 +485,7 @@ class Simulation():
         resources = numpy.zeros((50, 50))
         for p in self.patches:
             resources[p.coords] = p.resource
-        plt.imshow(resources.T)
+        plt.imshow(resources.T, vmax=self.max_resource_on_patches)
         g = nx.Graph()
         for family in self.families:
             g.add_node(family.patch.coords)
@@ -501,6 +499,10 @@ class Simulation():
         plt.savefig("tick-{:09d}.png".format(self.tick))
         plt.close()
 
+    def remove_all_links(self):
+        for family in self.families:
+            family._links = []
+
     def simulate(self):
         for step in range(self.steps):
             self.survive()
@@ -513,6 +515,7 @@ class Simulation():
             self.decide_whether_to_move_or_stay()
             self.update_output_variables()
             self.plot()
+            self.remove_all_links()
             self.tick += 1
             if not self.families:
                 break
