@@ -14,4 +14,7 @@ supplement/worldclim/*.tif
 supplement/worldclim/readme.txt
 
 # Output images
-supplement/gavin2017processbased/output*.png
+output*.png
+run*.png
+run*.json
+tick*.png
