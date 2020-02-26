@@ -188,7 +188,7 @@ def index_to_coordinates(indices, resolution=2 * 60):
 # TODO: Write tests for middle, random, each corner, forwards and backwards.
 
 
-class GridCell():
+class Grid():
     alpha = 10 ** -8.07
     beta = 2.64
 
@@ -230,46 +230,8 @@ class GridCell():
     def point(self):
         return Point(*self.grid[self.m][self.ij])
 
-    def population_capacity(self):
-        """Calculate the pop cap of a cell given its precipitation
-
-        Return the carrying capacity K of a hexagonal cell of area AREA with
-        the given mean yearly precipitation measured in mm
-
-        In Gavin et al. 2017, the function used is
-
-        K = α * P ** β
-
-        with eg. α = 10 ** -8.07, β = 2.64 [Note: Their supplementary material
-        lists α=-8.07, but that is a nonsensical number. The actual plot line
-        does not exactly correspond to α=10^-8.07, but more closely to
-        α=10^-7.96, but that suggests that this is at least close to the
-        described behaviour.]
-
-        Parameters
-        ==========
-        precipitation: float
-            The cell's mean yearly precipitation P, in mm
-
-        Returns
-        =======
-        float
-            The cell's carrying capacity, in individuals/km^2
-        """
-        return self.alpha * self.precipitation() ** self.beta
-
     def __hash__(self):
         return hash((self.m, self.ij))
-
-    def __repr__(self):
-        return "<Cell {:}:{:},{:}{:}>".format(
-            self.m, self.ij[0], self.ij[1],
-            " with language {:}".format(self.language.id) if self.language else " (empty)")
-
-    def precipitation(self):
-        precipitation = tifffile.imread("../worldclim/wc2.0_bio_30s_12.tif").clip(0)
-        index = tuple(coordinates_to_index(self.point))
-        return precipitation[index]
 
     def neighbors(self, include_unlivable=False, include_foreign=False):
         i, j = self.ij
@@ -305,28 +267,69 @@ class GridCell():
             numpy.random.randint(k.grid[m].shape[1]))
 
 
+class GridCell(Grid):
+    def population_capacity(self):
+        """Calculate the pop cap of a cell given its precipitation
+
+        Return the carrying capacity K of a hexagonal cell of area AREA with
+        the given mean yearly precipitation measured in mm
+
+        In Gavin et al. 2017, the function used is
+
+        K = α * P ** β
+
+        with eg. α = 10 ** -8.07, β = 2.64 [Note: Their supplementary material
+        lists α=-8.07, but that is a nonsensical number. The actual plot line
+        does not exactly correspond to α=10^-8.07, but more closely to
+        α=10^-7.96, but that suggests that this is at least close to the
+        described behaviour.]
+
+        Parameters
+        ==========
+        precipitation: float
+            The cell's mean yearly precipitation P, in mm
+
+        Returns
+        =======
+        float
+            The cell's carrying capacity, in individuals/km^2
+        """
+        return self.alpha * self.precipitation() ** self.beta
+
+    def __repr__(self):
+        return "<Cell {:}:{:},{:}{:}>".format(
+            self.m, self.ij[0], self.ij[1],
+            " with language {:}".format(self.language.id) if self.language else " (empty)")
+
+    def precipitation(self):
+        precipitation = tifffile.imread("../worldclim/wc2.0_bio_30s_12.tif").clip(0)
+        index = tuple(coordinates_to_index(self.point))
+        return precipitation[index]
+
+
+namerica = BoundingBox(
+    w=-178.2,
+    s=6.6,
+    e=-49.0,
+    n=83.3)
+australia = BoundingBox(
+    112.8708,
+    153.7392,
+    -43.8615,
+    -9.6712)
+americas = BoundingBox(
+    e=-34.535395,
+    s=-56.028198,
+    w=-168.571541,
+    n=74.526716
+)
+
+
 # Start the simulation
 if __name__ == "__main__":
     from language import DifferenceSpreadAndRoundLanguage as Language
 
     run = hex(numpy.random.randint(4096))
-
-    namerica = BoundingBox(
-        w=-178.2,
-        s=6.6,
-        e=-49.0,
-        n=83.3)
-    australia = BoundingBox(
-        112.8708,
-        153.7392,
-        -43.8615,
-        -9.6712)
-    americas = BoundingBox(
-        e=-34.535395,
-        s=-56.028198,
-        w=-168.571541,
-        n=74.526716
-    )
 
     continent = americas
 
