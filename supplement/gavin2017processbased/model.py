@@ -189,9 +189,6 @@ def index_to_coordinates(indices, resolution=2 * 60):
 
 
 class Grid():
-    alpha = 10 ** -8.07
-    beta = 2.64
-
     grid = hexagonal_earth_grid(
         BoundingBox(
             -1, 1, -1, 1),
@@ -215,7 +212,8 @@ class Grid():
         self.m = m
         self.ij = i, j
         self.population = 0
-        self.popcap = self.population_capacity() * area / 1000000 # area is in m², popcap is per km²
+        self.popcap = self.model.population_capacity(
+            self.point) * area / 1000000 # area is in m², popcap is per km²
         self.language = None
 
     def polygon(self):
@@ -267,8 +265,13 @@ class Grid():
             numpy.random.randint(k.grid[m].shape[1]))
 
 
-class GridCell(Grid):
-    def population_capacity(self):
+class PopulationCapModel:
+    alpha = 10 ** -8.07
+    beta = 2.64
+
+    precipitation_tif = tifffile.imread("../worldclim/wc2.0_bio_30s_12.tif").clip(0)
+
+    def population_capacity(self, point):
         """Calculate the pop cap of a cell given its precipitation
 
         Return the carrying capacity K of a hexagonal cell of area AREA with
@@ -294,17 +297,13 @@ class GridCell(Grid):
         float
             The cell's carrying capacity, in individuals/km^2
         """
-        return self.alpha * self.precipitation() ** self.beta
+        return self.alpha * self.precipitation(point) ** self.beta
 
-    def __repr__(self):
-        return "<Cell {:}:{:},{:}{:}>".format(
-            self.m, self.ij[0], self.ij[1],
-            " with language {:}".format(self.language.id) if self.language else " (empty)")
+    def precipitation(self, point):
+        index = tuple(coordinates_to_index(point))
+        return self.precipitation_tif[index]
 
-    def precipitation(self):
-        precipitation = tifffile.imread("../worldclim/wc2.0_bio_30s_12.tif").clip(0)
-        index = tuple(coordinates_to_index(self.point))
-        return precipitation[index]
+
 
 
 namerica = BoundingBox(
@@ -334,9 +333,10 @@ if __name__ == "__main__":
     continent = americas
 
     # Generate a hexagonal grid over the continent
-    class LGrid(GridCell):
+    class LGrid(Grid):
         grid = hexagonal_earth_grid(continent, area)
         all_gridcells = {}
+        model = PopulationCapModel()
 
     land = (
         numpy.apply_along_axis(is_land, axis=2, arr=LGrid.grid[0]),

@@ -18,3 +18,7 @@ output*.png
 run*.png
 run*.json
 tick*.png
+
+# Python stuff
+*.pyc
+__pycache__
