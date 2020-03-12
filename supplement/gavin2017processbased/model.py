@@ -121,7 +121,7 @@ def hexagonal_earth_grid(bbox, area):
 
     mid_grid = (grid[:-1, :-1, :] + grid[1:, 1:, :]) / 2
 
-    return grid, mid_grid
+    return numpy.array((grid[:-1, :-1, :], mid_grid))
 
 
 # Define continents

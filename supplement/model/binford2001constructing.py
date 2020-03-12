@@ -1,3 +1,5 @@
+import numpy
+
 def TERMD2(land, **kwargs):
     if not land:
         return 0
@@ -11,4 +13,4 @@ def TERMD2(land, longitude, latitude):
     if not land:
         return 0
     else:
-        return p.population_capacity(Point(longitude=longitude, latitude=latitude))
+        return p.population_capacity(Point(longitude=longitude, latitude=latitude)) + numpy.random.random()

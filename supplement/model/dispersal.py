@@ -46,9 +46,13 @@ class Cells():
     ca. 450_000_000 m²
 
     """
-    patches: Mapping[Index, Patch] = attr.ib(factory=dict)
-    neighbors: Callable[[Index], Sequence[Index]]
-    neighbors_within_distance: Callable[[Index, meters], Sequence[Index]]
+    patches: Mapping[Index, Patch] = attr.ib()
+    @abstractmethod
+    def neighbors(self, i: Index) -> Sequence[Index]:
+        raise NotImplementedError
+    @abstractmethod
+    def neighbors_within_distance(self, cell: Index, distance: meters) -> Iterable[Index]:
+        raise NotImplementedError
 
 
 Culture = Tuple[int, int, int, int, int, int, int, int, int, int, int]
@@ -132,7 +136,7 @@ def step(state: State) -> State:
 
     for patch_id, families in inhabited_patches.items():
         patch = state.grid.patches[patch_id]
-        resource_reduction = 0
+        resource_reduction = 0.0
         # For exploitation, all parts of it happen at the same time.
         groups_and_efficiencies, sum_labor = cooperate(families)
         for cooperating_families in groups_and_efficiencies:
@@ -176,11 +180,6 @@ This model draws heavily on two prior models.
 
 params: Namespace
 
-def geographical_distance(index1: Index, index2: Index) -> meters:
-    m1, i1, j1 = index1
-    m2, i2, j2 = index2
-    return numpy.asarray(GEODESIC.inverse(
-        coordinates[m1][i1, j1], coordinates[m2][i2, j2])[:, 0])[0]
 
 def plot_cultural_distance_by_geographical_distance(state: State) -> Tuple[Sequence, Sequence]:
     """Plot the cultural distance vs. geographical distance
@@ -221,9 +220,6 @@ def plot_cultural_distance_by_geographical_distance(state: State) -> Tuple[Seque
    current time step based on the resources available in patches within a
    certain distance from themselves, and the number of agents in each of those
    patches.
-   FIXME: Currently, the function that describes the agent decision process
-   does not make knowledge about other agents available to the decider, due to
-   current limitations of the architecture…
 
 4.5 Learning
 ============
@@ -243,7 +239,7 @@ def plot_cultural_distance_by_geographical_distance(state: State) -> Tuple[Seque
    account.
 """
 
-def family_expects_current_patch_will_be_enough(family, resource_gain):
+def family_expects_current_patch_will_be_enough(family: Family, resource_gain: kcal) -> bool:
     return resources_at_season_end(
         family.stored_resources + resource_gain,
         family.effective_size) > 0
@@ -264,7 +260,7 @@ def observe_neighbors(
         all_families: Sequence[Family],
         neighbor_generator: Callable) -> Iterator[
         Tuple[Index, Patch, int, int]]:
-    for dest in neighbor_generator(family.location, meters(148413)):
+    for dest in neighbor_generator(family.location, meters(48413)):
         cooperators, competitors = 0, 0
         for f in all_families:
             if f.location == dest:
@@ -303,11 +299,11 @@ def cultural_distance(c1: Culture, c2: Culture) -> float:
 
 def observation(
         state: State,
-        to:IO[str]=sys.stdout,
-        extensive:IO[str]=open("log", "w")) -> None:
+        to: IO[str]=sys.stdout,
+        extensive: IO[str]=open("log", "w")) -> None:
     # Number of families (agents)
     report = {}
-    extreport = {}
+    extreport: Dict[Any, Any] = {}
     report["t"] = state.t
     report["Number of families"] = len(state.families)
     if len(state.families) == 0:
@@ -316,6 +312,10 @@ def observation(
     report["Median stored resources"] = numpy.median([family.stored_resources for family in state.families])
     extreport["Locations"] = {family.descendence: family.location
                            for family in state.families}
+    extreport["Resources"] = [
+        (hexagon_coords(index, s.grid.neighbors(index)), patch.resources)
+        for index, patch in s.grid.patches.items()]
+
     print(report, file=to)
     print(extreport, file=extensive)
 
@@ -325,14 +325,9 @@ def observation(
 # here. Parameters are read from arguments specified on the command line, with
 # the following default values. The sources for the default values are given.
 
-coordinates = gavin2017processbased.hexagonal_earth_grid(
-    gavin2017processbased.americas,
-    gavin2017processbased.area)
-
 
 def patch_from_grid_index(index: Index) -> Patch:
-    m, i, j = index
-    longitude, latitude = coordinates[m][i,j]
+    longitude, latitude = coordinates[index]
     data = get_data(longitude, latitude)
     resources = binford2001constructing.TERMD2(**data) * gavin2017processbased.area / 1_000_000 * params.time_step_energy_use
     return Patch(resources, resources)
@@ -370,6 +365,10 @@ def parse_args(args: Sequence[str]) -> Tuple[halfyears, kcal]:
     parser.add_argument(
         "--resource-recovery", type=float, default=1.1,
         help="The growth rate of a path's resources over half a year")
+    parser.add_argument(
+        "--inaccessible-resources", type=float, default=0.7,
+        help="The proportion of resources that are inaccessible to foraging."
+    )
 
     global params
     params = parser.parse_args(args)
@@ -378,21 +377,47 @@ def parse_args(args: Sequence[str]) -> Tuple[halfyears, kcal]:
     return params.n_steps, params.daily_energy
 
 def initialization() -> State:
-    grid = Cells()
-    grid.patches = OnDemandDict(patch_from_grid_index)
-    grid.neighbors_within_distance = cached_generator(neighbors_within(coordinates))
+    @attr.s
+    class SpecificCells (Cells):
+        neighbor_cache: Dict[Tuple[Index, meters], Sequence[Index]] = attr.ib(factory=dict)
+        @staticmethod
+        def neighbors(mij: Index) -> Sequence[Index]:
+            m, i, j = mij
+            if m==0:
+                return [(0, i, j+1), (1, i, j), (1, i, j-1),
+                        (0, i, j-1), (1, i-1, j-1), (1, i-1, j),]
+            else:
+                return [(1, i, j+1), (0, i, j+1), (0, i, j),
+                        (1, i, j-1), (0, i+1, j), (0, i+1, j+1),]
+
+        def neighbors_within_distance(self, mij: Index, d: meters) -> Sequence[Index]:
+            m, i, j = mij
+            try:
+                return self.neighbor_cache[mij, d]
+            except KeyError:
+                self.neighbor_cache[mij, d] = list(neighbors_within_distance(coordinates, mij, d))
+                return self.neighbor_cache[mij, d]
+
+
+    grid = SpecificCells(patches=OnDemandDict(patch_from_grid_index))
 
     return State(grid=grid, families=[
         Family(
-            descendence="A",
+            descendence="F",
             location=(0, 28, 101),# Start around Fairbanks
             culture=(2,2,2,2,2,2,2,2,2,2,2),
             stored_resources=16000000),
         Family(
-            descendence="B",
-            location=(0, 28, 101),# Start around Fairbanks
+            descendence="A",
+            location=(0, 50, 52),# Start around SW Alaska
             culture=(2,2,2,2,2,2,2,2,2,2,2),
-            stored_resources=16000000)])
+            stored_resources=16000000),
+        # Family(
+        #     descendence="M",
+        #     location=(0, 218, 521),# Start around Manaus
+        #     culture=(2,2,2,2,2,2,2,2,2,2,2),
+        #     stored_resources=16000000),
+    ])
 
 # 6. Input Data
 # =============
@@ -421,7 +446,7 @@ def resources_at_season_end(resources: kcal, size: int) -> kcal:
     return resources_after
 
 
-def extract_resources(patch: Patch, group: CooperativeGroup, total_labor_here: int):
+def extract_resources(patch: Patch, group: CooperativeGroup, total_labor_here: int) -> kcal:
     labor = sum([family.effective_size
                  for family in group])
     resources_extracted = resources_from_patch(
@@ -431,7 +456,7 @@ def extract_resources(patch: Patch, group: CooperativeGroup, total_labor_here: i
     return resources_extracted
 
 
-def use_resources_and_maybe_shrink(family):
+def use_resources_and_maybe_shrink(family: Family) -> None:
     resources, size = family.stored_resources, family.effective_size
     while resources_at_season_end(resources, size) < 0 and size > 0:
         size -= 1
@@ -460,9 +485,11 @@ def maybe_procreate(family: Family) -> Optional[Family]:
     if family.effective_size < 10:
         return None
     else:
-        family.effective_size -= 2
         family.number_offspring += 1
+        family.effective_size -= 2
+        # These two individuals form the new family
         return Family(
+            effective_size=2,
             descendence="{:s}:{:d}".format(family.descendence, family.number_offspring),
             culture=family.culture,
             location=family.location)
@@ -517,7 +544,7 @@ def cooperate(families: Sequence[Family]) -> Tuple[Sequence[CooperativeGroup], i
     return cooperative_groups, sum_labor
 
 
-def effective_labour_after_cooperation(labor):
+def effective_labour_after_cooperation(labor: int) -> float:
     """Effective total labor contribution of a group of cooperators"""
     # From crema2014simulation, adapted
     return labor * (1 + (labor - 1) ** params.cooperation_gain)
@@ -555,31 +582,17 @@ def exploit(patch: Patch, resource_reduction: kcal) -> None:
 
 def recover(patch: Patch) -> None:
     if patch.resources < patch.max_resources - 1:
+        unforagable_resources = params.inaccessible_resources * patch.max_resources / (1 - params.inaccessible_resources)
         patch.resources += (
-            patch.resources *
+            (unforagable_resources + patch.resources) *
             params.resource_recovery *
-            (1 - patch.resources / patch.max_resources))
+            (1 - patch.resources / patch.max_resources)) - unforagable_resources
 
 # Run the simulation
 if __name__ == "__main__":
     parse_args(["--n", "30000"])
-s = initialization()
-simulate(s, params.n_steps)
-
-import cartopy.crs as ccrs
-plt.gcf().set_size_inches(15, 15)
-ax = plt.axes(projection=ccrs.PlateCarree())
-ax.coastlines("50m")
-ax.set_extent(gavin2017processbased.americas)
-
-
-coords = []
-for family in s.families:
-    m, i, j = family.location
-    coords.append(coordinates[m][i, j])
-import matplotlib.pyplot as plt
-plt.scatter(*zip(*coords), alpha=0.1)
-plt.show()
+    s = initialization()
+    simulate(s, params.n_steps)
 
 sources = """
 Bibliography
