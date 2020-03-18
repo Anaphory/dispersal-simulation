@@ -47,14 +47,19 @@ class Cells():
 
     """
     patches: Mapping[Index, Patch] = attr.ib()
+
+    # A grid knows its topology. The specific implementation is elsewhere.
     @abstractmethod
     def neighbors(self, i: Index) -> Sequence[Index]:
         raise NotImplementedError
     @abstractmethod
-    def neighbors_within_distance(self, cell: Index, distance: meters) -> Iterable[Index]:
+    def neighbors_within_distance(
+            self,
+            cell: Index,
+            distance: meters) -> Iterable[Index]:
         raise NotImplementedError
 
-
+# A culture is just a tuple with 11 different slots.
 Culture = Tuple[int, int, int, int, int, int, int, int, int, int, int]
 
 @attr.s
@@ -71,6 +76,7 @@ class Family:
     location: Index = attr.ib()
     # A Cells index
     culture: Culture = attr.ib()
+    # The family's shared culture
     number_offspring: int = attr.ib(default=0)
     # The number of descendant families this family has given rise to so far
     effective_size: int = attr.ib(default=2)
@@ -254,9 +260,6 @@ def family_expects_current_patch_will_be_enough(family: Family, resource_gain: k
  • Agents have access to the current state of their neighborhood (actual
    available resources and position, size and culture vectors of nearby agents)
    for the decision process whether and where to move.
-   FIXME: Currently, the function that describes the agent decision process
-   does not make knowledge about other agents available to the decider, due to
-   current limitations of the architecture…
 """
 
 def observe_neighbors(
@@ -342,7 +345,12 @@ def observation(
 def patch_from_grid_index(index: Index) -> Patch:
     longitude, latitude = coordinates[index]
     data = get_data(longitude, latitude)
-    resources = binford2001constructing.TERMD2(**data) * gavin2017processbased.area / 1_000_000 * params.time_step_energy_use
+    resources = (
+        binford2001constructing.TERMD2(**data) * # Carrying capacity /km²
+        gavin2017processbased.area / # Area in m²
+        1_000_000 * # km²/m²
+        params.time_step_energy_use # Individual energy needs
+    )
     return Patch(resources, resources)
 
 
@@ -439,6 +447,10 @@ def initialization() -> State:
                             to_be_visited.append(nn)
 
     grid = SpecificCells(patches=OnDemandDict(patch_from_grid_index))
+
+    # If we want all cells initialized at simulation start:
+    for mij in numpy.ndindex(*coordinates.shape[:-1]):
+        grid.patches[mij]
 
     return State(grid=grid, families=DefaultDict[Index, List[Family]](
         list, {
@@ -541,28 +553,18 @@ def decide_on_moving_and_maybe_move(
         neighbor_cells: Iterator[Tuple[Index, Patch, int, int]]) -> bool:
     target, patch, cooperators, competitors = next(neighbor_cells)
     assert patch == current_patch
-    max_gain: kcal = resources_from_patch(
+    current_gain: kcal = resources_from_patch(
         current_patch, cooperators, competitors) * family.effective_size / cooperators
-    if family_expects_current_patch_will_be_enough(family, max_gain):
-        move = "leisure" if numpy.random.random() < 0.0005 else False
-    else:
-        move = "desperate"
-
-    if not move:
-        return False
-    else:
-        max_gain = 0 # FIXME why do I have to set this? It *should be* that a
-                     # population that grows to big needs to much of local
-                     # resources, so that it should be better to move.
-        for coords, patch, cooperators, competitors in neighbor_cells:
-            expected_gain = resources_from_patch(
-                    patch, family.effective_size + cooperators, competitors) * (
-                        family.effective_size / (family.effective_size + cooperators))
-            if target and expected_gain > max_gain:
-                target = coords
-                max_gain = expected_gain
-        family.location = target
-        return True
+    max_gain = current_gain
+    for coords, patch, cooperators, competitors in neighbor_cells:
+        expected_gain = resources_from_patch(
+                patch, family.effective_size + cooperators, competitors) * (
+                    family.effective_size / (family.effective_size + cooperators))
+        if expected_gain > max_gain and expected_gain > current_gain + params.time_step_energy_use:
+            target = coords
+            max_gain = expected_gain
+    family.location = target
+    return patch != current_patch
 
 
 def cooperate(families: Sequence[Family]) -> Tuple[Sequence[CooperativeGroup], int]:
