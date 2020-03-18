@@ -1,15 +1,18 @@
 import sys
 import attr
+import json
 import math
 import numpy
 import pickle
 import argparse
 import itertools
-from abc import abstractmethod
-import cartopy.crs as ccrs
-import gavin2017processbased
 import matplotlib
+import cartopy.crs as ccrs
+from abc import abstractmethod
 from matplotlib import pyplot as plt
+
+import osm
+import gavin2017processbased
 from gavin2017processbased import is_land
 
 # Import some modules for the Entities, in particular types used to describe
@@ -70,6 +73,14 @@ class OnDemandDict(Dict[S, T]):
         self[key] = self.function(key)
         return self[key]
 
+def serialize(o):
+    if isinstance(o, numpy.integer):
+        return int(o)
+    raise TypeError
+
+def population_within(area):
+    """"""
+    ...
 
 def get_data(longitude, latitude):
     "Get climate data for this point"
@@ -98,7 +109,11 @@ def nearby_cell(latitude, longitude, coordinates):
             ((coordinates - numpy.array((longitude, latitude))) ** 2).sum(-1)),
         coordinates.shape[:-1])
 
-def hexagon_coords(i: Index, neighbors: Sequence[Index]):
+def hexagon_coords(i: Index, neighbors: Sequence[Index], cache: Dict[Index, List]={}) -> List:
+    try:
+        return cache[i]
+    except KeyError:
+        pass
     n = iter(neighbors)
     old = first = next(n)
     l = []
@@ -106,9 +121,10 @@ def hexagon_coords(i: Index, neighbors: Sequence[Index]):
         l.append(list((coordinates[j] + coordinates[old] + coordinates[i]) / 3))
         old = j
     l.append(list((coordinates[first] + coordinates[old] + coordinates[i]) / 3))
+    cache[i] = l
     return l
 
-def plot(family_locations, hexes, maximum=None) -> None:
+def plot(family_locations, hexes, maximum=365000000.0) -> None:
     plt.gcf().set_size_inches(30, 30)
     polygons = []
     values = []
@@ -126,13 +142,14 @@ def plot(family_locations, hexes, maximum=None) -> None:
     ax.set_extent(gavin2017processbased.americas)
 
     coords = []
-    for family, location in family_locations.items():
-        m, i, j = location
-        coords.append(coordinates[m][i, j] + numpy.random.normal(0, 0.1, 2))
-    plt.scatter(*zip(*coords), alpha=0.3, s=3, edgecolors=None)
+    sizes = []
+    for family, location in family_locations:
+        sizes.append(family)
+        coords.append(coordinates[tuple(location)] + numpy.random.normal(0, 0.04, 2))
+    plt.scatter(*zip(*coords), alpha=0.2, s=sizes, c="gray", edgecolors=None)
 
 def plot_(s):
-    plot({family.descendence: family.location for family in s.families},
+    plot([(family.effective_size, family.location) for family in s.families],
          [(hexagon_coords(index), patch.resources)
           for index, patch in s.grid.patches.items()])
 
@@ -142,46 +159,50 @@ def plot_last_line(filename):
     with open(filename, "r") as f:
         for line in f:
             pass
-    properties = eval(line.strip("\x00\n"))
+    properties = json.loads(line)
     # DAFUQ? Why even are there 00 bytes??
-    families = properties["Locations"]
+    families = properties["Families"].values()
     hexes = properties["Resources"]
     plot(families, hexes)
     plt.show()
 
-def plot_series(filename, template="dispersal-{:04d}.png"):
+def plot_series(filename, template="dispersal-{:07d}.png", limit=None):
     with open(filename, "r") as f:
         for l, line in enumerate(f):
-            properties = eval(line.strip("\x00\n"))
-            families = properties["Locations"]
+            if limit is not None and l not in limit:
+                continue
+            properties = json.loads(line)
+            families = properties["Families"].values()
             hexes = properties["Resources"]
             plot(families, hexes)
             plt.savefig(template.format(l))
             plt.close()
 
 
+def plot_alaska_population(filename):
+    pop = []
+    cache = {}
+    def is_in(location):
+        try:
+            return cache[location]
+        except KeyError:
+            cache[location] = osm.contains(osm.shapes["Alaska"], coordinates[location])
+            return cache[location]
+    with open(filename, "r") as f:
+        for l, line in enumerate(f):
+            pop.append(0)
+            try:
+                data = json.loads(line)
+            except json.JSONDecodeError:
+                break
+            for effective_size, location in data["Families"].values():
+                if is_in(tuple(location)):
+                    pop[l] += effective_size
+    plt.plot(pop)
+    plt.show()
+
 def geographical_distance(index1: Index, index2: Index) -> meters:
     m1, i1, j1 = index1
     m2, i2, j2 = index2
     return numpy.asarray(GEODESIC.inverse(
         coordinates[m1][i1, j1], coordinates[m2][i2, j2])[:, 0])[0]
-
-def neighbors_within_distance(coordinates: Tuple[numpy.ndarray, numpy.ndarray],
-                              mij: Index, d: meters) -> Iterable[Index]:
-    """A generator of all cells within d meters of mij.
-
-    Yield mij back as first item of the generator.
-    """
-    aggregate: List[Index] = []
-    m, i, j = mij
-    yield m, i, j
-    aggregate.append(mij)
-    c = coordinates[m][i, j]
-    for r_m, block in enumerate(coordinates):
-        b = block.reshape((-1, 2))
-        r_ij = numpy.arange(b.shape[0])[numpy.asarray(GEODESIC.inverse(c, b)[:, 0]) <= d]
-        for r_i, r_j in numpy.array(numpy.unravel_index(r_ij, coordinates[r_m].shape[:-1])).T:
-            if r_m == m and r_i == i and r_j == j:
-                continue
-            yield r_m, r_i, r_j
-            aggregate.append((r_m, r_i, r_j))
