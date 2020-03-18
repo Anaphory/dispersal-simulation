@@ -8,7 +8,10 @@ def TERMD2(land, **kwargs):
 
 from gavin2017processbased import PopulationCapModel, Point
 p = PopulationCapModel()
+p.alpha = 10 ** -8.07
+p.beta = 2.64
 
+import pdb; pdb.set_trace()
 def TERMD2(land, longitude, latitude):
     if not land:
         return 0

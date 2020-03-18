@@ -126,7 +126,7 @@ def hexagonal_earth_grid(bbox, area):
 
 # Define continents
 
-area = 450000000 #m²
+area = 450_000_000 #m²
 
 def is_land(xy):
    return LAND.contains(sgeom.Point(*xy))
@@ -269,7 +269,13 @@ class PopulationCapModel:
     alpha = 10 ** -8.07
     beta = 2.64
 
-    precipitation_tif = tifffile.imread("../worldclim/wc2.0_bio_30s_12.tif").clip(0)
+    @property
+    def precipitation_tif(self):
+        try:
+            return self._tif
+        except AttributeError:
+            self._tif = tifffile.imread("../worldclim/wc2.0_bio_30s_12.tif").clip(0)
+            return self._tif
 
     def population_capacity(self, point):
         """Calculate the pop cap of a cell given its precipitation
@@ -307,7 +313,7 @@ class PopulationCapModel:
 
 
 namerica = BoundingBox(
-    w=-178.2,
+    w=-178.8,
     s=6.6,
     e=-49.0,
     n=83.3)
