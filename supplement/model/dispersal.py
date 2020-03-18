@@ -1,4 +1,4 @@
-"""settlement
+"""dispersal
 
 Model the settlement of the Americas using an agent-based model on a hex grid
 with resource depletion, migration, and culture-dependent cooperation.
@@ -87,7 +87,8 @@ class State:
     """A model state"""
     grid: Cells = attr.ib()
     # The state of cells at this time step
-    families: List[Family] = attr.ib(factory=list)
+    # Keeping track of their locations locally is easier than looking for them post-hoc, even though it is redundant.
+    families: Mapping[Index, List[Family]] = attr.ib()
     # A list of families under simulation
     t: halfyears = attr.ib(default=0)
     # Time steps since simulation start, in 1/2 of a year.
@@ -100,18 +101,15 @@ class CooperativeGroup(list):
 # ==================================
 def step(state: State) -> State:
     """Run a simulation step."""
-    inhabited_patches = DefaultDict[Index, List[Family]](list)
-    # Keeping track of inhabited patches locally is easier than looking for them post-hoc.
 
-    for family in shuffle(state.families):
+    for family in shuffle(sum(state.families.values(), [])):
         use_resources_and_maybe_shrink(family)
         maybe_grow(family)
         if is_moribund(family):
-            state.families.remove(family)
+            state.families[family.location].remove(family)
             continue
         descendant = maybe_procreate(family)
         if descendant is not None:
-            state.families.append(descendant)
             # In terms of scheduling, this means in particular that a new
             # family can move immediately. This behaviour is taken from del
             # Castillo (2013). Also, a descendant family will move *before*
@@ -122,19 +120,25 @@ def step(state: State) -> State:
                 observe_neighbors(
                     family, state.grid.patches, state.families,
                     state.grid.neighbors_within_distance))
-            inhabited_patches[descendant.location].append(descendant)
+            state.families[descendant.location].append(descendant)
         # Subsequent earlier moves affect the possible targets of later moves,
         # so scheduling matters and shuffling is important to remove
         # first-mover effects.
 
-        decide_on_moving_and_maybe_move(
+        old_location = family.location
+        if decide_on_moving_and_maybe_move(
             family, state.grid.patches[family.location],
             observe_neighbors(
                 family, state.grid.patches, state.families,
-                state.grid.neighbors_within_distance))
-        inhabited_patches[family.location].append(family)
+                state.grid.neighbors_within_distance)):
+            state.families[old_location].remove(family)
+            state.families[family.location].append(family)
 
-    for patch_id, families in inhabited_patches.items():
+    for patch_id, families in state.families.items():
+        if not families:
+            continue
+        for family in families:
+            assert family.location == patch_id
         patch = state.grid.patches[patch_id]
         resource_reduction = 0.0
         # For exploitation, all parts of it happen at the same time.
@@ -200,11 +204,12 @@ def plot_cultural_distance_by_geographical_distance(state: State) -> Tuple[Seque
     """
     cult_dists: List[float] = []
     geo_dists = []
-    for family1, family2 in itertools.combinations(
-            state.families, 2):
-        geo_dist = geographical_distance(family1.location, family2.location)
-        cult_dist = cultural_distance(family1.culture, family2.culture)
-        geo_dists.append(geo_dist); cult_dists.append(cult_dist)
+    for (l1, fs1), (l2, fs2) in itertools.combinations_with_replacement(
+            state.families.items(), 2):
+        geo_dist = geographical_distance(l1, l2)
+        for family1, family2 in itertools.product(fs1, fs2):
+            cult_dist = cultural_distance(family1.culture, family2.culture)
+            geo_dists.append(geo_dist); cult_dists.append(cult_dist)
     return geo_dists, cult_dists
 
 
@@ -257,17 +262,16 @@ def family_expects_current_patch_will_be_enough(family: Family, resource_gain: k
 def observe_neighbors(
         family: Family,
         patches: Mapping[Index, Patch],
-        all_families: Sequence[Family],
+        all_families: Mapping[Index, Sequence[Family]],
         neighbor_generator: Callable) -> Iterator[
         Tuple[Index, Patch, int, int]]:
-    for dest in neighbor_generator(family.location, meters(48413)):
+    for dest in neighbor_generator(family.location, meters(42413)):
         cooperators, competitors = 0, 0
-        for f in all_families:
-            if f.location == dest:
-                if cultural_distance(f.culture, family.culture) < params.cooperation_threshold:
-                    cooperators += f.effective_size
-                else:
-                    competitors += f.effective_size
+        for f in all_families[dest]:
+            if cultural_distance(f.culture, family.culture) < params.cooperation_threshold:
+                cooperators += f.effective_size
+            else:
+                competitors += f.effective_size
         yield dest, patches[dest], cooperators, competitors
 
 """
@@ -278,7 +282,8 @@ def observe_neighbors(
 """
 
 def cultural_distance(c1: Culture, c2: Culture) -> float:
-    return sum(abs(e1-e2) for e1, e2 in zip(c1, c2))
+    """ Cultural distance is the Hamming distance of the culture vectors """
+    return sum(e1!=e2 for e1, e2 in zip(c1, c2))
 
 """
  • Agents may avoid other agents when the expected gain from moving to their
@@ -303,21 +308,29 @@ def observation(
         extensive: IO[str]=open("log", "w")) -> None:
     # Number of families (agents)
     report = {}
-    extreport: Dict[Any, Any] = {}
+    extreport: Dict[str, Any] = {}
     report["t"] = state.t
     report["Number of families"] = len(state.families)
     if len(state.families) == 0:
         raise StopIteration
-    report["Total population count"] = sum([family.effective_size for family in state.families])
-    report["Median stored resources"] = numpy.median([family.stored_resources for family in state.families])
-    extreport["Locations"] = {family.descendence: family.location
-                           for family in state.families}
+    report["Total population count"] = sum(
+        [family.effective_size
+         for fs in state.families.values()
+         for family in fs])
+    report["Median stored resources"] = numpy.median(
+        [family.stored_resources
+         for fs in state.families.values()
+         for family in fs])
+    extreport["Families"] = {
+        family.descendence: (family.effective_size, family.location)
+        for fs in state.families.values()
+        for family in fs}
     extreport["Resources"] = [
         (hexagon_coords(index, s.grid.neighbors(index)), patch.resources)
         for index, patch in s.grid.patches.items()]
 
     print(report, file=to)
-    print(extreport, file=extensive)
+    print(json.dumps(extreport, default=serialize), file=extensive)
 
 # 5. Initialization
 # =================
@@ -363,11 +376,12 @@ def parse_args(args: Sequence[str]) -> Tuple[halfyears, kcal]:
         "--cooperation_threshold", type=float, default=6,
         help="The minimum cultural distance where cooperation breaks down")
     parser.add_argument(
-        "--resource-recovery", type=float, default=1.1,
+        "--resource-recovery", type=float, default=0.2,
         help="The growth rate of a path's resources over half a year")
     parser.add_argument(
-        "--inaccessible-resources", type=float, default=0.7,
-        help="The proportion of resources that are inaccessible to foraging."
+        "--accessible-resources", type=float, default=0.3,
+        help="The proportion of resources that are accessible to foraging."
+        # cf. Crema (2015)
     )
 
     global params
@@ -381,43 +395,69 @@ def initialization() -> State:
     class SpecificCells (Cells):
         neighbor_cache: Dict[Tuple[Index, meters], Sequence[Index]] = attr.ib(factory=dict)
         @staticmethod
-        def neighbors(mij: Index) -> Sequence[Index]:
+        def neighbors(mij: Index) -> List[Index]:
             m, i, j = mij
             if m==0:
-                return [(0, i, j+1), (1, i, j), (1, i, j-1),
-                        (0, i, j-1), (1, i-1, j-1), (1, i-1, j),]
+                cs = [(0, i, j+1), (1, i, j), (1, i, j-1),
+                     (0, i, j-1), (1, i-1, j-1), (1, i-1, j),]
             else:
-                return [(1, i, j+1), (0, i, j+1), (0, i, j),
-                        (1, i, j-1), (0, i+1, j), (0, i+1, j+1),]
+                cs = [(1, i, j+1), (0, i, j+1), (0, i, j),
+                     (1, i, j-1), (0, i+1, j), (0, i+1, j+1),]
+            return [c for c in cs
+                    if 0 <= c[1] < coordinates.shape[1]
+                    if 0 <= c[2] < coordinates.shape[2]]
 
         def neighbors_within_distance(self, mij: Index, d: meters) -> Sequence[Index]:
             m, i, j = mij
             try:
                 return self.neighbor_cache[mij, d]
             except KeyError:
-                self.neighbor_cache[mij, d] = list(neighbors_within_distance(coordinates, mij, d))
+                self.neighbor_cache[mij, d] = list(self._neighbors_within_distance(
+                    mij, d))
                 return self.neighbor_cache[mij, d]
 
+        def _neighbors_within_distance(self, mij: Index, d: meters) -> Iterable[Index]:
+            """A generator of all cells within d meters of mij.
+
+            Yield mij back as first item of the generator.
+            """
+            visited = set()
+            to_be_visited = self.neighbors(mij)
+            yield mij
+            c = coordinates[mij]
+            while to_be_visited:
+                n = to_be_visited.pop()
+                visited.add(n)
+                if numpy.asarray(GEODESIC.inverse(c, coordinates[n])[:, 0]) <= d:
+                    yield n
+                    for nn in self.neighbors(n):
+                        if nn in visited:
+                            continue
+                        elif nn in to_be_visited:
+                            continue
+                        else:
+                            to_be_visited.append(nn)
 
     grid = SpecificCells(patches=OnDemandDict(patch_from_grid_index))
 
-    return State(grid=grid, families=[
-        Family(
+    return State(grid=grid, families=DefaultDict[Index, List[Family]](
+        list, {
+        (0, 28, 101): [Family(
             descendence="F",
             location=(0, 28, 101),# Start around Fairbanks
             culture=(2,2,2,2,2,2,2,2,2,2,2),
-            stored_resources=16000000),
-        Family(
+            stored_resources=16000000)],
+        (0, 50, 52): [Family(
             descendence="A",
             location=(0, 50, 52),# Start around SW Alaska
             culture=(2,2,2,2,2,2,2,2,2,2,2),
-            stored_resources=16000000),
-        # Family(
+            stored_resources=16000000)],
+        # (0, 218, 521): Family(
         #     descendence="M",
         #     location=(0, 218, 521),# Start around Manaus
         #     culture=(2,2,2,2,2,2,2,2,2,2,2),
         #     stored_resources=16000000),
-    ])
+    }))
 
 # 6. Input Data
 # =============
@@ -498,7 +538,7 @@ def maybe_procreate(family: Family) -> Optional[Family]:
 def decide_on_moving_and_maybe_move(
         family: Family,
         current_patch: Patch,
-        neighbor_cells: Iterator[Tuple[Index, Patch, int, int]]) -> None:
+        neighbor_cells: Iterator[Tuple[Index, Patch, int, int]]) -> bool:
     target, patch, cooperators, competitors = next(neighbor_cells)
     assert patch == current_patch
     max_gain: kcal = resources_from_patch(
@@ -509,7 +549,7 @@ def decide_on_moving_and_maybe_move(
         move = "desperate"
 
     if not move:
-        return
+        return False
     else:
         max_gain = 0 # FIXME why do I have to set this? It *should be* that a
                      # population that grows to big needs to much of local
@@ -522,6 +562,7 @@ def decide_on_moving_and_maybe_move(
                 target = coords
                 max_gain = expected_gain
         family.location = target
+        return True
 
 
 def cooperate(families: Sequence[Family]) -> Tuple[Sequence[CooperativeGroup], int]:
@@ -555,38 +596,37 @@ def resources_from_patch(
         labor: int,
         others_labor: int) -> kcal:
     # From crema2014simulation
-    my_relative_returns = numpy.random.normal(
+    my_relative_returns = numpy.maximum(numpy.random.normal(
         loc=params.time_step_energy_use * effective_labour_after_cooperation(labor),
-        scale=params.payoff_standarddeviation * params.time_step_energy_use / labor ** 0.5)
+        scale=params.payoff_standarddeviation * params.time_step_energy_use / labor ** 0.5),
+                                     0)
     if others_labor:
-        others_relative_returns = numpy.random.normal(
+        others_relative_returns = numpy.maximum(numpy.random.normal(
             loc=params.time_step_energy_use * effective_labour_after_cooperation(others_labor),
-            scale=params.payoff_standarddeviation * params.time_step_energy_use / others_labor ** 0.5)
+            scale=params.payoff_standarddeviation * params.time_step_energy_use / others_labor ** 0.5),
+                                                0)
     else:
         others_relative_returns = 0
-    return numpy.minimum(
-        my_relative_returns + others_relative_returns,
-        patch.resources) * (my_relative_returns) / (my_relative_returns + others_relative_returns)
+    return (my_relative_returns) / (
+        my_relative_returns + others_relative_returns) * numpy.minimum(
+            my_relative_returns + others_relative_returns,
+            patch.resources * params.accessible_resources)
 
 def adjust_culture(cooperating_families: CooperativeGroup) -> None:
     ...
 
 def exploit(patch: Patch, resource_reduction: kcal) -> None:
     patch.resources -= resource_reduction
-    if patch.resources < -1e-2:
-        # They should be bigger than 0, but there may be rounding errors
-        raise AssertionError("Patch was over-exploited")
-    elif patch.resources < 0:
-        patch.resources = 0
+    assert patch.resources > 0,  "Patch was extremely over-exploited"
+    # They should be bigger than 0, but there may be rounding errors
 
 
 def recover(patch: Patch) -> None:
     if patch.resources < patch.max_resources - 1:
-        unforagable_resources = params.inaccessible_resources * patch.max_resources / (1 - params.inaccessible_resources)
         patch.resources += (
-            (unforagable_resources + patch.resources) *
+            patch.resources *
             params.resource_recovery *
-            (1 - patch.resources / patch.max_resources)) - unforagable_resources
+            (1 - patch.resources / patch.max_resources))
 
 # Run the simulation
 if __name__ == "__main__":
