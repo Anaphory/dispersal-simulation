@@ -116,42 +116,65 @@ def hexagon_coords(i: Index, neighbors: Sequence[Index], cache: Dict[Index, List
         pass
     n = iter(neighbors)
     old = first = next(n)
+    sh = coordinates.shape[:-1]
+    while (numpy.zeros_like(sh) > old).any() | (old > numpy.array(sh) - 1).any():
+        old = first = next(n)
     l = []
     for j in n:
+        if (numpy.zeros_like(sh) > j).any() | (j > numpy.array(sh) - 1).any():
+            continue
         l.append(list((coordinates[j] + coordinates[old] + coordinates[i]) / 3))
         old = j
     l.append(list((coordinates[first] + coordinates[old] + coordinates[i]) / 3))
     cache[i] = l
     return l
 
-def plot(family_locations, hexes, maximum=365000000.0) -> None:
+def neighbors(mij: Index):
+    m, i, j = mij
+    if m==0:
+        return [(0, i, j+1), (1, i, j), (1, i, j-1),
+                (0, i, j-1), (1, i-1, j-1), (1, i-1, j)]
+    else:
+        return [(1, i, j+1), (0, i, j+1), (0, i, j),
+                (1, i, j-1), (0, i+1, j), (0, i+1, j+1)]
+
+def plot(family_locations, resources, maximum=3650000000.0, hexes=[]) -> None:
+    if not hexes:
+        for index in numpy.ndindex(*coordinates.shape[:-1]):
+            hexes.append(numpy.array(hexagon_coords(index, neighbors(index))))
+        global collection
+    collection = matplotlib.collections.PolyCollection(hexes)
     plt.gcf().set_size_inches(30, 30)
-    polygons = []
-    values = []
-    for cell_coords, cell_value in hexes:
-        polygons.append(numpy.array(cell_coords))
-        values.append(cell_value)
     cmap = plt.get_cmap("viridis")
-    vmax = maximum or max(values)
-    values = [cmap(255 * v / vmax) for v in values]
-    collection = matplotlib.collections.PolyCollection(
-        polygons, facecolors=values)
+    vmax = max(resources)
+    values = [cmap(v / vmax)[:-1] + (0.2,) if v > 0 else [0, 0, 0, 0] for v in resources]
+    collection.set_facecolor(values)
     ax = plt.axes(projection=ccrs.PlateCarree())
     ax.add_collection(collection)
     ax.coastlines("50m")
     ax.set_extent(gavin2017processbased.americas)
 
     coords = []
+    colors = []
     sizes = []
-    for family, location in family_locations:
+    for family, location, culture in family_locations:
         sizes.append(family)
+        culture = [int(c) for c in culture]
+        colors.append([
+            culture[0] * 0.4 + culture[1] * 0.3 + culture[2] * 0.2 + culture[3] * 0.1,
+            culture[4] * 0.4 + culture[5] * 0.3 + culture[6] * 0.2 + culture[7] * 0.1,
+            culture[8] * 0.4 + culture[9] * 0.3 + culture[10] * 0.2 + culture[11] * 0.1,
+            1
+        ])
         coords.append(coordinates[tuple(location)] + numpy.random.normal(0, 0.04, 2))
-    plt.scatter(*zip(*coords), alpha=0.2, s=sizes, c="gray", edgecolors=None)
+    plt.scatter(*zip(*coords), alpha=0.2, s=sizes, c=colors, edgecolors=None)
 
 def plot_(s):
-    plot([(family.effective_size, family.location) for family in s.families],
-         [(hexagon_coords(index), patch.resources)
-          for index, patch in s.grid.patches.items()])
+    plot([(family.effective_size, location, family.culture)
+          for location, families in s.families.items()
+          for family in families],
+         [s.grid.patches[mij].resources
+          for mij in numpy.ndindex(*coordinates.shape[:-1])])
 
     plt.show()
 
@@ -195,7 +218,7 @@ def plot_alaska_population(filename):
                 data = json.loads(line)
             except json.JSONDecodeError:
                 break
-            for effective_size, location in data["Families"].values():
+            for effective_size, location, culture in data["Families"].values():
                 if is_in(tuple(location)):
                     pop[l] += effective_size
     plt.plot(pop)

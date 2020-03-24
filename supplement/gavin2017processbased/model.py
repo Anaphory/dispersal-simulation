@@ -274,7 +274,7 @@ class PopulationCapModel:
         try:
             return self._tif
         except AttributeError:
-            self._tif = tifffile.imread("../worldclim/wc2.0_bio_30s_12.tif").clip(0)
+            self._tif = tifffile.imread("/home/gereon/Public/settlement-of-americas/supplement/worldclim/wc2.0_bio_30s_12.tif").clip(0)
             return self._tif
 
     def population_capacity(self, point):
