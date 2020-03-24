@@ -34,15 +34,17 @@ class Patch:
 
     Resources can vary through time, up to a fixed maximum
     """
-    resources: kcal = attr.ib() # Resources available available over a period of 6 months
-    max_resources: kcal = attr.ib() # Maximum esources available available over a period of 6 months
+    #NCP: this is a fixed maximum per cell, right? and it would be changeable based on palaeoclimatic data down the road?
+    resources: kcal = attr.ib() # Resources available over a period of 6 months
+    max_resources: kcal = attr.ib() # Maximum resources available over a period of 6 months
+    # NCP: is there seasonality for the 6 month period? this is something that you would like to maybe add later?
 
 @attr.s
 class Cells():
     """A grid of cells
 
     By the default implementation in this module, every cell is a georeferenced
-    hex cells in the Americas, each containing a Patch, representing an area of
+    hex cell in the Americas, each containing a Patch, representing an area of
     ca. 450_000_000 m²
 
     """
@@ -60,6 +62,7 @@ class Cells():
         raise NotImplementedError
 
 # A culture is just a tuple with 7 different slots.
+# NCP: what do these 7 different slots represent? or they are 7 arbitrary dimensions so that things get differentiated?
 Culture = List[bool]
 
 @attr.s
@@ -69,6 +72,7 @@ class Family:
     Families are the decision-making agent in our model. Families can migrate
     between cells and form links to other Families in the context of
     cooperation to extract or share resources.
+    # NCP: a family can be in only one cell at a time
 
     """
     descendence: str = attr.ib()
@@ -76,7 +80,7 @@ class Family:
     culture: Culture = attr.ib()
     # The family's shared culture
     location_history: List[Index] = attr.ib(factory=list)
-    # A list of cells indices.
+    # A list of cell indices.
     number_offspring: int = attr.ib(default=0)
     # The number of descendant families this family has given rise to so far
     effective_size: int = attr.ib(default=2)
@@ -87,6 +91,7 @@ class Family:
     # The amount of stored resources, in kcal, the family has access to
     plenty_seasons_since_last_child: int = attr.ib(default=0)
     # The number of plentiful seasons since the birth of the previous child
+    # NCP: plentiful as opposed to what? if they decide to migrate this is not a plentiful season?
 
     seasons_until_next_mutation: int = attr.ib(default=-1)
     # A bookkeeping quantity. Instead of mutation happening in each time step
@@ -100,6 +105,7 @@ class State:
     grid: Cells = attr.ib()
     # The state of cells at this time step
     # Keeping track of their locations locally is easier than looking for them post-hoc, even though it is redundant.
+    # NCP: the locations of the cells, or the families? I don't get what the state of a cell is nor its location. I thought its location is fixed.
     families: Mapping[Index, List[Family]] = attr.ib()
     # A list of families under simulation
     t: halfyears = attr.ib(default=0)
@@ -108,6 +114,7 @@ class State:
 class CooperativeGroup(list):
     """A group of Families cooperating"""
     efficiency: float = attr.ib() # The group's efficiency at exploiting resources, between 0 and 1
+    # NCP: how is the value determined? is it 1 always before the addition of culture and then it depends on some distance between cultures?
 
 # 3. Process overview and scheduling
 # ==================================
@@ -133,7 +140,7 @@ def step(state: State) -> State:
                     family, state.grid.patches, state.families,
                     state.grid.neighbors_within_distance(family.location_history[0], meters(42413))))
             movement_bookkeeping(descendant, destination, state)
-        # Subsequent earlier moves affect the possible targets of later moves,
+        # Earlier moves affect the possible targets of later moves,
         # so scheduling matters and shuffling is important to remove
         # first-mover effects.
 
@@ -152,6 +159,7 @@ def step(state: State) -> State:
         patch = state.grid.patches[patch_id]
         resource_reduction = 0.0
         # For exploitation, all parts of it happen at the same time.
+        # NCP: I don't understand exploitation here. I imagine it is a phase but it is not clear when it starts and ends
         groups_and_efficiencies, sum_labor = cooperate(families)
         for cooperating_families in groups_and_efficiencies:
             resource_reduction += extract_resources(patch, cooperating_families, sum_labor)
@@ -181,7 +189,7 @@ This model draws heavily on two prior models.
 
 4.1 Basic priciples
 ===================
- • Migration happens due to the need to find new resources in marginal evironments
+ • Migration happens due to the need to find new resources in marginal environments
  • Shared culture mediates cooperation, and cooperation fosters cultural cohesion
  • Using real(istic) geography provides better insight than abstract environments
  • The family is generally the basic unit of decision-making and migration in
@@ -231,10 +239,11 @@ def plot_cultural_distance_by_geographical_distance(state: State) -> Tuple[Seque
 
 4.4 Objectives
 ==============
- • Agents evaluate the expected resources they will be able exploit in the
+ • Agents evaluate the expected resources they will be able to exploit in the
    current time step based on the resources available in patches within a
    certain distance from themselves, and the number of agents in each of those
    patches.
+   # NCP: here it sounds like a family is able to exploit multiple patches. maybe add "in each patch" after exploit
 
 4.5 Learning
 ============
@@ -243,16 +252,17 @@ def plot_cultural_distance_by_geographical_distance(state: State) -> Tuple[Seque
 4.6 Prediction
 ==============
 
- • Agents use the state of their neighborhood as proxy for the future state of
-   the system for predicting expected number of resources available to them.
+ • Agents use the state of their neighborhood as a proxy for the future state of
+   the system for predicting the expected number of resources available to them.
    Due to scheduling, this means that agents see on average half of the
    remaining agents in their new positions after moving and half of the
    remaining agents in their old position before moving. Agents extrapolate
-   their resource availabiltiy with and without expending labour from the
+   their resource availability with and without expending labour from the
    current state of the system, ie. without taking potential family growth or
    shrinking into account and without taking the movement of agents into
    account.
 """
+# NCP: what is neighborhood? the patches around a family's patches? the ones they are able to observe?
 
 def family_expects_current_patch_will_be_enough(family: Family, resource_gain: kcal) -> bool:
     return resources_at_season_end(
@@ -290,6 +300,7 @@ def observe_neighbors(
                 competitors += f.effective_size
         yield dest, patches[dest], cooperators, competitors
 
+# NCP: what is the cooperation threshold? 
 """
 4.8 Interaction
 ===============
@@ -312,6 +323,8 @@ def cultural_distance(c1: Culture, c2: Culture) -> float:
    groups to collaborate for the exploitation of resources. The efficiency of
    the group is merely an emergent property of the individual Agent sizes.
    Adaptation of culture vectors is a function of these groups.
+   
+   # NCP: you are just adding up the agent sizes? or something fancier depending on the cultural distance? And then adaptation of culture vectors means that cultures become more similar? how?
 
 4.10 Observation
 ================
