@@ -475,11 +475,6 @@ def initialization() -> State:
             culture=[False] * 15,
             location_history=[(0, 50, 52)],
             stored_resources=16000000)],
-        # (0, 218, 521): Family(
-        #     descendence="M",
-        #     location=(0, 218, 521),# Start around Manaus
-        #     culture=(2,2,2,2,2,2,2,2,2,2,2),
-        #     stored_resources=16000000),
     }))
 
 # 6. Input Data
