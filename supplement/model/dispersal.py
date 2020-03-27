@@ -273,9 +273,10 @@ def observe_neighbors(
         neighbors: Iterable[Index]) -> Iterator[
         Tuple[Index, Patch, int, int]]:
     checked = set()
-    for dest in family.location_history[:4] + shuffle([
-            n for n in neighbors
-            if n in family.location_history[:8] or numpy.random.random() < params.attention_probability]):
+    for dest in itertools.chain(
+            family.location_history[:4],
+            shuffle([n for n in neighbors
+                     if n in family.location_history[:8] or numpy.random.random() < params.attention_probability])):
         if dest in checked:
             continue
         checked.add(dest)
@@ -393,7 +394,7 @@ def parse_args(args: Sequence[str]) -> Tuple[halfyears, kcal]:
         "them behind when migrating. Morgan (2012) pulls a number of 33% per "
         "year (focussing on the winter season when it matters) out of thin air.")
     parser.add_argument(
-        "--culture-mutation-rate", type=float, default=1e-2,
+        "--culture-mutation-rate", type=float, default=6e-2,
         help="The probability per half-year that one aspect of culture changes")
     parser.add_argument(
         "--cooperation_threshold", type=float, default=6,
