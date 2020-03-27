@@ -15,6 +15,7 @@ supplement/worldclim/readme.txt
 
 # Output images
 output*.png
+dispersal*.png
 run*.png
 run*.json
 tick*.png
