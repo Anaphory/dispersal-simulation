@@ -399,6 +399,7 @@ def parse_args(args: Sequence[str]) -> Tuple[halfyears, kcal]:
     parser.add_argument(
         "--cooperation-gain", type=int, default=0.5,
         help="The exponent of the additional efficiency of a group working together. If, eg., cooperation_gain==0.3, then two individuals working together contribute as much as 4 working separately, 3 as 7.2, 4 as 11, 5 as 15 etc.")
+        # NCP: Why is it an int and then it has decimal points? Shouldn't it be a float? Also, I don't get  how the exponent bit works in your example.
     parser.add_argument(
         "--storage-loss", type=float, default=0.33,
         help="The proportion of stored resources lost per time step to "
@@ -422,7 +423,7 @@ def parse_args(args: Sequence[str]) -> Tuple[halfyears, kcal]:
         help="The proportion of resources that are accessible to foraging."
         # cf. Crema (2015)
     )
-
+# NCP: From now on I am kind of lost at places, but I guess you haven't commented upon the code yet, right? I understand and recognize the things you have explained to me orally. 
     global params
     params = parser.parse_args(args)
     params.time_step_energy_use = params.daily_energy * 365.24219 / 2
@@ -548,7 +549,7 @@ def maybe_grow(family: Family) -> None:
     else:
         family.plenty_seasons_since_last_child += 1
 
-
+# NCP: I don't get where it checks if it can grow. Also, assuming plenty of resources a family gets a baby every 2 years?
 def is_moribund(family: Family) -> bool:
     if family.effective_size < 2:
         return True
@@ -628,7 +629,7 @@ def effective_labour_after_cooperation(labor: int) -> float:
     """Effective total labor contribution of a group of cooperators"""
     # From crema2014simulation, adapted
     return labor * (1 + (labor - 1) ** params.cooperation_gain)
-
+# NCP: I don't understand how labor and cooperation gain work
 
 def resources_from_patch(
         patch: Patch,
