@@ -336,7 +336,7 @@ def observation(
     extreport: Dict[str, Any] = {}
     report["t"] = state.t
     report["Number of families"] = sum([len(families) for families in state.families.values()])
-    if len(state.families) == 0:
+    if report["Number of families"] == 0:
         raise StopIteration
     report["Total population count"] = sum(
         [family.effective_size
@@ -419,6 +419,11 @@ def parse_args(args: Sequence[str]) -> Tuple[halfyears, kcal]:
         "--resource-recovery", type=float, default=0.2,
         help="The growth rate of a path's resources over half a year")
     parser.add_argument(
+        "--evidence-needed", type=float, default=0.3,
+        help="The proportion of seasonal payoff that needs to be more somewhere else for the family to move. Crema (2015) has c=3 for μ=10, so we take 0.3 as the default."
+        # cf. Crema (2015)
+    )
+    parser.add_argument(
         "--accessible-resources", type=float, default=0.3,
         help="The proportion of resources that are accessible to foraging."
         # cf. Crema (2015)
@@ -489,8 +494,10 @@ def initialization() -> State:
     for mij in numpy.ndindex(*params.coordinates.shape[:-1]):
         grid.patches[mij]
 
-    start1 = closest_grid_point(-161.64464014, 71.33929633, params.coordinates) # Fairbanks
-    start2 = closest_grid_point(-165.03295087, 68.74368736, params.coordinates) # Aleuts
+    start1 = closest_grid_point(-161.64464014, 71.33929633, params.coordinates) # not actually Fairbanks
+    start1 = closest_grid_point(-159.873, 65.613, params.coordinates) # Western Tip of Alaska
+    start2 = closest_grid_point(-165.03295087, 68.74368736, params.coordinates) # not actually Aleutians
+    start2 = closest_grid_point(-158.2718, 60.8071, params.coordinates) # SW Alaska
 
     return State(grid=grid, families=DefaultDict[Index, List[Family]](
         list, {
@@ -603,7 +610,10 @@ def decide_on_moving(
         current_patch: Patch,
         known_destinations: Iterator[Tuple[Index, Patch, int, int]],
         avoid_stay: bool = False) -> Index:
-    target, patch, cooperators, competitors = next(known_destinations)
+    try:
+        target, patch, cooperators, competitors = next(known_destinations)
+    except StopIteration:
+        return family.location_history[0]
     assert patch == current_patch
     if avoid_stay:
         try:
@@ -622,7 +632,9 @@ def decide_on_moving(
         expected_gain = resources_from_patch(
                 patch, family.effective_size + cooperators, competitors, estimate=True) * (
                     family.effective_size / (family.effective_size + cooperators))
-        if expected_gain >= max_gain and expected_gain > current_gain + params.time_step_energy_use:
+        if expected_gain >= max_gain:
+            if expected_gain < current_gain + params.time_step_energy_use * params.evidence_needed:
+                continue
             if expected_gain == max_gain:
                 c += 1
                 if numpy.random.random() < c / (1 + c):
