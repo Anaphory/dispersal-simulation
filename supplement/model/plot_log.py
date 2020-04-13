@@ -26,7 +26,7 @@ def connect_agents(family_locations, G=None):
         for (name, size, _) in families1:
             G.add_vertices(name)
             lon, lat = numpy.random.normal(0, 0.04, 2) + coord
-            xyz[len(xyz)] = (lon, lat,  size / 5)
+            xyz[len(xyz)] = (lon, lat,  size)
         for location2, families2 in family_locations:
             if not families2:
                 continue
@@ -52,7 +52,7 @@ def connect_similar_agents(families1, families2):
 
 def plot(family_locations, resources, maximum=3650000000.0, hexes=[], color_schema={}) -> None:
     plt.gcf().set_size_inches(30, 30)
-    ax = plt.axes(projection=ccrs.PlateCarree())
+    ax = plt.axes(projection=ccrs.Sinusoidal(-98))
 
     if resources is not None:
         if not hexes:
@@ -92,14 +92,14 @@ def plot(family_locations, resources, maximum=3650000000.0, hexes=[], color_sche
         else:
             color = numpy.random.random(3)
 
-        color
-
         new_color_schema[tuple(mean), len(community)] = color
 
-        plt.scatter(*pos.T,
-                s=s,
-                c=[color],
-                edgecolors=None)
+        ax.scatter(*pos.T,
+                   s=s,
+                   c=[color],
+                   alpha=0.2,
+                   edgecolors=None,
+                   transform=ccrs.Geodetic())
 
     for key in list(color_schema):
         color_schema.pop(key)
