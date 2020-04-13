@@ -3,6 +3,8 @@ import shapely.geometry as geometry
 from shapely.wkb import load, dump
 from shapely.ops import linemerge, unary_union, polygonize
 
+api = overpy.Overpass()
+
 areas = {
     "Alaska": 1116270,
 }
@@ -18,7 +20,6 @@ for area, id in areas.items():
         out body;
         >;
         out skel qt; """.format(id)
-        api = overpy.Overpass()
         result = api.query(query)
 
         lss = [] #convert ways to linstrings
@@ -40,3 +41,5 @@ for area, id in areas.items():
 
 def contains(shape, coordinates):
     return shape.contains(geometry.Point(*coordinates))
+
+

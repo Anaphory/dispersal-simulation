@@ -7,6 +7,7 @@ import pickle
 import argparse
 import itertools
 import matplotlib
+import igraph
 import cartopy.crs as ccrs
 from abc import abstractmethod
 from matplotlib import pyplot as plt
@@ -14,6 +15,10 @@ from matplotlib import pyplot as plt
 import osm
 import gavin2017processbased
 from gavin2017processbased import is_land
+
+def cultural_distance(c1, c2) -> float:
+    """ Cultural distance is the Hamming distance of the culture vectors """
+    return sum(e1!=e2 for e1, e2 in zip(c1, c2))
 
 # Import some modules for the Entities, in particular types used to describe
 # the Entities
@@ -40,9 +45,9 @@ meters = float
 kcal = float
 halfyears = int
 
-coordinates: numpy.ndarray = gavin2017processbased.hexagonal_earth_grid(
-    gavin2017processbased.americas,
-    gavin2017processbased.area)
+
+def closest_grid_point(longitude, latitude, coordinates):
+    return numpy.unravel_index(numpy.argmin(abs(coordinates - (longitude, latitude)).sum(-1)), coordinates.shape[:-1])
 
 ParametersT = TypeVar("ParametersT", bound="Parameters")
 class Parameters (
@@ -109,7 +114,7 @@ def nearby_cell(latitude, longitude, coordinates):
             ((coordinates - numpy.array((longitude, latitude))) ** 2).sum(-1)),
         coordinates.shape[:-1])
 
-def hexagon_coords(i: Index, neighbors: Sequence[Index], cache: Dict[Index, List]={}) -> List:
+def hexagon_coords(i: Index, coordinates:numpy.ndarray, neighbors: Sequence[Index], cache: Dict[Index, List]={}) -> List:
     try:
         return cache[i]
     except KeyError:
@@ -138,94 +143,9 @@ def neighbors(mij: Index):
         return [(1, i, j+1), (0, i, j+1), (0, i, j),
                 (1, i, j-1), (0, i+1, j), (0, i+1, j+1)]
 
-def plot(family_locations, resources, maximum=3650000000.0, hexes=[]) -> None:
-    if not hexes:
-        for index in numpy.ndindex(*coordinates.shape[:-1]):
-            hexes.append(numpy.array(hexagon_coords(index, neighbors(index))))
-        global collection
-    collection = matplotlib.collections.PolyCollection(hexes)
-    plt.gcf().set_size_inches(30, 30)
-    cmap = plt.get_cmap("viridis")
-    vmax = max(resources)
-    values = [cmap(v / vmax)[:-1] + (0.2,) if v > 0 else [0, 0, 0, 0] for v in resources]
-    collection.set_facecolor(values)
-    ax = plt.axes(projection=ccrs.PlateCarree())
-    ax.add_collection(collection)
-    ax.coastlines("50m")
-    ax.set_extent(gavin2017processbased.americas)
-
-    coords = []
-    colors = []
-    sizes = []
-    for family, location, culture in family_locations:
-        sizes.append(family)
-        culture = [int(c) for c in culture]
-        colors.append([
-            culture[0] * 0.4 + culture[1] * 0.3 + culture[2] * 0.2 + culture[3] * 0.1,
-            culture[4] * 0.4 + culture[5] * 0.3 + culture[6] * 0.2 + culture[7] * 0.1,
-            culture[8] * 0.4 + culture[9] * 0.3 + culture[10] * 0.2 + culture[11] * 0.1,
-            1
-        ])
-        coords.append(coordinates[tuple(location)] + numpy.random.normal(0, 0.04, 2))
-    plt.scatter(*zip(*coords), alpha=0.2, s=sizes, c=colors, edgecolors=None)
-
-def plot_(s):
-    plot([(family.effective_size, location, family.culture)
-          for location, families in s.families.items()
-          for family in families],
-         [s.grid.patches[mij].resources
-          for mij in numpy.ndindex(*coordinates.shape[:-1])])
-
-    plt.show()
-
-def plot_last_line(filename):
-    with open(filename, "r") as f:
-        for line in f:
-            pass
-    properties = json.loads(line)
-    # DAFUQ? Why even are there 00 bytes??
-    families = properties["Families"].values()
-    hexes = properties["Resources"]
-    plot(families, hexes)
-    plt.show()
-
-def plot_series(filename, template="dispersal-{:07d}.png", limit=None):
-    with open(filename, "r") as f:
-        for l, line in enumerate(f):
-            if limit is not None and l not in limit:
-                continue
-            properties = json.loads(line)
-            families = properties["Families"].values()
-            hexes = properties["Resources"]
-            plot(families, hexes)
-            plt.savefig(template.format(l))
-            plt.close()
-
-
-def plot_alaska_population(filename):
-    pop = []
-    cache = {}
-    def is_in(location):
-        try:
-            return cache[location]
-        except KeyError:
-            cache[location] = osm.contains(osm.shapes["Alaska"], coordinates[location])
-            return cache[location]
-    with open(filename, "r") as f:
-        for l, line in enumerate(f):
-            pop.append(0)
-            try:
-                data = json.loads(line)
-            except json.JSONDecodeError:
-                break
-            for effective_size, location, culture in data["Families"].values():
-                if is_in(tuple(location)):
-                    pop[l] += effective_size
-    plt.plot(pop)
-    plt.show()
-
-def geographical_distance(index1: Index, index2: Index) -> meters:
+def geographical_distance(index1: Index, index2: Index, coordinates: numpy.ndarray) -> meters:
     m1, i1, j1 = index1
     m2, i2, j2 = index2
     return numpy.asarray(GEODESIC.inverse(
         coordinates[m1][i1, j1], coordinates[m2][i2, j2])[:, 0])[0]
+

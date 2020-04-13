@@ -59,8 +59,8 @@ class Cells():
             distance: meters) -> Iterable[Index]:
         raise NotImplementedError
 
-# A culture is just a tuple with 7 different slots.
-Culture = List[bool]
+# A culture is just a tuple with 15 different slots.
+Culture = int
 
 @attr.s
 class Family:
@@ -85,8 +85,8 @@ class Family:
     # foraging as any other adult.
     stored_resources: kcal = attr.ib(default=0)
     # The amount of stored resources, in kcal, the family has access to
-    plenty_seasons_since_last_child: int = attr.ib(default=0)
-    # The number of plentiful seasons since the birth of the previous child
+    seasons_till_next_child: int = attr.ib(default=2)
+    # The number of plentiful seasons to wait until the next child
 
     seasons_until_next_mutation: int = attr.ib(default=-1)
     # A bookkeeping quantity. Instead of mutation happening in each time step
@@ -131,7 +131,8 @@ def step(state: State) -> State:
                 state.grid.patches[family.location_history[0]],
                 observe_neighbors(
                     family, state.grid.patches, state.families,
-                    state.grid.neighbors_within_distance(family.location_history[0], meters(42413))))
+                    state.grid.neighbors_within_distance(family.location_history[0], meters(52413))),
+                avoid_stay=True)
             movement_bookkeeping(descendant, destination, state)
         # Subsequent earlier moves affect the possible targets of later moves,
         # so scheduling matters and shuffling is important to remove
@@ -162,7 +163,7 @@ def step(state: State) -> State:
     for patch in state.grid.patches.values():
         recover(patch)
 
-    observation(state)
+    observation(state, params.log)
 
     state.t += 1
 
@@ -216,7 +217,7 @@ def plot_cultural_distance_by_geographical_distance(state: State) -> Tuple[Seque
     geo_dists = []
     for (l1, fs1), (l2, fs2) in itertools.combinations_with_replacement(
             state.families.items(), 2):
-        geo_dist = geographical_distance(l1, l2)
+        geo_dist = geographical_distance(l1, l2, params.coordinates)
         for family1, family2 in itertools.product(fs1, fs2):
             cult_dist = cultural_distance(family1.culture, family2.culture)
             geo_dists.append(geo_dist); cult_dists.append(cult_dist)
@@ -275,8 +276,10 @@ def observe_neighbors(
     checked = set()
     for dest in itertools.chain(
             family.location_history[:4],
-            shuffle([n for n in neighbors
-                     if n in family.location_history[:8] or numpy.random.random() < params.attention_probability])):
+            (n for n in neighbors
+             if n in family.location_history[4:8]
+             or (n not in family.location_history[:8]
+                 and numpy.random.random() < params.attention_probability))):
         if dest in checked:
             continue
         checked.add(dest)
@@ -299,8 +302,13 @@ def observe_neighbors(
 """
 
 def cultural_distance(c1: Culture, c2: Culture) -> float:
-    """ Cultural distance is the Hamming distance of the culture vectors """
-    return sum(e1!=e2 for e1, e2 in zip(c1, c2))
+    """Cultural distance is the Hamming distance of the culture vectors.
+
+    Because cultures are stored in binary, the Hamming distance is all the bits
+    in c1 XOR c2.
+
+    """
+    return bin(c1 ^ c2).count("1")
 
 """
  • Agents may avoid other agents when the expected gain from moving to their
@@ -321,8 +329,8 @@ def cultural_distance(c1: Culture, c2: Culture) -> float:
 
 def observation(
         state: State,
-        to: IO[str]=sys.stdout,
-        extensive: IO[str]=open("log", "w")) -> None:
+        extensive: IO[str],
+        to: IO[str]=sys.stdout) -> None:
     # Number of families (agents)
     report = {}
     extreport: Dict[str, Any] = {}
@@ -338,15 +346,17 @@ def observation(
         [family.stored_resources
          for fs in state.families.values()
          for family in fs])
-    extreport["Families"] = {
-        family.descendence: (family.effective_size, family.location_history[0], ''.join('01'[x] for x in family.culture))
-        for fs in state.families.values()
-        for family in fs}
-    extreport["Resources"] = [
-        s.grid.patches[mij].resources for mij in numpy.ndindex(*coordinates.shape[:-1])]
+    extreport["Families"] = [
+        (location,
+         [(family.descendence, family.effective_size, family.culture)
+          for family in families
+          if families])
+        for location, families in state.families.items()]
+    if params.report_resources:
+        extreport["Resources"] = [s.grid.patches[mij].resources for mij in numpy.ndindex(*params.coordinates.shape[:-1])]
 
     print(report, file=to)
-    print(json.dumps(extreport, default=serialize), file=extensive)
+    print(json.dumps(extreport, default=serialize, sort_keys=True), file=extensive)
 
 # 5. Initialization
 # =================
@@ -356,11 +366,11 @@ def observation(
 
 
 def patch_from_grid_index(index: Index) -> Patch:
-    longitude, latitude = coordinates[index]
+    longitude, latitude = params.coordinates[index]
     data = get_data(longitude, latitude)
     resources = (
         binford2001constructing.TERMD2(**data) * # Carrying capacity /km²
-        gavin2017processbased.area / # Area in m²
+        params.area / # Area in m²
         1_000_000 * # km²/m²
         params.time_step_energy_use # Individual energy needs
     )
@@ -391,7 +401,7 @@ def parse_args(args: Sequence[str]) -> Tuple[halfyears, kcal]:
         "--storage-loss", type=float, default=0.33,
         help="The proportion of stored resources lost per time step to "
         "various random effects, such as pests, rot, spoilage, or leaving "
-        "them behind when migrating. Morgan (2012) pulls a number of 33% per "
+        "them behind when migrating. Morgan (2012) pulls a number of 33%% per "
         "year (focussing on the winter season when it matters) out of thin air.")
     parser.add_argument(
         "--culture-mutation-rate", type=float, default=6e-2,
@@ -400,7 +410,10 @@ def parse_args(args: Sequence[str]) -> Tuple[halfyears, kcal]:
         "--cooperation_threshold", type=float, default=6,
         help="The minimum cultural distance where cooperation breaks down")
     parser.add_argument(
-        "--attention-probability", type=float, default=0.2,
+        "--area", type=float, default=450_000_000,
+        help="Design area of the hex grid")
+    parser.add_argument(
+        "--attention-probability", type=float, default=0.1,
         help="Probability to know about the state of some patch")
     parser.add_argument(
         "--resource-recovery", type=float, default=0.2,
@@ -410,10 +423,23 @@ def parse_args(args: Sequence[str]) -> Tuple[halfyears, kcal]:
         help="The proportion of resources that are accessible to foraging."
         # cf. Crema (2015)
     )
+    parser.add_argument(
+        "--culture-dimensionality", type=int, default=20,
+        help="The number binary dimensions of 'Culture'")
+
+    parser.add_argument(
+        "--log", type=argparse.FileType('w'), default='log',
+        help="Logfile for observations")
+    parser.add_argument(
+        "--report_resources", action="store_true", default=False,
+        help="Include patch resources in log file")
 
     global params
     params = parser.parse_args(args)
     params.time_step_energy_use = params.daily_energy * 365.24219 / 2
+    params.coordinates: numpy.ndarray = gavin2017processbased.hexagonal_earth_grid(
+        gavin2017processbased.americas,
+        params.area)
 
     return params.n_steps, params.daily_energy
 
@@ -425,8 +451,8 @@ def initialization() -> State:
         def neighbors(mij: Index) -> List[Index]:
             cs = neighbors(mij)
             return [c for c in cs
-                    if 0 <= c[1] < coordinates.shape[1]
-                    if 0 <= c[2] < coordinates.shape[2]]
+                    if 0 <= c[1] < params.coordinates.shape[1]
+                    if 0 <= c[2] < params.coordinates.shape[2]]
 
         def neighbors_within_distance(self, mij: Index, d: meters) -> Sequence[Index]:
             try:
@@ -443,11 +469,11 @@ def initialization() -> State:
             visited = set()
             to_be_visited = self.neighbors(mij)
             yield mij
-            c = coordinates[mij]
+            c = params.coordinates[mij]
             while to_be_visited:
                 n = to_be_visited.pop()
                 visited.add(n)
-                if numpy.asarray(GEODESIC.inverse(c, coordinates[n])[:, 0]) <= d:
+                if numpy.asarray(GEODESIC.inverse(c, params.coordinates[n])[:, 0]) <= d:
                     yield n
                     for nn in self.neighbors(n):
                         if nn in visited:
@@ -460,20 +486,23 @@ def initialization() -> State:
     grid = SpecificCells(patches=OnDemandDict(patch_from_grid_index))
 
     # If we want all cells initialized at simulation start:
-    for mij in numpy.ndindex(*coordinates.shape[:-1]):
+    for mij in numpy.ndindex(*params.coordinates.shape[:-1]):
         grid.patches[mij]
+
+    start1 = closest_grid_point(-161.64464014, 71.33929633, params.coordinates) # Fairbanks
+    start2 = closest_grid_point(-165.03295087, 68.74368736, params.coordinates) # Aleuts
 
     return State(grid=grid, families=DefaultDict[Index, List[Family]](
         list, {
-        (0, 28, 101): [Family(
+        start1: [Family(
             descendence="F",
-            culture=[True] * 15,
-            location_history=[(0, 28, 101)],
+            culture=0b000_000_000_000_000,
+            location_history=[start1],
             stored_resources=16000000)],
-        (0, 50, 52): [Family(
+        start2: [Family(
             descendence="A",
-            culture=[False] * 15,
-            location_history=[(0, 50, 52)],
+            culture=0b111_111_111_111_111,
+            location_history=[start2],
             stored_resources=16000000)],
     }))
 
@@ -518,18 +547,18 @@ def use_resources_and_maybe_shrink(family: Family) -> None:
     resources, size = family.stored_resources, family.effective_size
     while resources_at_season_end(resources, size) < 0 and size > 0:
         size -= 1
-        family.plenty_seasons_since_last_child = 0
+        family.seasons_till_next_child = max(family.seasons_till_next_child, 2)
     family.effective_size = size
     family.stored_resources = resources_at_season_end(
         family.stored_resources, family.effective_size)
 
 
 def maybe_grow(family: Family) -> None:
-    if family.plenty_seasons_since_last_child > 1:
+    if family.seasons_till_next_child <= 0:
         family.effective_size += 1
-        family.plenty_seasons_since_last_child = 0
+        family.seasons_till_next_child = 2
     else:
-        family.plenty_seasons_since_last_child += 1
+        family.seasons_till_next_child -= 1
 
 
 def is_moribund(family: Family) -> bool:
@@ -565,26 +594,67 @@ def maybe_procreate(family: Family) -> Optional[Family]:
             effective_size=2,
             descendence="{:s}:{:d}".format(family.descendence, family.number_offspring),
             location_history=family.location_history[:],
-            culture=family.culture[:])
+            seasons_till_next_child = 24, # If these two get a child now, it may count as adult in maybe 12 years.
+            culture=family.culture)
 
 
 def decide_on_moving(
         family: Family,
         current_patch: Patch,
-        known_destinations: Iterator[Tuple[Index, Patch, int, int]]) -> Index:
+        known_destinations: Iterator[Tuple[Index, Patch, int, int]],
+        avoid_stay: bool = False) -> Index:
     target, patch, cooperators, competitors = next(known_destinations)
     assert patch == current_patch
-    current_gain: kcal = resources_from_patch(
-        current_patch, cooperators, competitors) * family.effective_size / cooperators
-    max_gain = current_gain
+    if avoid_stay:
+        try:
+            target, patch, cooperators, competitors = next(known_destinations)
+            cooperators += family.effective_size
+        except StopIteration:
+            # There really is no other place to go to.
+            pass
+    max_gain: kcal = resources_from_patch(
+        current_patch, cooperators, competitors, estimate=True) * family.effective_size / cooperators
+    current_gain = 0 if avoid_stay else max_gain
+    c = 0 # c is a counting variable to help deal with equal expected gains
+          # without bias in favour of those items earlier in the list, and
+          # while avoiding to shuffle the entire list.
     for coords, patch, cooperators, competitors in known_destinations:
         expected_gain = resources_from_patch(
-                patch, family.effective_size + cooperators, competitors) * (
+                patch, family.effective_size + cooperators, competitors, estimate=True) * (
                     family.effective_size / (family.effective_size + cooperators))
-        if expected_gain > max_gain and expected_gain > current_gain + params.time_step_energy_use:
+        if expected_gain >= max_gain and expected_gain > current_gain + params.time_step_energy_use:
+            if expected_gain == max_gain:
+                c += 1
+                if numpy.random.random() < c / (1 + c):
+                    continue
             target = coords
             max_gain = expected_gain
-    return coords
+    return target
+
+
+def test_decide_on_moving_is_unbiased():
+    """Check the bias of the 'decide on moving' submodule.
+
+    Run generate 20 equally promising neighbors and run the function
+    `decide_on_moving` on them 10000 times. If that function is unbiased (as I
+    assert) and does not favor neighbors passed earlier or later in the
+    iterator of neighbors it gets passed, then the count of destination indices
+    should be roughly evenly distributed between all the 20 different indices.
+
+    NOTE: Before you can run this function, `params` must have been initialized.
+
+    """
+    family = Family(descendence=None, culture=None, effective_size=1)
+    current_patch = Patch(resources=1, max_resources=None)
+    known_destinations = [((), current_patch, 2, 0)] + [
+        ((i,), Patch(resources=2 + 3 * params.time_step_energy_use, max_resources=None), 2, 0)
+        for i in range(20)
+    ]
+    c = collections.Counter()
+    for i in range(100000):
+        d = decide_on_moving(family, current_patch, iter(known_destinations))
+        c[d] += 1
+    return c
 
 
 def cooperate(families: Sequence[Family]) -> Tuple[Sequence[CooperativeGroup], int]:
@@ -609,24 +679,31 @@ def cooperate(families: Sequence[Family]) -> Tuple[Sequence[CooperativeGroup], i
 
 def effective_labour_after_cooperation(labor: int) -> float:
     """Effective total labor contribution of a group of cooperators"""
-    # From crema2014simulation, adapted
-    return labor * (1 + (labor - 1) ** params.cooperation_gain)
+    # From crema2014simulation, adapted: Crema directly computes payoffs, and they are scaled with a μ=10
+    return labor * (1 + (labor - 1) ** params.cooperation_gain / 10)
 
 
 def resources_from_patch(
         patch: Patch,
         labor: int,
-        others_labor: int) -> kcal:
+        others_labor: int,
+        estimate = False) -> kcal:
     # From crema2014simulation
-    my_relative_returns = numpy.maximum(numpy.random.normal(
-        loc=params.time_step_energy_use * effective_labour_after_cooperation(labor),
-        scale=params.payoff_standarddeviation * params.time_step_energy_use / labor ** 0.5),
-                                     0)
+    my_relative_returns = params.time_step_energy_use * effective_labour_after_cooperation(labor)
+    if not estimate:
+        my_relative_returns = numpy.maximum(
+            numpy.random.normal(
+                loc=my_relative_returns,
+                scale=params.payoff_standarddeviation * params.time_step_energy_use / labor ** 0.5),
+            0)
     if others_labor:
-        others_relative_returns = numpy.maximum(numpy.random.normal(
-            loc=params.time_step_energy_use * effective_labour_after_cooperation(others_labor),
-            scale=params.payoff_standarddeviation * params.time_step_energy_use / others_labor ** 0.5),
-                                                0)
+        others_relative_returns = params.time_step_energy_use * effective_labour_after_cooperation(others_labor)
+        if not estimate:
+            others_relative_returns = numpy.maximum(
+                numpy.random.normal(
+                    loc=others_relative_returns,
+                    scale=params.payoff_standarddeviation * params.time_step_energy_use / others_labor ** 0.5),
+                0)
     else:
         others_relative_returns = 0
     return (my_relative_returns) / (
@@ -634,11 +711,12 @@ def resources_from_patch(
             my_relative_returns + others_relative_returns,
             patch.resources * params.accessible_resources)
 
+
 def mutate_culture(family: Family) -> None:
     if family.seasons_until_next_mutation <= 0:
         if family.seasons_until_next_mutation == 0:
-            i = numpy.random.randint(len(family.culture))
-            family.culture[i] = not family.culture[i]
+            i = numpy.random.randint(params.culture_dimensionality)
+            family.culture ^= 1 << i
         family.seasons_until_next_mutation = numpy.random.geometric(params.culture_mutation_rate)
     else:
         family.seasons_until_next_mutation -= 1
@@ -652,16 +730,16 @@ def adjust_culture(cooperating_families: CooperativeGroup) -> None:
         return
     def squared_p(k: int) -> float:
         return k ** 2 / (k ** 2 + (n - k) ** 2)
-    culture = [family.culture for family in cooperating_families]
-    target = [numpy.random.random() < squared_p(sum(c)) for c in zip(*culture)]
+    target = cooperating_families[numpy.random.randint(len(cooperating_families))].culture
     for family in cooperating_families:
-        family.culture[:] = target[:]
+        family.culture = target
 
 
 def exploit(patch: Patch, resource_reduction: kcal) -> None:
     patch.resources -= resource_reduction
     assert patch.resources > 0,  "Patch was extremely over-exploited"
-    # They should be bigger than 0, but there may be rounding errors
+    # They should be bigger than 0, but there may be rounding errors. Actually,
+    # they should not even get close to 0.
 
 
 def recover(patch: Patch) -> None:
@@ -673,7 +751,7 @@ def recover(patch: Patch) -> None:
 
 # Run the simulation
 if __name__ == "__main__":
-    parse_args(["--n", "30000"])
+    parse_args(sys.argv[1:])
     s = initialization()
     simulate(s, params.n_steps)
 
