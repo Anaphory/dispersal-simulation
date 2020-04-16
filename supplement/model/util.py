@@ -2,9 +2,8 @@
 
 import numpy
 
-import cartopy.geodesic as geodesic
-
 import osm
+from hexgrid import AMERICAS
 
 from types_and_units import (
     Sequence,
@@ -15,8 +14,6 @@ from types_and_units import (
     Callable,
 )
 
-GEODESIC = geodesic.Geodesic()
-
 
 from gavin2017processbased import PopulationCapModel, Point
 p = PopulationCapModel()
@@ -26,6 +23,10 @@ p.beta = 2.64
 
 def density(land: bool, longitude: float, latitude: float) -> float:
     """Estimate the population density in person/km²."""
+    if longitude < AMERICAS.w or longitude > AMERICAS.e:
+        return 0
+    if latitude < AMERICAS.s or latitude > AMERICAS.n:
+        return 0
     if not land:
         return 0
     else:
@@ -37,6 +38,12 @@ def shuffle(seq: Sequence) -> Iterable:
     """Return a shuffled version of `seq`.
 
     seq is copied, not modified, in the process.
+
+    >>> w = [1, 3, 2, 4]
+    >>> sorted(set(shuffle(w)))
+    [1, 2, 3, 4]
+    >>> w
+    [1, 3, 2, 4]
 
     """
     s = list(seq)[:]

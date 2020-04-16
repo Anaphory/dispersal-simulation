@@ -337,7 +337,7 @@ def cultural_distance(c1: cython.int, c2: cython.int) -> cython.int:
     True
     >>> 3 == 0b0011
     True
-    >>> cultural_distance(8, 3) == 3 == cultural_distance(0b1000, 0b0011)
+    >>> cultural_distance(8, 3) == 3 == cultural_distance(0b0100, 0b0011)
     True
 
     """
