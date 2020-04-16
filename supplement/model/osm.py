@@ -39,7 +39,25 @@ for area, id in areas.items():
         shapes[area] = geometry.MultiPolygon(polygons)
         dump(shapes[area], open("{:s}.wkb".format(area), "wb"))
 
+
 def contains(shape, coordinates):
     return shape.contains(geometry.Point(*coordinates))
 
+
+import cartopy.io.shapereader as shpreader
+from shapely.prepared import prep
+
+land_shp_fname = shpreader.natural_earth(
+    resolution='50m', category='physical', name='land')
+
+land_geom = unary_union(
+    [record.geometry
+     for record in shpreader.Reader(land_shp_fname).records()
+     if record.attributes.get('featurecla') != "Null island"])
+
+LAND = prep(land_geom)
+
+import shapely.geometry as sgeom
+def is_land(xy):
+   return LAND.contains(sgeom.Point(*xy))
 
