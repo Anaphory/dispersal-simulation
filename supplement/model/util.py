@@ -1,5 +1,6 @@
 """Helper functions for the dispersal model"""
 
+import os
 import numpy
 
 import osm
@@ -58,7 +59,10 @@ class PopulationCapModel:
         try:
             return self._tif
         except AttributeError:
-            self._tif = tifffile.imread("/home/gereon/Public/settlement-of-americas/supplement/worldclim/wc2.0_bio_30s_12.tif").clip(0)
+            self._tif = tifffile.imread(os.path.join(
+                os.path.dirname(__file__),
+                "../worldclim/wc2.0_bio_30s_12.tif"))
+            self._tif.clip(0, out=self._tif)
             return self._tif
 
     def population_capacity(self, point):
