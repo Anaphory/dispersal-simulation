@@ -387,9 +387,6 @@ def observe_neighbors(
 # ## 4.8 Interaction
 #  - Agents compete for limited resources
 #  - Agents of similar culture cooperate in the exploitation of resources
-
-
-
 @cython.ccall
 def cultural_distance(c1: cython.int, c2: cython.int) -> cython.int:
     """Cultural distance is the Hamming distance of the culture vectors.
@@ -422,22 +419,18 @@ def cultural_distance(c1: cython.int, c2: cython.int) -> cython.int:
         c += 1 & mismatch
         mismatch >>= 1
     return c
-
-
 #  - Agents may avoid other agents when the expected gain from moving to their
 #    spot would be reduced due to their presence (different culture and thus
 #    competition instead of cooperation)
 
+
 # ## 4.9 Collectives
+#
 # Groups of agents with similar culture on the same patch form temporary
 #    groups to collaborate for the exploitation of resources, according
 #    to the following grouping structure.
-#    
-
-
-
-def cooperate(
-        families_in_this_location: Sequence[Family]) -> Tuple[Sequence[CooperativeGroup], int]:
+def cooperate(families_in_this_location: Sequence[Family]) \
+        -> Tuple[Sequence[CooperativeGroup], int]:
     cooperative_groups: List[CooperativeGroup] = []
     sum_labor = 0
     for family in families_in_this_location:
@@ -453,22 +446,22 @@ def cooperate(
                     # then ignore that group.
                     break
             else:
-                # Otherwise, join a group. This happens when the new family can cooperate with every family already assigned to that group.
+                # Otherwise, join a group. This happens when the new family can
+                # cooperate with every family already assigned to that group.
                 group.append(family)
                 break
         else:
-            # If there was no group to join, form a new ‘group’ consisting just of that family.
+            # If there was no group to join, form a new ‘group’ consisting just
+            # of that family.
             cooperative_groups.append(CooperativeGroup([family]))
     return cooperative_groups, sum_labor
+# Cooperatives are then the main agents of resource extraction and cultural
+# assimilation, as described in more detail in [Submodule
+# 7.5](#7.5-Cooperative-Resource-Extraction).
 
-
-# Cooperatives are then the main agents of resource extraction and cultural assimilation, as described in more detail in [Submodule 7.5](#7.5-Cooperative-Resource-Extraction).
 
 # ## 4.10 Observation
 # The following statistics are aggregated each time step.
-
-
-
 def observation(
         state: State,
         extensive: TextIO,
@@ -507,14 +500,11 @@ def observation(
 
 
 # # 5. Initialization
-# 
+#
 # In addition to describing the initialization, we list the parameters of the
 # model here. Parameters are read from arguments specified on the command line,
 # with the following default values. The sources for the default values are
 # given.
-
-
-
 def patch_from_grid_index(index: hexgrid.Index) -> Patch:
     longitude, latitude = hexgrid.geo_coordinates(index)
     data = get_data(longitude, latitude)
@@ -526,10 +516,12 @@ def patch_from_grid_index(index: hexgrid.Index) -> Patch:
     return Patch(resources, resources)
 
 
-# **FIXME:** The following cell should be converted into something of the same functionality when run as Python code, but which generates the parameter list as a table in Jupyter. There is probably some way to write some IPython %%magics to do this – a similar use case with slightly different syntax and semantics could also be used to generate machine- and human-readable tables for the properties of the entities, above.
-
-
-
+# **FIXME:** The following cell should be converted into something of the same
+# functionality when run as Python code, but which generates the parameter list
+# as a table in Jupyter. There is probably some way to write some IPython
+# %%magics to do this – a similar use case with slightly different syntax and
+# semantics could also be used to generate machine- and human-readable tables
+# for the properties of the entities, above.
 def parse_args(args: Sequence[str]) -> Tuple[halfyears, kcal]:
     parser = argparse.ArgumentParser(description="Run dispersal model")
     parser.add_argument(
@@ -620,8 +612,6 @@ def parse_args(args: Sequence[str]) -> Tuple[halfyears, kcal]:
     return params.n_steps, params.daily_energy
 
 
-
-
 def initialization() -> State:
     start1 = hexgrid.closest_grid_point(-159.873, 65.613)
     # Western Tip of Alaska
@@ -630,9 +620,9 @@ def initialization() -> State:
 
     return State(
         patches=OnDemandDict(patch_from_grid_index),
-        # In the program, patches are only created when a family actually needs to inspect them.
-        # Because they are static and not influenced by the simulation when no families are around
-        # this does not matter.
+        # In the program, patches are only created when a family actually needs
+        # to inspect them. Because they are static and not influenced by the
+        # simulation when no families are around this does not matter.
         families=DefaultDict[hexgrid.Index, List[Family]](
             list, {
                 start1: [Family(
@@ -651,23 +641,25 @@ def initialization() -> State:
 
 
 # # 6. Input Data
-# 
+#
 # This model does not currently use input data to represent time-varying
 # processes. At a later stage, the inclusion of paleoclimate data for the
 # Americas is intended as input data.
-
+#
 # # 7. Submodels
-# The model has various sub-modules, which are taken from the existing literature with adaptations to make them all fit together. They are listed here in the same order as their appearance in [Section 3](#3.-Process-overview-and-scheduling)
-
+#
+# The model has various sub-modules, which are taken from the existing
+# literature with adaptations to make them all fit together. They are listed
+# here in the same order as their appearance in [Section
+# 3](#3.-Process-overview-and-scheduling)
+#
 # ## 7.1 Resource use
-
-
-
 def use_resources_and_maybe_shrink(family: Family) -> None:
     """Use up a family's resources.
 
-    A family uses their stored resources to feed as many members as possible. If
-    the stored resources are insufficient to feed everyone, the family shrinks.
+    A family uses their stored resources to feed as many members as possible.
+    If the stored resources are insufficient to feed everyone, the family
+    shrinks.
 
     Internally, this function modifies the Family object.
 
@@ -679,8 +671,6 @@ def use_resources_and_maybe_shrink(family: Family) -> None:
     family.effective_size = size
     family.stored_resources = resources_at_season_end(
         family.stored_resources, family.effective_size)
-
-
 
 
 def resources_at_season_end(resources: kcal, size: int) -> kcal:
@@ -699,8 +689,6 @@ def resources_at_season_end(resources: kcal, size: int) -> kcal:
     return resources_after
 
 
-
-
 def is_moribund(family: Family) -> bool:
     """A family of less than 2 individuals is not a family any more.
 
@@ -714,11 +702,11 @@ def is_moribund(family: Family) -> bool:
 
 
 # ## 7.2 Population growth
-# 
-# Families grow unconditionally after a fixed waiting time, starting after their last child or after the last season in which they suffered from lack of resources. If resources are plenty, families will have children every 2 seasons, i.e. every one year.
-
-
-
+#
+# Families grow unconditionally after a fixed waiting time, starting after
+# their last child or after the last season in which they suffered from lack of
+# resources. If resources are plenty, families will have children every 2
+# seasons, i.e. every one year.
 def maybe_grow(family: Family) -> None:
     if family.seasons_till_next_child <= 0:
         family.effective_size += 1
@@ -728,20 +716,19 @@ def maybe_grow(family: Family) -> None:
 
 
 # ## 7.3 Creation of new agents
-
-
-
 def maybe_procreate(family: Family) -> Optional[Family]:
-    """ Split a family in two when conditions are right.
+    """Split a family in two when conditions are right.
 
-    Agents procreate when they contain 10 or more adult individuals. On the level of the
-    individuals forming the family, this means that two individuals split off to form a new
-    family. There is some bookkeeping involed to generate meaningful `descendance` values for
-    the analysis, when we might want to track how genetic relationships, culture and geography
+    Agents procreate when they contain 10 or more adult individuals. On the
+    level of the individuals forming the family, this means that two
+    individuals split off to form a new family. There is some bookkeeping
+    involed to generate meaningful `descendance` values for the analysis, when
+    we might want to track how genetic relationships, culture and geography
     interact.
 
-    The offspring family inherits (a copy of) the parent family's location history and culture
-    and can expect their first child to be an adult contributor after 12 years.
+    The offspring family inherits (a copy of) the parent family's location
+    history and culture and can expect their first child to be an adult
+    contributor after 12 years.
 
     """
     if family.effective_size < 10:
@@ -762,9 +749,6 @@ def maybe_procreate(family: Family) -> Optional[Family]:
 
 
 # ## 7.4 Migration
-
-
-
 def decide_on_moving(
         family: Family,
         current_patch: Patch,
@@ -772,10 +756,10 @@ def decide_on_moving(
         avoid_stay: bool = False) -> hexgrid.Index:
     """Decide on the next location for a family to move to.
 
-    A family has knowledge about their current location (which is only used to check
-    that the known destinations are working in the correct order) and some nearby
-    locations, represented by `known_destination`. This function picks one of those
-    nearby locations for the family to move to.
+    A family has knowledge about their current location (which is only used to
+    check that the known destinations are working in the correct order) and
+    some nearby locations, represented by `known_destination`. This function
+    picks one of those nearby locations for the family to move to.
 
     If the `avoid_stay` switch is set to `True`, the decision is heavily biased
     against staying in the same location.
@@ -947,25 +931,22 @@ def resources_from_patch(
 
 def effective_labor_through_cooperation(n_cooperators: int) -> float:
     """Effective labor contribution of a group of cooperators.
-    
-    A single human can forage a certain amount, but by the assumptions
-    of the model, two cooperating foragers gain more resources together than
-    they would individually. The effective labor returned by this
-    function is the factor by which 2 cooperating foragers are
-    better than 2 separate foragers.
-    
-    This formula follows Crema (2014), with the caveat that Crema computes payoffs,
-    whereas we compute a multiplicative factor (effective labor) which
-    is multiplied with the standard resource gain to give the acutal resource payoffs.
-    Given that Crema's payoffs have a mean of μ=10, we adjust our
+
+    A single human can forage a certain amount, but by the assumptions of the
+    model, two cooperating foragers gain more resources together than they
+    would individually. The effective labor returned by this function is the
+    factor by which 2 cooperating foragers are better than 2 separate foragers.
+
+    This formula follows Crema (2014), with the caveat that Crema computes
+    payoffs, whereas we compute a multiplicative factor (effective labor) which
+    is multiplied with the standard resource gain to give the acutal resource
+    payoffs. Given that Crema's payoffs have a mean of μ=10, we adjust our
     effective labor by the opposite factor.
+
     """
     return (1 + (n_cooperators - 1) ** params.cooperation_gain / 10)
-
-
-# In formulas, that the effective labor $k$ for a group of size $l$ is $k(l) = 1 + \frac{(l - 1)^{c}}{10}$.
-# In plots, this looks as follows.
-
+# In formulas, that the effective labor $k$ for a group of size $l$ is $k(l) =
+# 1 + \frac{(l - 1)^{c}}{10}$. In plots, this looks as follows.
 
 
 def test_effective_labor() -> None:
@@ -981,11 +962,8 @@ def test_effective_labor() -> None:
     assert 150 < 100 * effective_labor_through_cooperation(100) < 200
     plt.title("Effective labor depending on group size")
     plt.plot(numpy.arange(1, 100),
-             numpy.arange(1, 100) * effective_labor_through_cooperation(numpy.arange(1, 100)))
-
-test_effective_labor()
-
-
+             numpy.arange(1, 100) *
+             effective_labor_through_cooperation(numpy.arange(1, 100)))
 
 
 def adjust_culture(cooperating_families: CooperativeGroup) -> None:
@@ -1012,19 +990,15 @@ def mutate_culture(family: Family) -> None:
         family.seasons_until_next_mutation -= 1
 
 
-
-
 def exploit(patch: Patch, resource_reduction: kcal) -> None:
     patch.resources -= resource_reduction
     assert patch.resources > 0,  "Patch was extremely over-exploited"
     # They should be bigger than 0, but there may be rounding errors. Actually,
-    # they should not even get close to 0, due to params.accessible_resources < 1.
+    # they should not even get close to 0, because of
+    # `params.accessible_resources` < 1.
 
 
 # ## 7.6 Patch Resource Dynamics
-
-
-
 def recover(patch: Patch) -> None:
     if patch.resources < patch.max_resources - 1:
         patch.resources += (
@@ -1038,9 +1012,6 @@ def recover(patch: Patch) -> None:
 # Running sets the global `params` variable. Then the model is initialized
 # according to the parameters, and ran according to the schedule for
 # 15000 simulated years or until all families have died.
-
-
-
 if __name__ == "__main__":
     if 'dispersal' not in sys.argv[0]:
         # Probably called from a debugger, profiler, notebook or something
@@ -1052,14 +1023,8 @@ if __name__ == "__main__":
     simulate(s, params.n_steps)
 
 
-# # Bibliography
-
-# In[ ]:
-
-
 sources = """
-Bibliography
-============
+# Bibliography
 
 Grimm, Volker & Berger, Uta & Bastiansen, Finn & Eliassen, Sigrunn & Ginot,
     Vincent & Giske, Jarl & Goss-Custard, John et al. 2006. A standard protocol
