@@ -12,6 +12,9 @@ from types_and_units import (
     S,
     T,
     Callable,
+    Mapping,
+    Iterator,
+    Any,
 )
 
 
@@ -74,14 +77,14 @@ class OnDemandDict(Dict[S, T]):
         return self[key]
 
 
-def serialize(o):
+def serialize(o: object) -> object:
     """JSON helper function to serialize nummpy integers"""
     if isinstance(o, numpy.integer):
         return int(o)
     raise TypeError
 
 
-def get_data(longitude, latitude):
+def get_data(longitude: float, latitude: float) -> Mapping[str, Any]:
     "Get climate data for this point"
     return {
         "longitude": longitude,
@@ -92,3 +95,13 @@ def get_data(longitude, latitude):
 def random_choice(x: Sequence[T]) -> T:
     """Return a random element from the sequence."""
     return x[numpy.random.randint(len(x))]
+
+
+def in_random_order_ignoring_location(keyval: Mapping[Any, Sequence[T]]) -> Iterable[T]:
+    """Return the members of the mappings's values in random order.
+
+    >>> set(in_random_order_ignoring_location({1: [2, 3], 4: [5], 6: [], 7: [1]}))
+    {1, 2, 3, 5}
+
+    """
+    return shuffle(sum((f for f in keyval.values()), []))

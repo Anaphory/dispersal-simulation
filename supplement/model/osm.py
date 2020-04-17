@@ -1,7 +1,9 @@
 import overpy
-import shapely.geometry as geometry
+from shapely.prepared import prep
 from shapely.wkb import load, dump
+import shapely.geometry as geometry
 from shapely.ops import linemerge, unary_union, polygonize
+import cartopy.io.shapereader as shpreader
 
 api = overpy.Overpass()
 
@@ -11,6 +13,7 @@ areas = {
 shapes = {}
 
 for area, id in areas.items():
+    # Load and cache all prerequested areas
     try:
         shapes[area] = load(open("{:s}.wkb".format(area), "rb"))
     except FileNotFoundError:
@@ -22,19 +25,21 @@ for area, id in areas.items():
         out skel qt; """.format(id)
         result = api.query(query)
 
-        lss = [] #convert ways to linstrings
+        # Convert ways to linstrings
+        lss = []
 
-        for ii_w,way in enumerate(result.ways):
+        for ii_w, way in enumerate(result.ways):
             ls_coords = []
 
             for node in way.nodes:
-                ls_coords.append((node.lon,node.lat)) # create a list of node coordinates
+                # create a list of node coordinates
+                ls_coords.append((node.lon, node.lat))
 
-            lss.append(geometry.LineString(ls_coords)) # create a LineString from coords
+            # create a LineString from coords
+            lss.append(geometry.LineString(ls_coords))
 
-
-        merged = linemerge([*lss]) # merge LineStrings
-        borders = unary_union(merged) # linestrings to a MultiLineString
+        merged = linemerge([*lss])     # merge LineStrings
+        borders = unary_union(merged)  # linestrings to a MultiLineString
         polygons = list(polygonize(borders))
         shapes[area] = geometry.MultiPolygon(polygons)
         dump(shapes[area], open("{:s}.wkb".format(area), "wb"))
@@ -43,9 +48,6 @@ for area, id in areas.items():
 def contains(shape, coordinates):
     return shape.contains(geometry.Point(*coordinates))
 
-
-import cartopy.io.shapereader as shpreader
-from shapely.prepared import prep
 
 land_shp_fname = shpreader.natural_earth(
     resolution='50m', category='physical', name='land')
@@ -57,7 +59,6 @@ land_geom = unary_union(
 
 LAND = prep(land_geom)
 
-import shapely.geometry as sgeom
-def is_land(xy):
-   return LAND.contains(sgeom.Point(*xy))
 
+def is_land(xy) -> bool:
+    return LAND.contains(geometry.Point(*xy))
