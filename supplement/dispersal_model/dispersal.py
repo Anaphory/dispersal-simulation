@@ -9,13 +9,13 @@ with resource depletion, migration, and culture-dependent cooperation.
 
 # General imports, which in Python should come on top of the module to make
 # dependencies transparent.
+import sys        # Writing to standard output as a console program
+
 import cython     # Faster execution using C
 import attr       # Attribute-focussed entities
 import itertools  # Tools for iterating over combinations, etc. of sequences
 import numpy      # Fast maths
 import json       # Transparent data storage in Java Script Object Notation
-
-import sys        # Writing to standard output as a console program
 
 import matplotlib.pyplot as plt
 

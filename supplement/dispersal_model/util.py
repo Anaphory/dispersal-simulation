@@ -1,23 +1,15 @@
 """Helper functions for the dispersal model"""
 
 import os
-import numpy
 
+import numpy
 import tifffile
 
 import dispersal_model.osm as osm
 from dispersal_model.hexgrid import AMERICAS
 
 from dispersal_model.types_and_units import (
-    Sequence,
-    Dict,
-    Iterable,
-    S,
-    T,
-    Callable,
-    Mapping,
-    Any,
-)
+    Any, Callable, Dict, Iterable, Mapping, S, Sequence, T)
 
 
 class PopulationCapModel:
