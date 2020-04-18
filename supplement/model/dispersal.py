@@ -16,7 +16,6 @@ import numpy      # Fast maths
 import json       # Transparent data storage in Java Script Object Notation
 
 import sys        # Writing to standard output as a console program
-import argparse   # Get parameters as CLI arguments when run as console program
 
 import matplotlib.pyplot as plt
 
@@ -25,13 +24,11 @@ from util import (serialize, get_data, OnDemandDict, density,
 import hexgrid
 from types_and_units import (
     halfyears, kcal, meters,
-    List, Mapping, Namespace, Sequence, Tuple, Iterable, Optional, Iterator,
-    TextIO, Dict, Any, Counter, DefaultDict)
+    List, Mapping, Sequence, Tuple, Iterable, Optional, Iterator,
+    TextIO, Dict, Any, Counter, DefaultDict, NamedTuple)
 
 if cython.compiled:
     print("# Running compiled Cython version.")
-
-params: Namespace
 
 # Model Description
 # =================
@@ -78,7 +75,7 @@ class Family:
     # A list of cells indices.
 
     @property
-    def location(self):
+    def location(self) -> hexgrid.Index:
         return self.location_history[0]
 
     number_offspring: int = attr.ib(default=0)
@@ -161,13 +158,13 @@ class State:
     # A list of families under simulation, by location
     t: halfyears = attr.ib()
     # Time steps since simulation start, in 1/2 of a year.
-    params: Namespace = attr.ib()
 
 
 # # 3. Process overview and scheduling
 #
 # The model progresses in discrete time steps, each corresponding to half a
-# year of simulated time. The structure of a single time step, which updates
+# year of simulated time. The entire simulation consists of repeating the step
+# to simulate 15000 years. The structure of a single time step, which updates
 # the State, is as follows.
 def step(state: State) -> State:
     """Run a simulation step."""
@@ -239,20 +236,10 @@ def step(state: State) -> State:
     for patch in state.patches.values():
         recover(patch)
 
-    # Observations of the model state are recorded
-    observation(state, state.params.log)
-
     # At last, the model advances one time step.
     state.t += 1
 
     # The old state has thus been transformed into the new state.
-    return state
-
-
-# The entire simulation consists of repeating the step to simulate 15000 years.
-def simulate(state: State, n_steps: halfyears = 15000 * 2) -> State:
-    for t in range(n_steps):
-        state = step(state)
     return state
 
 
@@ -470,7 +457,8 @@ def cooperate(families_in_this_location: Sequence[Family]) \
 def observation(
         state: State,
         extensive: TextIO,
-        to: TextIO = sys.stdout) -> None:
+        to: TextIO = sys.stdout,
+        report_resources: bool = False) -> None:
     # Number of families (agents)
     report = {}
     extreport: Dict[str, Any] = {}
@@ -493,10 +481,10 @@ def observation(
           for family in families
           if families])
         for location, families in state.families.items()]
-    if params.report_resources:
-        extreport["Resources"] = [
-            s.patches[mij].resources
-            for mij in numpy.ndindex(*params.coordinates.shape[:-1])]
+    if report_resources:
+        extreport["Resources"] = {
+            index: patch.resources
+            for index, patch in state.patches.items()}
 
     print(report,
           file=to)
@@ -507,114 +495,65 @@ def observation(
 # # 5. Initialization
 #
 # In addition to describing the initialization, we list the parameters of the
-# model here. Parameters are read from arguments specified on the command line,
-# with the following default values. The sources for the default values are
-# given.
+# model here. The sources for the default values are given (FIXME: Or should
+# be, once the model is finished).
 def patch_from_grid_index(index: hexgrid.Index) -> Patch:
     longitude, latitude = hexgrid.geo_coordinates(index)
     data = get_data(longitude, latitude)
     resources = (
         density(**data) *             # Carrying capacity per km²
         hexgrid.AREA *                # Area in km²
-        params.time_step_energy_use   # Individual energy needs
+        time_step_energy_use   # Individual energy needs
     )
     return Patch(resources, resources)
 
 
-# **FIXME:** The following cell should be converted into something of the same
-# functionality when run as Python code, but which generates the parameter list
-# as a table in Jupyter. There is probably some way to write some IPython
-# %%magics to do this – a similar use case with slightly different syntax and
-# semantics could also be used to generate machine- and human-readable tables
-# for the properties of the entities, above.
-def parse_args(args: Sequence[str]) -> Tuple[halfyears, kcal]:
-    parser = argparse.ArgumentParser(description="Run dispersal model")
-    parser.add_argument(
-        "--n-steps", type=halfyears, default=30_000,
-        help="The number of half-year steps to run the simulation for. The "
-        "default is 30000 half-years, because the current scientific "
-        "consensus is that the settlement of the Americas began some 15000 "
-        "years BP."
-    )  # Cite:
-    parser.add_argument(
-        "--daily-energy", type=kcal, default=2263,
-        help="Energy consumption per adult per day. According to Pontzer et "
-        "al. (2012), the mean daily total energy expenditure among Hadza was "
-        "2263 kcal (mean of men and women). Smith & Smith (2003) work with a "
-        "staple diet containing 2390 kcal/day."
-    )
-    parser.add_argument(
-        "--payoff-standarddeviation", type=int, default=0.1,
-        help="The standard deviation of the foraging contribution "
-        "distribution, relative to the expected foraging contribution of an "
-        "individual."
-    )
-    parser.add_argument(
-        "--cooperation-gain", type=float, default=0.5,
-        help="The exponent of the additional efficiency of a group working "
-        "together. If, eg., cooperation_gain==0.3, then two individuals "
-        "working together contribute as much as 4 working separately, 3 as "
-        "7.2, 4 as 11, 5 as 15 etc."
-    )
-    parser.add_argument(
-        "--storage-loss", type=float, default=0.33,
-        help="The proportion of stored resources lost per time step to "
-        "various random effects, such as pests, rot, spoilage, or leaving "
-        "them behind when migrating. Morgan (2012) pulls a number of 33%% per "
-        "year (focussing on the winter season when it matters) out of thin "
-        "air."
-    )
-    parser.add_argument(
-        "--culture-mutation-rate", type=float, default=6e-2,
-        help="The probability per half-year that one aspect of culture "
-        "changes"
-    )
-    parser.add_argument(
-        "--cooperation_threshold", type=float, default=6,
-        help="The minimum cultural distance where cooperation breaks down"
-    )
-    parser.add_argument(
-        "--area", type=float, default=450_000_000,
-        help="Design area of the hex grid"
-    )
-    parser.add_argument(
-        "--attention-probability", type=float, default=0.1,
-        help="Probability to know about the state of some patch"
-    )
-    parser.add_argument(
-        "--resource-recovery", type=float, default=0.2,
-        help="The growth rate of a path's resources over half a year"
-    )
-    parser.add_argument(
-        "--evidence-needed", type=float, default=0.3,
-        help="The proportion of seasonal payoff that needs to be more "
-        "somewhere else for the family to move. Crema (2015) has c=3 for "
-        "μ=10, so we take 0.3 as the default."
-    )
-    parser.add_argument(
-        "--accessible-resources", type=float, default=0.3,
-        help="The proportion of resources that are accessible to foraging."
-        # cf. Crema (2015)
-    )
-    parser.add_argument(
-        "--culture-dimensionality", type=int, default=20,
-        help="The number binary dimensions of 'Culture'"
-    )
+class ParameterSetting(NamedTuple):
+    n_steps: halfyears = 30_000
+    # The number of half-year steps to run the simulation for. The default is
+    # 30000 half-years, because the current scientific consensus is that the
+    # settlement of the Americas began some 15000 years BP.
+    daily_energy: kcal = 2263
+    # Energy consumption per adult per day. According to Pontzer et al. (2012),
+    # the mean daily total energy expenditure among Hadza was 2263 kcal (mean
+    # of men and women). Smith & Smith (2003) work with a staple diet
+    # containing 2390 kcal/day.
+    payoff_standarddeviation: float = 0.1
+    # The standard deviation of the foraging contribution distribution,
+    # relative to the expected foraging contribution of an individual.
+    cooperation_gain: float = 0.5
+    # The exponent of the additional efficiency of a group working together.
+    # If, eg., cooperation_gain==0.3, then two individuals working together
+    # contribute as much as 4 working separately, 3 as 7.2, 4 as 11, 5 as 15
+    # etc.
+    storage_loss: float = 0.33
+    # The proportion of stored resources lost per time step to various random
+    # effects, such as pests, rot, spoilage, or leaving them behind when
+    # migrating. Morgan (2012) pulls a number of 33%% per year (focussing on
+    # the winter season when it matters) out of thin air.
+    culture_mutation_rate: float = 6e-2
+    # The probability per half-year that one aspect of culture changes
+    cooperation_threshold: float = 6
+    # The minimum cultural distance where cooperation breaks down
+    area: float = 450_000_000
+    # Design area of the hex grid
+    attention_probability: float = 0.1
+    # Probability to know about the state of some patch
+    resource_recovery: float = 0.2
+    # The growth rate of a path's resources over half a year
+    evidence_needed: float = 0.3
+    # The proportion of seasonal payoff that needs to be more somewhere else
+    # for the family to move. Crema (2015) has c=3 for μ=10, so we take 0.3 as
+    # the default.
+    accessible_resources: float = 0.3
+    # The proportion of resources that are accessible to foraging. cf. Crema
+    # (2015)
+    culture_dimensionality: int = 20
+    # The number binary dimensions of 'Culture'
 
-    parser.add_argument(
-        "--log", type=argparse.FileType('w'), default='log',
-        help="Logfile for observations"
-    )
-    parser.add_argument(
-        "--report_resources", action="store_true", default=False,
-        help="Include patch resources in log file"
-    )
 
-    global params
-    params = parser.parse_args(args)
-    params.time_step_energy_use = params.daily_energy * 365.24219 / 2
-
-    return params.n_steps, params.daily_energy
+params = ParameterSetting()
+time_step_energy_use: kcal = params.daily_energy * 365.24219 / 2
 
 
 def initialization() -> State:
@@ -641,8 +580,7 @@ def initialization() -> State:
                     location_history=[start2],
                     stored_resources=16000000)],
             }),
-        t=0,
-        params=params)
+        t=0)
 
 
 # # 6. Input Data
@@ -688,7 +626,7 @@ def resources_at_season_end(resources: kcal, size: int) -> kcal:
 
     """
     resources_after = resources - (
-        size * params.time_step_energy_use)
+        size * time_step_energy_use)
     if resources_after > 0:
         resources_after = (1 - params.storage_loss)
     return resources_after
@@ -807,7 +745,7 @@ def decide_on_moving(
         if expected_gain >= max_gain:
             if expected_gain < (
                     current_gain +
-                    params.time_step_energy_use * params.evidence_needed):
+                    time_step_energy_use * params.evidence_needed):
                 continue
             if expected_gain == max_gain:
                 c += 1
@@ -830,22 +768,13 @@ def test_decide_on_moving_is_unbiased() -> Counter[hexgrid.Index]:
     iterator of neighbors it gets passed, then the count of destination indices
     should be roughly evenly distributed between all the 20 different indices.
 
-    WARNING: Due to current architectural limitations, running this function
-    resets any parameters you may have set from the command line. It may also
-    override an existing log file.
-
     """
-    try:
-        params.time_step_energy_use
-    except (NameError, AttributeError, UnboundLocalError):
-        parse_args([])
-
     family = Family(descendence='', culture=0, effective_size=1)
     current_patch = Patch(resources=1, max_resources=2)
     known_destinations = [('', current_patch, 2, 0)] + [
         (str(i),
-         Patch(resources=2 + 3 * params.time_step_energy_use,
-               max_resources=2 + 3 * params.time_step_energy_use),
+         Patch(resources=2 + 3 * time_step_energy_use,
+               max_resources=2 + 3 * time_step_energy_use),
          2,
          0)
         for i in range(20)]
@@ -903,25 +832,25 @@ def resources_from_patch(
         estimate: bool = False) -> kcal:
     # From crema2014simulation
     my_relative_returns = (
-        params.time_step_energy_use * labor *
+        time_step_energy_use * labor *
         effective_labor_through_cooperation(labor))
     if not estimate:
         my_relative_returns = numpy.maximum(
             numpy.random.normal(
                 loc=my_relative_returns,
                 scale=(params.payoff_standarddeviation *
-                       params.time_step_energy_use / labor ** 0.5)),
+                       time_step_energy_use / labor ** 0.5)),
             0)
     if others_labor:
         others_relative_returns = (
-            params.time_step_energy_use * labor *
+            time_step_energy_use * labor *
             effective_labor_through_cooperation(others_labor))
         if not estimate:
             others_relative_returns = numpy.maximum(
                 numpy.random.normal(
                     loc=others_relative_returns,
                     scale=(params.payoff_standarddeviation *
-                           params.time_step_energy_use / others_labor ** 0.5)),
+                           time_step_energy_use / others_labor ** 0.5)),
                 0)
     else:
         others_relative_returns = 0
@@ -955,10 +884,6 @@ def test_effective_labor() -> None:
     """Check and plot the effective labor computation.
 
     """
-    try:
-        params.cooperation_gain
-    except (NameError, AttributeError, UnboundLocalError):
-        parse_args([])
     assert 2 < 2 * effective_labor_through_cooperation(2) < 3
     assert 12 < 10 * effective_labor_through_cooperation(10) < 20
     assert 150 < 100 * effective_labor_through_cooperation(100) < 200
@@ -997,7 +922,11 @@ def exploit(patch: Patch, resource_reduction: kcal) -> None:
     assert patch.resources > 0,  "Patch was extremely over-exploited"
     # They should be bigger than 0, but there may be rounding errors. Actually,
     # they should not even get close to 0, because of
-    # `params.accessible_resources` < 1.
+    # `params.accessible_resources` < 1. It can probably still happen if the
+    # normal distribution in resources_from_patch spits out a very big number
+    # at random. Negative resources are problematic, however, because the patch
+    # can never recover from them (in fact, it gets worse and worse), so
+    # raising an exception in that case is useful.
 
 
 # ## 7.6 Patch Resource Dynamics
@@ -1007,22 +936,6 @@ def recover(patch: Patch) -> None:
             patch.resources *
             params.resource_recovery *
             (1 - patch.resources / patch.max_resources))
-
-
-# # Appendix: Running the Model
-# The model has a command line interface to set most parameters and run it.
-# Running sets the global `params` variable. Then the model is initialized
-# according to the parameters, and ran according to the schedule for
-# 15000 simulated years or until all families have died.
-if __name__ == "__main__":
-    if 'dispersal' not in sys.argv[0]:
-        # Probably called from a debugger, profiler, notebook or something
-        # Proceed with defaults.
-        parse_args([])
-    else:
-        parse_args(sys.argv[1:])
-    s = initialization()
-    simulate(s, params.n_steps)
 
 
 sources = """
