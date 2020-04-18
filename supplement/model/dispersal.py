@@ -76,6 +76,11 @@ class Family:
     # The family's shared culture
     location_history: List[hexgrid.Index] = attr.ib(factory=list)
     # A list of cells indices.
+
+    @property
+    def location(self):
+        return self.location_history[0]
+
     number_offspring: int = attr.ib(default=0)
     # The number of descendant families this family has given rise to so far
     effective_size: int = attr.ib(default=2)
@@ -173,7 +178,7 @@ def step(state: State) -> State:
         # Submodule 7.1
         use_resources_and_maybe_shrink(family)
         if is_moribund(family):
-            state.families[family.location_history[0]].remove(family)
+            state.families[family.location].remove(family)
             continue
 
         # Submodule 7.2
@@ -189,11 +194,11 @@ def step(state: State) -> State:
             # their progenitor.
             destination = decide_on_moving(
                 descendant,
-                current_patch=state.patches[family.location_history[0]],
+                current_patch=state.patches[family.location],
                 known_destinations=observe_neighbors(
                     family, state.patches, state.families,
                     hexgrid.neighbors_within_distance(
-                        family.location_history[0],
+                        family.location,
                         meters(52413))),
                 avoid_stay=True)
             movement_bookkeeping(descendant, destination, state)
@@ -203,11 +208,11 @@ def step(state: State) -> State:
 
         destination = decide_on_moving(
             family,
-            current_patch=state.patches[family.location_history[0]],
+            current_patch=state.patches[family.location],
             known_destinations=observe_neighbors(
                 family, state.patches, state.families,
                 hexgrid.neighbors_within_distance(
-                    family.location_history[0],
+                    family.location,
                     meters(52413))))
         movement_bookkeeping(family, destination, state)
 
@@ -219,7 +224,7 @@ def step(state: State) -> State:
         if not families:
             continue
         for family in families:
-            assert family.location_history[0] == patch_id
+            assert family.location == patch_id
         patch = state.patches[patch_id]
         resource_reduction = 0.0
         groups_and_efficiencies, sum_labor = cooperate(families)
@@ -775,7 +780,7 @@ def decide_on_moving(
     try:
         target, patch, cooperators, competitors = next(known_destinations)
     except StopIteration:
-        return family.location_history[0]
+        return family.location
     assert patch == current_patch
     if avoid_stay:
         try:
@@ -864,24 +869,21 @@ def movement_bookkeeping(
     bidirectional link from the grid stored in the state to the family
     and from the family to its grid location needs to be maintained.
     """
-    if destination == family.location_history[0]:
+    if destination == family.location:
         return
     try:
         family.location_history.remove(destination)
     except ValueError:
         pass
     try:
-        state.families[family.location_history[0]].remove(family)
+        state.families[family.location].remove(family)
     except ValueError:
         pass
     family.location_history.insert(0, destination)
-    state.families[family.location_history[0]].append(family)
+    state.families[family.location].append(family)
 
 
 # ## 7.5 Cooperative Resource Extraction
-
-
-
 def extract_resources(
         patch: Patch, group: CooperativeGroup, total_labor_here: int) -> kcal:
     labor = sum([family.effective_size
@@ -1037,4 +1039,3 @@ Grimm, Volker & Berger, Uta & DeAngelis, Donald L. & Polhill, J. Gary & Giske,
     (doi:10.1016/j.ecolmodel.2010.08.019)
 
 """.split("\n\n")[1:]
-
