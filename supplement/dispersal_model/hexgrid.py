@@ -6,7 +6,7 @@ from h3 import h3
 
 import cartopy.geodesic as geodesic
 
-from types_and_units import meters, Iterator, Tuple, NamedTuple
+from dispersal_model.types_and_units import meters, Iterator, Tuple, NamedTuple
 
 RESOLUTION = 5
 

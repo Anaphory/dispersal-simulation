@@ -10,7 +10,7 @@ with resource depletion, migration, and culture-dependent cooperation.
 # General imports, which in Python should come on top of the module to make
 # dependencies transparent.
 import cython     # Faster execution using C
-import attr       # Classes composed of just a few properties
+import attr       # Attribute-focussed entities
 import itertools  # Tools for iterating over combinations, etc. of sequences
 import numpy      # Fast maths
 import json       # Transparent data storage in Java Script Object Notation
@@ -19,10 +19,12 @@ import sys        # Writing to standard output as a console program
 
 import matplotlib.pyplot as plt
 
-from util import (serialize, get_data, OnDemandDict, density,
-                  in_random_order_ignoring_location)
-import hexgrid
-from types_and_units import (
+from dispersal_model.util import (
+    serialize, get_data, OnDemandDict, density,
+    in_random_order_ignoring_location)
+
+import dispersal_model.hexgrid as hexgrid
+from dispersal_model.types_and_units import (
     halfyears, kcal, meters,
     List, Mapping, Sequence, Tuple, Iterable, Optional, Iterator,
     TextIO, Dict, Any, Counter, DefaultDict, NamedTuple)
@@ -862,7 +864,6 @@ def resources_from_patch(
         # implementing.
     else:
         others_relative_returns = 0
-    print(my_relative_returns, others_relative_returns)
     return (my_relative_returns) / (
         my_relative_returns + others_relative_returns) * numpy.minimum(
             my_relative_returns + others_relative_returns,

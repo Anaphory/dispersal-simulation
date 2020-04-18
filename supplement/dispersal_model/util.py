@@ -3,11 +3,12 @@
 import os
 import numpy
 
-import osm
 import tifffile
-from hexgrid import AMERICAS
 
-from types_and_units import (
+import dispersal_model.osm as osm
+from dispersal_model.hexgrid import AMERICAS
+
+from dispersal_model.types_and_units import (
     Sequence,
     Dict,
     Iterable,
