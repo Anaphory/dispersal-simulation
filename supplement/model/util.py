@@ -62,6 +62,9 @@ class PopulationCapModel:
             self._tif = tifffile.imread(os.path.join(
                 os.path.dirname(__file__),
                 "../worldclim/wc2.0_bio_30s_12.tif"))
+            # FIXME: 30 seconds is less than a kilometer. The hexes have an
+            # edge length of 8km, so a resolution of 5 minutes should still be
+            # fine, and save a lot of memory.
             self._tif.clip(0, out=self._tif)
             return self._tif
 
@@ -100,6 +103,10 @@ class PopulationCapModel:
 
 p = PopulationCapModel(
     alpha=4 * 10 ** -8.07,
+    # First inspection suggest an under-estimation of the population of Alaska
+    # by a factor of ~4, so we add that factor here for now. The goal is to
+    # provide a better population model in the long run, so this construction
+    # will hopefully be completely replaced anyway.
     beta=2.64)
 
 
