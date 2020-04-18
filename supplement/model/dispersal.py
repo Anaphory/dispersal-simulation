@@ -224,12 +224,14 @@ def step(state: State) -> State:
             assert family.location == patch_id
         patch = state.patches[patch_id]
         resource_reduction = 0.0
-        groups_and_efficiencies, sum_labor = cooperate(families)
-        for cooperating_families in groups_and_efficiencies:
+        cooperatives, sum_labor = cooperate(families)
+        for cooperating_families in cooperatives:
             resource_reduction += extract_resources(
                 patch, cooperating_families, sum_labor)
             adjust_culture(cooperating_families)
 
+        assert resource_reduction <= (
+            patch.resources * params.accessible_resources + 1)
         exploit(patch, resource_reduction)
 
     # Then, patches advance to the next season according to Submodule 7.6.
@@ -843,7 +845,7 @@ def resources_from_patch(
             0)
     if others_labor:
         others_relative_returns = (
-            time_step_energy_use * labor *
+            time_step_energy_use * others_labor *
             effective_labor_through_cooperation(others_labor))
         if not estimate:
             others_relative_returns = numpy.maximum(
