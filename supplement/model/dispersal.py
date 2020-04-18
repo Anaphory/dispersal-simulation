@@ -230,8 +230,6 @@ def step(state: State) -> State:
                 patch, cooperating_families, sum_labor)
             adjust_culture(cooperating_families)
 
-        assert resource_reduction <= (
-            patch.resources * params.accessible_resources + 1)
         exploit(patch, resource_reduction)
 
     # Then, patches advance to the next season according to Submodule 7.6.
@@ -854,8 +852,17 @@ def resources_from_patch(
                     scale=(params.payoff_standarddeviation *
                            time_step_energy_use / others_labor ** 0.5)),
                 0)
+        # If two groups compete, each can under-estimate the relative returns
+        # of the other one. In that case, there is a chance to exploit more
+        # resources than would be normally accessible. FIXME: There is
+        # potentially a way out, which also gets rid of the `estimate` optional
+        # argument and reduces the number of random draws. The calling function
+        # could do the random draw, and keep track of the deviations locally,
+        # passing adjusted labor values to here. This may be worth
+        # implementing.
     else:
         others_relative_returns = 0
+    print(my_relative_returns, others_relative_returns)
     return (my_relative_returns) / (
         my_relative_returns + others_relative_returns) * numpy.minimum(
             my_relative_returns + others_relative_returns,
@@ -921,14 +928,12 @@ def mutate_culture(family: Family) -> None:
 
 def exploit(patch: Patch, resource_reduction: kcal) -> None:
     patch.resources -= resource_reduction
-    assert patch.resources > 0,  "Patch was extremely over-exploited"
-    # They should be bigger than 0, but there may be rounding errors. Actually,
-    # they should not even get close to 0, because of
-    # `params.accessible_resources` < 1. It can probably still happen if the
-    # normal distribution in resources_from_patch spits out a very big number
-    # at random. Negative resources are problematic, however, because the patch
-    # can never recover from them (in fact, it gets worse and worse), so
-    # raising an exception in that case is useful.
+    # Patch resources should always be bigger than 0, because of
+    # `params.accessible_resources` < 1. Any deviations would be to very weird
+    # float rounding issues. Negative resources are really problematic, because
+    # the patch can never recover from them (in fact, it gets worse and worse),
+    # so raising an exception in that case is useful.
+    assert patch.resources > 0
 
 
 # ## 7.6 Patch Resource Dynamics
