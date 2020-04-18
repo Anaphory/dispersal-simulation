@@ -169,8 +169,11 @@ class State:
 # to simulate 15000 years. The structure of a single time step, which updates
 # the State, is as follows.
 def step(state: State) -> State:
-    """Run a simulation step."""
+    """Run a simulation step.
 
+    The individual sub-modules referenced here can be found below.
+
+    """
     # First, families adjust. These things can happen in parallel for families
     # outside interaction range.
     for family in in_random_order_ignoring_location(state.families):
@@ -346,24 +349,27 @@ def known_location(
 #    Agents have knowledge of the mean and use it to predict their resource
 #    gain, but they do not take the random distribution into account.
 
+
 # ## 4.7 Sensing
 #
-#  - A family can know the current state of some locations (see [Section
-#    4.5](#4.5-Learning) in their neighborhood for the decision process whether
-#    and where to move. That is, for those locations, the family knows actual
-#    available resources and size and culture vectors of all agents located
-#    there at the moment, which the family needs to determine whether those
-#    agents will likely be cooperators (cultural distance less than
-#    `params.cooperation_threshold`) or competitors. (The actual split into
-#    cooperators and competitors is actualized only by the formation of
-#    collectives (see [Section 4.9](#4.9-Collectives)) in [Submodule
-#    7.5](#7.5-Cooperative-Resource-Extraction)
+# A family can know the current state of some locations (see [Section
+# 4.5](#4.5-Learning) in their neighborhood for the decision process whether
+# and where to move. That is, for those locations, the family knows actual
+# available resources and size and culture vectors of all agents located there
+# at the moment.
 def observe_neighbors(
         family: Family,
         patches: Mapping[hexgrid.Index, Patch],
         all_families: Mapping[hexgrid.Index, Sequence[Family]],
         neighbors: Iterable[hexgrid.Index]) -> Iterator[
         Tuple[hexgrid.Index, Patch, int, int]]:
+    """Summarize what a family know about their surroundings.
+
+    From the sensory data, the family estimates whether agents in patches under
+    consideration agents will likely be cooperators (cultural distance less
+    than `params.cooperation_threshold`) or competitors.
+
+    """
     for dest in known_location(family, neighbors):
         if patches[dest].max_resources < 1:
             # Don't walk into the water
@@ -376,6 +382,9 @@ def observe_neighbors(
             else:
                 competitors += f.effective_size
         yield dest, patches[dest], cooperators, competitors
+# The actual split into cooperators and competitors is actualized only by the
+# formation of collectives (see [Section 4.9](#4.9-Collectives)) in [Submodule
+# 7.5](#7.5-Cooperative-Resource-Extraction)
 
 
 # ## 4.8 Interaction
@@ -420,11 +429,15 @@ def cultural_distance(c1: cython.int, c2: cython.int) -> cython.int:
 
 # ## 4.9 Collectives
 #
-# Groups of agents with similar culture on the same patch form temporary
-#    groups to collaborate for the exploitation of resources, according
-#    to the following grouping structure.
 def cooperate(families_in_this_location: Sequence[Family]) \
         -> Tuple[Sequence[CooperativeGroup], int]:
+    """Form collectives in this location.
+
+    Groups of agents with similar culture on the same patch form temporary
+    groups to collaborate for the exploitation of resources, according to this
+    grouping structure.
+
+    """
     cooperative_groups: List[CooperativeGroup] = []
     sum_labor = 0
     for family in families_in_this_location:
@@ -455,12 +468,20 @@ def cooperate(families_in_this_location: Sequence[Family]) \
 
 
 # ## 4.10 Observation
-# The following statistics are aggregated each time step.
 def observation(
         state: State,
         extensive: TextIO,
         to: TextIO = sys.stdout,
         report_resources: bool = False) -> None:
+    """Aggreagte summary statistics from the state.
+
+    Print short summary statistics to a screen log (defaulting to stdout), and
+    write a more extensive log to a dedicated logfile.
+
+    Each line in each of the two outputs is a JSON string summarizing some
+    properties of the state.
+
+    """
     # Number of families (agents)
     report = {}
     extreport: Dict[str, Any] = {}
@@ -647,12 +668,15 @@ def is_moribund(family: Family) -> bool:
 
 
 # ## 7.2 Population growth
-#
-# Families grow unconditionally after a fixed waiting time, starting after
-# their last child or after the last season in which they suffered from lack of
-# resources. If resources are plenty, families will have children every 2
-# seasons, i.e. every one year.
 def maybe_grow(family: Family) -> None:
+    """Grow the family, if that's what should happen.
+
+    Families grow unconditionally after a fixed waiting time, starting after
+    their last child or after the last season in which they suffered from lack
+    of resources. If resources are plenty, families will have children every 2
+    seasons, i.e. every one year.
+
+    """
     if family.seasons_till_next_child <= 0:
         family.effective_size += 1
         family.seasons_till_next_child = 2
@@ -817,6 +841,13 @@ def movement_bookkeeping(
 # ## 7.5 Cooperative Resource Extraction
 def extract_resources(
         patch: Patch, group: CooperativeGroup, total_labor_here: int) -> kcal:
+    """Distribute the resources gained from cooperative extraction.
+
+    Distribute the resources gained from cooperative extraction proportionally
+    to the contributed labor, keep track of the amout of resources that have
+    thus vanished from the patch.
+
+    """
     labor = sum([family.effective_size
                  for family in group])
     resources_extracted = resources_from_patch(
@@ -832,7 +863,20 @@ def resources_from_patch(
         labor: int,
         others_labor: int,
         estimate: bool = False) -> kcal:
-    # From crema2014simulation
+    """Compute or estimate the resources a cooperative gains from a patch.
+
+    Compute the total resources that a cooperative of aggregated size `labor`,
+    competing with `other_labor` individuals in the same patch, extracts from
+    that patch.
+
+    In the actual extraction step, this includes a random component. When a
+    family uses this function to estimate the payoff from a patch under
+    consideration, they get the expectation of the random distribution without
+    randomness.
+
+    The structure follows Crema (2014).
+
+    """
     my_relative_returns = (
         time_step_energy_use * labor *
         effective_labor_through_cooperation(labor))
@@ -893,6 +937,9 @@ def effective_labor_through_cooperation(n_cooperators: int) -> float:
 def test_effective_labor() -> None:
     """Check and plot the effective labor computation.
 
+    We have some expectations concerning the shape of effective labor from
+    labor for the default parameter $c=0.5$, which are tested here.
+
     """
     assert 2 < 2 * effective_labor_through_cooperation(2) < 3
     assert 12 < 10 * effective_labor_through_cooperation(10) < 20
@@ -904,6 +951,7 @@ def test_effective_labor() -> None:
 
 
 def adjust_culture(cooperating_families: CooperativeGroup) -> None:
+    """Equalize the cultures of families that cooperated."""
     n = len(cooperating_families)
     for family in cooperating_families:
         mutate_culture(family)
@@ -917,6 +965,13 @@ def adjust_culture(cooperating_families: CooperativeGroup) -> None:
 
 
 def mutate_culture(family: Family) -> None:
+    """Change the culture of a family according to a small mutation rate.
+
+    In practice, to avoid random draws (which are computationally expensive),
+    draw a geometric distribution for the time until the next mutation happens
+    and count down towards it.
+
+    """
     if family.seasons_till_next_mutation <= 0:
         if family.seasons_till_next_mutation == 0:
             i = numpy.random.randint(params.culture_dimensionality)
@@ -928,6 +983,7 @@ def mutate_culture(family: Family) -> None:
 
 
 def exploit(patch: Patch, resource_reduction: kcal) -> None:
+    """Adjust a patch's resources according to current expoitation."""
     patch.resources -= resource_reduction
     # Patch resources should always be bigger than 0, because of
     # `params.accessible_resources` < 1. Any deviations would be to very weird
@@ -939,6 +995,7 @@ def exploit(patch: Patch, resource_reduction: kcal) -> None:
 
 # ## 7.6 Patch Resource Dynamics
 def recover(patch: Patch) -> None:
+    """The resources of a patch recover following a logistic function."""
     if patch.resources < patch.max_resources - 1:
         patch.resources += (
             patch.resources *
