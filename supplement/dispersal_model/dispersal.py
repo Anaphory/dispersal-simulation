@@ -1016,4 +1016,9 @@ Grimm, Volker & Berger, Uta & DeAngelis, Donald L. & Polhill, J. Gary & Giske,
     update. Ecological Modelling 221(23). 2760–2768.
     (doi:10.1016/j.ecolmodel.2010.08.019)
 
+Fick, S.E. & Hijmans, R.J. 2017. WorldClim 2: new 1km spatial resolution
+    climate surfaces for global land areas. International Journal of
+    Climatology 37 (12): 4302-4315.
+    (https://worldclim.org/data/worldclim21.html)
+
 """.split("\n\n")[1:]

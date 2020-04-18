@@ -24,7 +24,7 @@ class PopulationCapModel:
     def __init__(self, alpha: float = 10 ** -8.07, beta: float = 2.64):
         self.alpha = alpha
         self.beta = beta
-        self.resolution = 2 * 60
+        self.resolution = 60 // 5  # 5 arc minutes = 1/12 degree
 
     def coordinates_to_index(self, points):
         """Convert long,lat coordinate pairs into indices in a TIF
@@ -62,10 +62,14 @@ class PopulationCapModel:
         except AttributeError:
             self._tif = tifffile.imread(os.path.join(
                 os.path.dirname(__file__),
-                "../worldclim/wc2.0_bio_30s_12.tif"))
-            # FIXME: 30 seconds is less than a kilometer. The hexes have an
-            # edge length of 8km, so a resolution of 5 minutes should still be
-            # fine, and save a lot of memory.
+                "wc2.1_5m_bio_12.tif"))
+            # WorldClim 2.1 Bioclimate data from Fick & Hijmans (2017), at
+            # https://worldclim.org/data/worldclim21.html where Bioclimatic
+            # variable 12 is Annual Precipitation according to
+            # https://worldclim.org/data/bioclim.html. The 5-minute-resolution
+            # data should be slightly finer than our hexgrid in general (and in
+            # particular away from the equator). It can be downloaded from
+            # https://biogeo.ucdavis.edu/data/worldclim/v2.1/base/wc2.1_5m_bio.zip
             self._tif.clip(0, out=self._tif)
             return self._tif
 
