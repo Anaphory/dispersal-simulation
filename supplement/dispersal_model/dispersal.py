@@ -10,19 +10,20 @@ with resource depletion, migration, and culture-dependent cooperation.
 # General imports, which in Python should come on top of the module to make
 # dependencies transparent.
 import sys        # Writing to standard output as a console program
+import json       # Transparent data storage in Java Script Object Notation
 import random     # random number generator
+import itertools  # Tools for iterating over combinations, etc. of sequences
 from dataclasses import dataclass, field
 
-import cython     # Faster execution using C
-import itertools  # Tools for iterating over combinations, etc. of sequences
 import numpy      # Fast maths
-import json       # Transparent data storage in Java Script Object Notation
+import numba      # Just-in-time compilation for faster execution
+import cython     # Faster execution using C
 
 import matplotlib.pyplot as plt
 
 from dispersal_model.util import (
     serialize, get_data, OnDemandDict, density,
-    in_random_order_ignoring_location)
+    in_random_order_ignoring_location, fast)
 
 import dispersal_model.hexgrid as hexgrid
 from dispersal_model.types_and_units import (
