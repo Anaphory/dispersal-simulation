@@ -14,6 +14,7 @@ import sys        # Writing to standard output as a console program
 import cython     # Faster execution using C
 import attr       # Attribute-focussed entities
 import itertools  # Tools for iterating over combinations, etc. of sequences
+import random     # random number generator
 import numpy      # Fast maths
 import json       # Transparent data storage in Java Script Object Notation
 
@@ -329,7 +330,7 @@ def known_location(
     for location in nearby:
         if location not in family.location_history[:4]:
             if (location in family.location_history[:8]) or (
-                    numpy.random.random() < params.attention_probability):
+                    random.random() < params.attention_probability):
                 yield location
 
 
@@ -783,7 +784,7 @@ def decide_on_moving(
                 continue
             if expected_gain == max_gain:
                 c += 1
-                if numpy.random.random() < c / (1 + c):
+                if random.random() < c / (1 + c):
                     continue
             target = coords
             max_gain = expected_gain
@@ -890,9 +891,9 @@ def resources_from_patch(
         effective_labor_through_cooperation(labor))
     if not estimate:
         my_relative_returns = numpy.maximum(
-            numpy.random.normal(
-                loc=my_relative_returns,
-                scale=(params.payoff_standarddeviation *
+            random.gauss(
+                mu=my_relative_returns,
+                sigma=(params.payoff_standarddeviation *
                        time_step_energy_use / labor ** 0.5)),
             0)
     if others_labor:
@@ -901,9 +902,9 @@ def resources_from_patch(
             effective_labor_through_cooperation(others_labor))
         if not estimate:
             others_relative_returns = numpy.maximum(
-                numpy.random.normal(
-                    loc=others_relative_returns,
-                    scale=(params.payoff_standarddeviation *
+                random.gauss(
+                    mu=others_relative_returns,
+                    sigma=(params.payoff_standarddeviation *
                            time_step_energy_use / others_labor ** 0.5)),
                 0)
         # If two groups compete, each can under-estimate the relative returns
@@ -967,7 +968,7 @@ def adjust_culture(cooperating_families: CooperativeGroup) -> None:
         return
 
     target = cooperating_families[
-        numpy.random.randint(len(cooperating_families))].culture
+        random.randrange(len(cooperating_families))].culture
     for family in cooperating_families:
         family.culture = target
 
@@ -982,7 +983,7 @@ def mutate_culture(family: Family) -> None:
     """
     if family.seasons_till_next_mutation <= 0:
         if family.seasons_till_next_mutation == 0:
-            i = numpy.random.randint(params.culture_dimensionality)
+            i = random.randrange(params.culture_dimensionality)
             family.culture ^= 1 << i
         family.seasons_till_next_mutation = numpy.random.geometric(
             params.culture_mutation_rate)
