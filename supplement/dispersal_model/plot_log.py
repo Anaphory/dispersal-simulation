@@ -1,14 +1,15 @@
-import osm
 import json
+import itertools
+
 import numpy
 import igraph
-import itertools
 import matplotlib
 import cartopy.crs as ccrs
 from matplotlib import pyplot as plt
 
-import hexgrid
-from dispersal import cultural_distance
+import dispersal_model.osm as osm
+import dispersal_model.hexgrid as hexgrid
+from dispersal_model.dispersal import cultural_distance
 
 
 collection = None

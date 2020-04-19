@@ -27,7 +27,8 @@ import dispersal_model.hexgrid as hexgrid
 from dispersal_model.types_and_units import (
     halfyears, kcal, meters,
     List, Mapping, Sequence, Tuple, Iterable, Optional, Iterator,
-    TextIO, Dict, Any, Counter, DefaultDict, NamedTuple)
+    Callable, TextIO, Dict, Any, Counter, DefaultDict, NamedTuple)
+from dispersal_model.similar_culture_benchmark import cultural_distance
 
 if cython.compiled:
     print("# Running compiled Cython version.")
@@ -376,8 +377,7 @@ def observe_neighbors(
             continue
         cooperators, competitors = 0, 0
         for f in all_families[dest]:
-            if cultural_distance(
-                    f.culture, family.culture) < params.cooperation_threshold:
+            if similar_culture(f.culture, family.culture):
                 cooperators += f.effective_size
             else:
                 competitors += f.effective_size
@@ -389,39 +389,30 @@ def observe_neighbors(
 
 # ## 4.8 Interaction
 #  - Agents compete for limited resources
-#  - Agents of similar culture cooperate in the exploitation of resources
-@cython.ccall
-def cultural_distance(c1: cython.int, c2: cython.int) -> cython.int:
-    """Cultural distance is the Hamming distance of the culture vectors.
+#  - Agents of similar culture
+#    cooperate in the exploitation of resources
 
-    Because cultures are stored in binary, the Hamming distance is all the bits
-    in c1 XOR c2. This may look a bit intransparent to the non-programmer, but
-    it works:
+def test_similar_culture() -> None:
+    """Check the definition of 'similar_culture'
 
-    >>> cultural_distance(0b001000, 0b000101)
-    3
-    >>> cultural_distance(0b1110111, 0b1110111)
-    0
-    >>> cultural_distance(0b011011011, 0b010011011)
-    1
-
-    Obviously, this also works with the more compact decimal representation of
-    binary vectors – i.e. numbers.
-
-    >>> 8 == 0b1000
-    True
-    >>> 3 == 0b0011
-    True
-    >>> cultural_distance(8, 3) == 3 == cultural_distance(0b0100, 0b0011)
-    True
+    Test that `similar_culture(x, y)` is exactly a fast implementation of ‘x
+    and y differ in less than `params.cooperation_threshold` entries’
 
     """
-    mismatch = c1 ^ c2
-    c = 0
-    while mismatch:
-        c += 1 & mismatch
-        mismatch >>= 1
-    return c
+    if params.cooperation_threshold == 6:
+        assert similar_culture(0b000000, 0,110111)
+        assert not similar_culture(0b00000000, 0b11111111)
+        assert similar_culture(0b01100100, 0b11111111)
+        assert not similar_culture(0b00000000000000000000, 0b11111111000000000000)
+
+    # Test systematically. This takes a *loooooong* time.
+    for x in range(2**params.culture_dimensionality):
+        for y in range(2**params.culture_dimensionality):
+            assert (
+                similar_culture(x, y) ==
+                sum(xi!=yi for xi, yi in zip(bin(x), bin(y))) < params.cooperation_threshold)
+
+
 #  - Agents may avoid other agents when the expected gain from moving to their
 #    spot would be reduced due to their presence (different culture and thus
 #    competition instead of cooperation)
@@ -447,9 +438,7 @@ def cooperate(families_in_this_location: Sequence[Family]) \
             # If there is any other family in that group
             for other_family in group:
                 # who the current family would not cooperate with,
-                if cultural_distance(
-                        family.culture, other_family.culture
-                ) > params.cooperation_threshold:
+                if not similar_culture(family.culture, other_family.culture):
                     # then ignore that group.
                     break
             else:
@@ -575,8 +564,27 @@ class ParameterSetting(NamedTuple):
     # The number binary dimensions of 'Culture'
 
 
-params = ParameterSetting()
-time_step_energy_use: kcal = params.daily_energy * 365.24219 / 2
+params: ParameterSetting
+time_step_energy_use: kcal
+similar_culture: Callable[[cython.int, cython.int], bool]
+
+
+def set_params(new_params):
+    """Set new parameter settings and derived objects."""
+    global params
+    global time_step_energy_use
+    global similar_culture
+
+    params = new_params
+    time_step_energy_use = params.daily_energy * 365.24219 / 2
+    if params.cooperation_threshold == 6:
+        from dispersal_model.similar_culture_benchmark import similar_culture
+    else:
+        def similar_culture(c1: cython.int, c2: cython.int) -> bool:
+            return cultural_distance(c1, c2) < params.cooperation_threshold
+
+
+set_params(ParameterSetting())
 
 
 def initialization() -> State:

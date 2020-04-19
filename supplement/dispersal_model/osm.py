@@ -43,6 +43,9 @@ for area, id in areas.items():
         polygons = list(polygonize(borders))
         shapes[area] = geometry.MultiPolygon(polygons)
         dump(shapes[area], open("{:s}.wkb".format(area), "wb"))
+        # FIXME: What is the canonical location for cached program supplement
+        # data? Should I download it at install-time, when I'm copied somewhere
+        # with write access that might never come back?
 
 
 def contains(shape, coordinates):
