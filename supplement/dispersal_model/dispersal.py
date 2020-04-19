@@ -28,7 +28,7 @@ import dispersal_model.hexgrid as hexgrid
 from dispersal_model.types_and_units import (
     halfyears, kcal, meters,
     List, Mapping, Sequence, Tuple, Iterable, Optional, Iterator,
-    Callable, TextIO, Dict, Any, Counter, DefaultDict, NamedTuple)
+    Callable, TextIO, Dict, Any, Counter, DefaultDict)
 from dispersal_model.similar_culture_benchmark import cultural_distance
 
 if cython.compiled:
@@ -75,7 +75,7 @@ class Family:
     # The agent's history of decendence, also serving as unique ID
     culture: cython.int
     # The family's shared culture
-    location_history: List[hexgrid.Index]
+    location_history: List[hexgrid.Index] = field(default_factory=list)
     # A list of cells indices.
 
     @property
@@ -400,17 +400,19 @@ def test_similar_culture() -> None:
 
     """
     if params.cooperation_threshold == 6:
-        assert similar_culture(0b000000, 0,110111)
+        assert similar_culture(0b000000, 0b110111)
         assert not similar_culture(0b00000000, 0b11111111)
         assert similar_culture(0b01100100, 0b11111111)
-        assert not similar_culture(0b00000000000000000000, 0b11111111000000000000)
+        assert not similar_culture(0b00000000000000000000,
+                                   0b11111111000000000000)
 
     # Test systematically. This takes a *loooooong* time.
     for x in range(2**params.culture_dimensionality):
         for y in range(2**params.culture_dimensionality):
             assert (
                 similar_culture(x, y) ==
-                sum(xi!=yi for xi, yi in zip(bin(x), bin(y))) < params.cooperation_threshold)
+                sum(xi != yi for xi, yi in zip(bin(x), bin(y))
+                    ) < params.cooperation_threshold)
 
 
 #  - Agents may avoid other agents when the expected gain from moving to their
@@ -570,7 +572,7 @@ time_step_energy_use: kcal
 similar_culture: Callable[[cython.int, cython.int], bool]
 
 
-def set_params(new_params):
+def set_params(new_params: ParameterSetting) -> None:
     """Set new parameter settings and derived objects."""
     global params
     global time_step_energy_use
