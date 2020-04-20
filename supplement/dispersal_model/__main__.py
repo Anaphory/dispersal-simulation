@@ -10,16 +10,16 @@ import dispersal_model.dispersal as d
 # Running sets the global `params` variable. Then the model is initialized
 # according to the parameters, and ran according to the schedule for
 # 15000 simulated years or until all families have died.
-def main():
+def main() -> None:
     """Command line interface entry point."""
     parser = argparse.ArgumentParser(
         description=__doc__)
     parameter_settings = parser.add_argument_group("Model Parameters")
-    for parameter, default in d.ParameterSetting._field_defaults.items():
+    for parameter, field in d.ParameterSetting.__dataclass_fields__.items():
         parameter_settings.add_argument(
             "--{:s}".format(parameter.replace("_", "-")),
-            type=d.ParameterSetting.__annotations__[parameter],
-            default=default
+            type=field.type,
+            default=field.default
         )
 
     parser.add_argument(
@@ -33,7 +33,7 @@ def main():
     d.params = d.ParameterSetting(**{
         name: value
         for name, value in vars(args).items()
-        if name in d.ParameterSetting._fields})
+        if name in d.ParameterSetting.__dataclass_fields__})
 
     s = d.initialization()
 

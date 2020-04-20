@@ -8,6 +8,8 @@ import tifffile
 import dispersal_model.osm as osm
 from dispersal_model.hexgrid import AMERICAS
 
+from numba.experimental import jitclass
+
 from dispersal_model.types_and_units import (
     Any, Callable, Dict, Iterable, Mapping, S, Sequence, T)
 
@@ -190,3 +192,7 @@ def in_random_order_ignoring_location(
 
     """
     return shuffle(sum((f for f in keyval.values()), []))
+
+
+def fast(c):
+    return jitclass(c.__annotations__)(c)
