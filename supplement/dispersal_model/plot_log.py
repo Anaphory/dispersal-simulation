@@ -80,14 +80,16 @@ def plot(family_locations,
 
     new_color_schema = {}
     # for community in G.community_label_propagation():
-    for community in G.community_infomap():
     # for community in G.community_fastgreedy().as_clustering():
+    for community in G.community_infomap():
         pos = numpy.array([(xyz[n][0], xyz[n][1]) for n in community])
         s = [xyz[n][2] for n in community]
         mean = numpy.mean(pos, axis=0)
         closest = numpy.inf
         for location, popsize in color_schema:
-            dist = numpy.linalg.norm(mean - location) + abs(numpy.log((popsize + 1) / (len(community) + 1))) / numpy.log(1.04)
+            dist = numpy.linalg.norm(mean - location) + abs(
+                numpy.log((popsize + 1) / (len(community) + 1))) / numpy.log(
+                    1.04)
             if dist > 20:
                 continue
             if dist < closest:
@@ -112,7 +114,8 @@ def plot(family_locations,
     color_schema.update(new_color_schema)
 
 
-def plot_series(f, template="dispersal-{:07d}.png", limit=None, show_resources=True):
+def plot_series(f, template="dispersal-{:07d}.png",
+                limit=None, show_resources=True):
     for l, line in enumerate(f):
         if limit is not None and l not in limit:
             continue
@@ -125,6 +128,9 @@ def plot_series(f, template="dispersal-{:07d}.png", limit=None, show_resources=T
         plt.close()
 
 
+from h3 import h3
+
+
 def plot_alaska_population(filename):
     pop = []
     cache = {}
@@ -134,7 +140,7 @@ def plot_alaska_population(filename):
             return cache[location]
         except KeyError:
             cache[location] = osm.contains(osm.shapes["Alaska"],
-                                           hexgrid.geo_coordinates(location))
+                                           hexgrid.geo_coordinates(h3.string_to_h3(location)))
             return cache[location]
 
     with open(filename, "r") as f:
@@ -144,9 +150,10 @@ def plot_alaska_population(filename):
                 data = json.loads(line)
             except json.JSONDecodeError:
                 break
-            for effective_size, location, culture in data["Families"].values():
-                if is_in(tuple(location)):
-                    pop[l] += effective_size
+            for location, families in data["Families"]:
+                if is_in(location):
+                    for descendence, effective_size, culture in families:
+                        pop[l] += effective_size
     plt.plot(pop)
     plt.show()
 
