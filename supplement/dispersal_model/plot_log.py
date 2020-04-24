@@ -80,8 +80,8 @@ def plot(family_locations,
 
     new_color_schema = {}
     # for community in G.community_label_propagation():
-    # for community in G.community_fastgreedy().as_clustering():
-    for community in G.community_infomap():
+    # for community in G.community_infomap():
+    for community in G.community_fastgreedy().as_clustering():
         pos = numpy.array([(xyz[n][0], xyz[n][1]) for n in community])
         s = [xyz[n][2] for n in community]
         mean = numpy.mean(pos, axis=0)
