@@ -32,7 +32,7 @@ def connect_agents(family_locations, G=None):
         for location2, families2 in family_locations:
             if not families2:
                 continue
-            if hexgrid.h3.h3_distance(location1, location2) > 8:
+            if hexgrid.hex_distance(location1, location2) > 8:
                 continue
             edges.append(connect_similar_agents(families1, families2))
             if location2 == location1:
@@ -59,19 +59,7 @@ def plot(family_locations,
     ax = plt.axes(projection=ccrs.Sinusoidal(-98))
 
     if resources is not None:
-        if not hexes:
-            for index in ...:
-                hexes.append(numpy.array(hexgrid.hexagon_coords(index)))
-            global collection
-        collection = matplotlib.collections.PolyCollection(hexes)
-
-        cmap = plt.get_cmap("viridis")
-        vmax = max(resources)
-        values = [cmap(v / vmax)[:-1] +
-                  [0.2] if v > 0 else [0, 0, 0, 0]
-                  for v in resources]
-        collection.set_facecolor(values)
-        ax.add_collection(collection)
+        raise NotImplementedError
 
     ax.coastlines("50m")
     ax.set_extent(hexgrid.AMERICAS)
@@ -139,8 +127,9 @@ def plot_alaska_population(filename):
         try:
             return cache[location]
         except KeyError:
-            cache[location] = osm.contains(osm.shapes["Alaska"],
-                                           hexgrid.geo_coordinates(h3.string_to_h3(location)))
+            cache[location] = osm.contains(
+                osm.shapes["Alaska"],
+                hexgrid.geo_coordinates(location))
             return cache[location]
 
     with open(filename, "r") as f:

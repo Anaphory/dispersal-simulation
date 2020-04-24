@@ -94,3 +94,6 @@ def closest_grid_point(longitude: float, latitude: float) -> Index:
     geo_coord = h3.GeoCoord(
         h3.degs_to_rads(latitude), h3.degs_to_rads(longitude))
     return h3.libh3.geoToH3(h3.byref(geo_coord), RESOLUTION)
+
+
+hex_distance = h3.libh3.h3Distance
