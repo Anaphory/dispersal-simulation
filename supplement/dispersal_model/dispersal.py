@@ -659,11 +659,16 @@ def resources_at_season_end(resources: kcal, size: int) -> kcal:
     Every adult consumes the same fixed amount of resources.
     If the remainder is negative, some of the individuals in the family starve.
 
+    >>> params.storage_loss
+    0.33
+    >>> resources_at_season_end(100, 0)
+    67.0
+
     """
     resources_after = resources - (
         size * time_step_energy_use)
     if resources_after > 0:
-        resources_after = (1 - params.storage_loss)
+        resources_after *= (1 - params.storage_loss)
     return resources_after
 
 
