@@ -16,14 +16,13 @@ import itertools  # Tools for iterating over combinations, etc. of sequences
 from dataclasses import dataclass, field
 
 import numpy      # Fast maths
-import numba      # Just-in-time compilation for faster execution
 import cython     # Faster execution using C
 
 import matplotlib.pyplot as plt
 
 from dispersal_model.util import (
     serialize, get_data, OnDemandDict, density,
-    in_random_order_ignoring_location, fast)
+    in_random_order_ignoring_location)
 
 import dispersal_model.hexgrid as hexgrid
 from dispersal_model.types_and_units import (
@@ -898,7 +897,7 @@ def resources_from_patch(
         time_step_energy_use * labor *
         effective_labor_through_cooperation(labor))
     if not estimate:
-        my_relative_returns = numpy.maximum(
+        my_relative_returns = max(
             random.gauss(
                 mu=my_relative_returns,
                 sigma=(params.payoff_standarddeviation *
@@ -909,7 +908,7 @@ def resources_from_patch(
             time_step_energy_use * others_labor *
             effective_labor_through_cooperation(others_labor))
         if not estimate:
-            others_relative_returns = numpy.maximum(
+            others_relative_returns = max(
                 random.gauss(
                     mu=others_relative_returns,
                     sigma=(params.payoff_standarddeviation *
@@ -926,7 +925,7 @@ def resources_from_patch(
     else:
         others_relative_returns = 0
     return (my_relative_returns) / (
-        my_relative_returns + others_relative_returns) * numpy.minimum(
+        my_relative_returns + others_relative_returns) * min(
             my_relative_returns + others_relative_returns,
             patch.resources * params.accessible_resources)
 

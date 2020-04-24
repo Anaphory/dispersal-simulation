@@ -1,14 +1,13 @@
 """Helper functions for the dispersal model"""
 
 import os
+import random
 
 import numpy
 import tifffile
 
 import dispersal_model.osm as osm
 from dispersal_model.hexgrid import AMERICAS
-
-from numba.experimental import jitclass
 
 from dispersal_model.types_and_units import (
     Any, Callable, Dict, Iterable, Mapping, S, Sequence, T)
@@ -136,7 +135,7 @@ def shuffle(seq: Sequence) -> Iterable:
     """
     s = list(seq)[:]
     while s:
-        i = numpy.random.randint(len(s))
+        i = random.randrange(len(s))
         yield s[i]
         del s[i]
 
@@ -179,7 +178,7 @@ def get_data(longitude: float, latitude: float) -> Mapping[str, Any]:
 
 def random_choice(x: Sequence[T]) -> T:
     """Return a random element from the sequence."""
-    return x[numpy.random.randint(len(x))]
+    return x[random.randrange(len(x))]
 
 
 def in_random_order_ignoring_location(
@@ -192,7 +191,3 @@ def in_random_order_ignoring_location(
 
     """
     return shuffle(sum((f for f in keyval.values()), []))
-
-
-def fast(c):
-    return jitclass(c.__annotations__)(c)
