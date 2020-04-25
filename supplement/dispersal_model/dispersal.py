@@ -89,7 +89,7 @@ class Family:
     # The effective size of the family in number of adults. One adult is
     # assumed to consume the same amount of food/energy and to contribute the
     # same labor to foraging as any other adult.
-    stored_resources: kcal = 130000
+    stored_resources: kcal = 0
     # The amount of stored resources, in kcal, the family has access to
     seasons_till_next_child: halfyears = 4
     # The number of seasons to wait until the next child (reset to 2 when
