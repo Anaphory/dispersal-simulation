@@ -3,7 +3,6 @@
 
 import os
 import random
-from dataclasses import dataclass, field
 
 import numpy
 import cython
@@ -57,7 +56,7 @@ class PopulationCapModel:
         try:
             return self._tif
         except AttributeError:
-            self._tif = tifffile.imread(os.path.join(
+            self._tif: numpy.ndarray = tifffile.imread(os.path.join(
                 os.path.dirname(__file__),
                 "wc2.1_5m_bio_12.tif"))
             # WorldClim 2.1 Bioclimate data from Fick & Hijmans (2017), at
@@ -112,6 +111,7 @@ p = PopulationCapModel(
     beta=2.64)
 
 
+@cython.ccall
 def density(land: bool, longitude: float, latitude: float) -> float:
     """Estimate the population density in person/km²."""
     if longitude < AMERICAS.w or longitude > AMERICAS.e:

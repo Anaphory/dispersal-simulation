@@ -62,7 +62,10 @@ def plot(family_locations,
         raise NotImplementedError
 
     ax.coastlines("50m")
-    ax.set_extent(hexgrid.AMERICAS)
+    ax.set_extent((hexgrid.AMERICAS.w,
+                   hexgrid.AMERICAS.e,
+                   hexgrid.AMERICAS.s,
+                   hexgrid.AMERICAS.n))
 
     G, xyz = connect_agents(family_locations)
 

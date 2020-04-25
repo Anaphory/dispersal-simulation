@@ -1,6 +1,9 @@
 from setuptools import setup
 from Cython.Build import cythonize
 
+import Cython.Compiler.Options
+Cython.Compiler.Options.annotate = True
+
 setup(
     name='dispersal_model',
     version='0.3',
@@ -12,7 +15,8 @@ setup(
     ext_modules=cythonize("dispersal_model/*.py",
                           exclude=["dispersal_model/__main__.py",
                                    "dispersal_model/__init__.py"],
-                          compiler_directives={"language_level": "3"}),
+                          compiler_directives={"language_level": "3"},
+                          annotate=True),
     license="BSD (3 clause)",
     classifiers=[
         'Programming Language :: Python',

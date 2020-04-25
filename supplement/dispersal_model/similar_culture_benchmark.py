@@ -6,6 +6,7 @@ Provide the fastest one under a generic name for imports.
 
 import cython
 
+
 @cython.ccall
 def cultural_distance(c1: cython.int, c2: cython.int) -> cython.int:
     """Cultural distance is the Hamming distance of the culture vectors.
@@ -35,15 +36,18 @@ def cultural_distance(c1: cython.int, c2: cython.int) -> cython.int:
     return bin(c1 ^ c2).count('1')
 
 
-def similar_culture_1(c1: cython.int, c2: cython.int) -> bool:
+@cython.ccall
+def similar_culture_1(c1: cython.int, c2: cython.int) -> int:  # bool
     return cultural_distance(c1, c2) < 6
 
 
-def similar_culture_2(c1: cython.int, c2: cython.int) -> bool:
+@cython.ccall
+def similar_culture_2(c1: cython.int, c2: cython.int) -> int:  # bool
     return bin(c1 ^ c2).count('1') < 6
 
 
-def similar_culture_3(c1: cython.int, c2: cython.int) -> bool:
+@cython.ccall
+def similar_culture_3(c1: cython.int, c2: cython.int) -> int:  # bool
     f = c1 ^ c2
     return (
         (f & 1) +
@@ -68,7 +72,8 @@ def similar_culture_3(c1: cython.int, c2: cython.int) -> bool:
         (f >> 19 & 1))
 
 
-def similar_culture_4(c1: cython.int, c2: cython.int) -> bool:
+@cython.ccall
+def similar_culture_4(c1: cython.int, c2: cython.int) -> int:  # bool
     c = 0
     f = c1 ^ c2
     while f and c < 6:

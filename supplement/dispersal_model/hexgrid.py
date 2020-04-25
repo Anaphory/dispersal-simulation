@@ -63,13 +63,15 @@ def geographical_distance(index1: Index, index2: Index) -> meters:
         (lon2, lat2)))[0, 0]
 
 
-def neighbors_within_distance(address: Index, _=None) -> Iterator[Index]:
+def neighbors_within_distance(address: Index, _=None) -> list:
     """Get K-Rings for a given hexagon properly split by ring"""
     # Initializes to zeroes by default, don't need to force
     h3.libh3.kRingDistances(address, ring_size, krings, distances)
+    results = []
     for i in range(0, array_len):
         if krings[i] != 0:
-            yield krings[i]
+            results.append(krings[i])
+    return results
 
 
 def geo_coordinates(address: Index) -> Tuple[float, float]:
