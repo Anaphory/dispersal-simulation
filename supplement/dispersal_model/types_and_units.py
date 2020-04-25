@@ -16,6 +16,7 @@ from typing import (
     Sequence,
     TextIO,
     Tuple,
+    Type,
     TypeVar,
 )
 

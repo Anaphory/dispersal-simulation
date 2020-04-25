@@ -1,16 +1,20 @@
+# cython: language_level=3
 """Helper functions for the dispersal model"""
 
 import os
 import random
+from dataclasses import dataclass, field
 
 import numpy
+import cython
 import tifffile
 
 import dispersal_model.osm as osm
 from dispersal_model.hexgrid import AMERICAS
 
 from dispersal_model.types_and_units import (
-    Any, Callable, Dict, Iterable, Mapping, S, Sequence, T)
+    kcal,
+    Any, Callable, Dict, Iterable, Mapping, S, Sequence, T, Tuple, Type)
 
 
 class PopulationCapModel:
@@ -19,7 +23,7 @@ class PopulationCapModel:
         self.beta = beta
         self.resolution = 60 // 5  # 5 arc minutes = 1/12 degree
 
-    def coordinates_to_index(self, points):
+    def coordinates_to_index(self, points: Tuple[float, float]) -> Tuple[int, int]:
         """Convert long,lat coordinate pairs into indices in a TIF
 
         Convert a [..., 2] ndarray, or a pair of coordinates, into the matching
@@ -40,16 +44,16 @@ class PopulationCapModel:
             An integer array of grid indices
 
         """
-        points = numpy.asarray(points)
+        points_array = numpy.asarray(points)
         return numpy.stack(
-            (numpy.round((-points[..., 1] + 90) *
+            (numpy.round((-points_array[..., 1] + 90) *
                          self.resolution).astype(int),
-             numpy.round((points[..., 0] + 180) *
+             numpy.round((points_array[..., 0] + 180) *
                          self.resolution).astype(int)),
             -1)
 
     @property
-    def precipitation_tif(self):
+    def precipitation_tif(self) -> numpy.ndarray:
         try:
             return self._tif
         except AttributeError:
@@ -66,7 +70,7 @@ class PopulationCapModel:
             self._tif.clip(0, out=self._tif)
             return self._tif
 
-    def population_capacity(self, point):
+    def population_capacity(self, point: Tuple[float, float]) -> kcal:
         """Calculate the pop cap of a cell given its precipitation
 
         Return the carrying capacity K of a hexagonal cell of area AREA with
@@ -94,7 +98,7 @@ class PopulationCapModel:
         """
         return self.alpha * self.precipitation(point) ** self.beta
 
-    def precipitation(self, point):
+    def precipitation(self, point: Tuple[float, float]) -> int:
         index = tuple(self.coordinates_to_index(point))
         return self.precipitation_tif[index]
 
@@ -118,7 +122,7 @@ def density(land: bool, longitude: float, latitude: float) -> float:
         return 0
     else:
         return p.population_capacity(
-            [longitude, latitude])
+            (longitude, latitude))
 
 
 def shuffle(seq: Sequence) -> Iterable:
@@ -140,7 +144,14 @@ def shuffle(seq: Sequence) -> Iterable:
         del s[i]
 
 
-class OnDemandDict(Dict[S, T]):
+D: Type[dict]
+if cython.compiled:
+    D = dict
+else:
+    D = Dict[S, T]
+
+
+class OnDemandDict(D):
     """A dictionary whose missing keys are filled on-demand from a Callable.
 
     >>> d = OnDemandDict(lambda key: key)
@@ -152,8 +163,8 @@ class OnDemandDict(Dict[S, T]):
     {1: 1, 2: 2}
 
     """
-    def __init__(self, populating_function: Callable[[S], T], *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, populating_function: Callable[[S], T], **kwargs):
+        super().__init__(**kwargs)
         self.function = populating_function
 
     def __missing__(self, key: S) -> T:

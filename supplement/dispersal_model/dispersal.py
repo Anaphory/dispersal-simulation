@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# cython: language_level=3
 
 """dispersal
 
@@ -110,8 +111,8 @@ class Family:
 # culture using a binary vector. Computers make natural use of the binary
 # representation integer numbers, so a binary vector is equivalent to an `int`,
 # and the `int` is faster to use in computations and more efficient to store.
-Culture = cython.int
 
+# ! Culture = cython.int
 
 # Families in the same location with compatible cultures can cooperate to
 # improve their chances at extracting resources. (Following XXX, cooperation
@@ -121,9 +122,8 @@ Culture = cython.int
 # in each time step. They do not persist or have effect beyond a single time
 # step. Resource exploitation happens at the level of the cooperative group and
 # is distributed to the individual families after the fact.
-class CooperativeGroup(list):
-    """A group of Families cooperating"""
 
+# ! CooperativeGroup = List[Family]
 
 # The geography of the simulation is described by a hexagonal equal-area
 # discrete global grid. The grid logic is implemented in Uber's H3 library
@@ -423,7 +423,7 @@ def test_similar_culture() -> None:
 # ## 4.9 Collectives
 #
 def cooperate(families_in_this_location: Sequence[Family]) \
-        -> Tuple[Sequence[CooperativeGroup], int]:
+        -> Tuple[Sequence[List[Family]], int]:
     """Form collectives in this location.
 
     Groups of agents with similar culture on the same patch form temporary
@@ -431,7 +431,7 @@ def cooperate(families_in_this_location: Sequence[Family]) \
     grouping structure.
 
     """
-    cooperative_groups: List[CooperativeGroup] = []
+    cooperative_groups: List[List[Family]] = []
     sum_labor = 0
     for family in families_in_this_location:
         sum_labor += family.effective_size
@@ -451,7 +451,7 @@ def cooperate(families_in_this_location: Sequence[Family]) \
         else:
             # If there was no group to join, form a new ‘group’ consisting just
             # of that family.
-            cooperative_groups.append(CooperativeGroup([family]))
+            cooperative_groups.append(List[Family]([family]))
     return cooperative_groups, sum_labor
 # Cooperatives are then the main agents of resource extraction and cultural
 # assimilation, as described in more detail in [Submodule
@@ -707,7 +707,7 @@ def maybe_procreate(family: Family) -> Optional[Family]:
     Agents procreate when they contain 10 or more adult individuals. On the
     level of the individuals forming the family, this means that two
     individuals split off to form a new family. There is some bookkeeping
-    involed to generate meaningful `descendance` values for the analysis, when
+    involed to generate meaningful `descendence` values for the analysis, when
     we might want to track how genetic relationships, culture and geography
     interact.
 
@@ -856,7 +856,7 @@ def movement_bookkeeping(
 
 # ## 7.5 Cooperative Resource Extraction
 def extract_resources(
-        patch: Patch, group: CooperativeGroup, total_labor_here: int) -> kcal:
+        patch: Patch, group: List[Family], total_labor_here: int) -> kcal:
     """Distribute the resources gained from cooperative extraction.
 
     Distribute the resources gained from cooperative extraction proportionally
@@ -966,7 +966,7 @@ def test_effective_labor() -> None:
              effective_labor_through_cooperation(numpy.arange(1, 100)))
 
 
-def adjust_culture(cooperating_families: CooperativeGroup) -> None:
+def adjust_culture(cooperating_families: List[Family]) -> None:
     """Equalize the cultures of families that cooperated."""
     n = len(cooperating_families)
     for family in cooperating_families:

@@ -1,4 +1,5 @@
-from setuptools import setup, find_packages
+from setuptools import setup
+from Cython.Build import cythonize
 
 setup(
     name='dispersal_model',
@@ -8,6 +9,10 @@ setup(
     author_email='gereon.kaiping@geo.uzh.ch',
     url='https://github.com/Anaphory/dispersal-simulation',
     packages=['dispersal_model'],
+    ext_modules=cythonize("dispersal_model/*.py",
+                          exclude=["dispersal_model/__main__.py",
+                                   "dispersal_model/__init__.py"],
+                          compiler_directives={"language_level": "3"}),
     license="BSD (3 clause)",
     classifiers=[
         'Programming Language :: Python',
