@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # cython: language_level=3
+# cython: linetrace=True
 
 """dispersal
 
@@ -613,6 +614,23 @@ class ParameterSetting:
     # (2015)
     culture_dimensionality: int = 20
     # The number binary dimensions of 'Culture'
+    if cython.compiled:
+        __annotations__ = {
+            "n_steps": halfyears,
+            "daily_energy": kcal,
+            "payoff_standarddeviation": float,
+            "cooperation_gain": float,
+            "storage_loss": float,
+            "culture_mutation_rate": float,
+            "cooperation_threshold": float,
+            "area": float,
+            "attention_probability": float,
+            "resource_recovery": float,
+            "evidence_needed": float,
+            "accessible_resources": float,
+            "culture_dimensionality": int,
+        }
+
 
 
 params: ParameterSetting
