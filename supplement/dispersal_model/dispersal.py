@@ -31,6 +31,7 @@ from dispersal_model.types_and_units import (
     List, Mapping, Sequence, Tuple,
     Callable, TextIO, Dict, Any, Counter)
 from dispersal_model.similar_culture_benchmark import cultural_distance
+import dispersal_model.c_util as c_util
 
 if cython.compiled:
     print("# Running compiled Cython version.")
@@ -74,7 +75,7 @@ class Family:
     """
     descendence = cython.declare(str, visibility="public")
     # The agent's history of decendence, also serving as unique ID
-    culture = cython.declare(cython.int, visibility="public")
+    culture = cython.declare(cython.ulong, visibility="public")
     # The family's shared culture
     location_history = cython.declare(list, visibility="public")
     # A list of cells indices.
@@ -103,7 +104,7 @@ class Family:
 
     def __init__(self,
                  descendence: str,
-                 culture: cython.int,
+                 culture: cython.ulong,
                  location_history: List[hexgrid.Index],
                  stored_resources: kcal = 0,
                  seasons_till_next_child: int = 4,
@@ -125,7 +126,7 @@ class Family:
 # representation integer numbers, so a binary vector is equivalent to an `int`,
 # and the `int` is faster to use in computations and more efficient to store.
 
-# ! Culture = cython.int
+# ! Culture = cython.ulong
 
 # Families in the same location with compatible cultures can cooperate to
 # improve their chances at extracting resources. (Following XXX, cooperation
@@ -147,7 +148,7 @@ class Family:
 # constant throughout the simulation, but future work might add seasonality
 # (with every other time step corresponding to the more plentiful half of the
 # year and the others to the scarcer half). By nature, the simulation invites
-# the extension to include paleocimate data, but that only becomes relevant
+# the extension to include paleoclimate data, but that only becomes relevant
 # once it shows fundamentally reasonable dynamics.
 
 
@@ -337,10 +338,11 @@ def plot_cultural_distance_by_geographical_distance(
 #  - Agents are guaranteed to have knowledge of the locations they visited
 #    within the previous 2 years, and of all locations within the maximum
 #    half-year migration distance that they visited in the previous 4 years.
+@cython.inline
 @cython.ccall
 @cython.exceptval(check=False)
 def known_location(
-        family: Family,
+        history: list,
         nearby: list) -> list:
     """Tell a family which locations nearby they might know about
     """
@@ -348,12 +350,11 @@ def known_location(
     # the iterator be the location of the family itself, but the locations can
     # be returned in any order, even in parallel.
     result = []
-    for location in family.location_history[:4]:
+    for location in history[:4]:
         result.append(location)
     for location in nearby:
-        if location not in family.location_history[:4]:
-            if (location in family.location_history[:8]) or (
-                    random.random() < params.attention_probability):
+        if location not in history[:4]:
+            if (location in history[:8]) or attention():
                 result.append(location)
     return result
 
@@ -378,11 +379,18 @@ def known_location(
 
 # ## 4.7 Sensing
 #
-# A family can know the current state of some locations (see [Section
-# 4.5](#4.5-Learning) in their neighborhood for the decision process whether
-# and where to move. That is, for those locations, the family knows actual
+# A family can know the current state of a subset of the locations (see
+# [Section 4.5](#4.5-Learning) in their neighborhood for the decision process
+# whether and where to move. That subset partially depends on an attention
+# parameter.
+def default_attention():
+    return random.random() < params.attention_probability
+
+
+# That is, for those locations, the family knows actual
 # available resources and size and culture vectors of all agents located there
 # at the moment.
+@cython.inline
 @cython.ccall
 @cython.exceptval(check=False)
 def observe_neighbors(
@@ -397,8 +405,15 @@ def observe_neighbors(
     than `params.cooperation_threshold`) or competitors.
 
     """
+    result: list
+    dest: hexgrid.Index
+    f: Family
+    c: cython.ulong
+
+    c = family.culture
+
     result = []
-    for dest in known_location(family, neighbors):
+    for dest in known_location(family.location_history, neighbors):
         if dest not in patches:
             # Don't walk into the water
             continue
@@ -406,7 +421,7 @@ def observe_neighbors(
         if dest not in all_families:
             all_families[dest] = []
         for f in all_families[dest]:
-            if similar_culture(f.culture, family.culture):
+            if similar_culture(f.culture, c):
                 cooperators += f.effective_size
             else:
                 competitors += f.effective_size
@@ -602,7 +617,8 @@ class ParameterSetting:
 
 params: ParameterSetting
 time_step_energy_use: kcal
-similar_culture: Callable[[cython.int, cython.int], bool]
+similar_culture: Callable[[cython.ulong, cython.ulong], bool]
+attention: Callable[[], bool]
 
 
 def set_params(new_params: ParameterSetting) -> None:
@@ -610,14 +626,17 @@ def set_params(new_params: ParameterSetting) -> None:
     global params
     global time_step_energy_use
     global similar_culture
+    global attention
 
     params = new_params
     time_step_energy_use = params.daily_energy * 365.24219 / 2
     if params.cooperation_threshold == 6:
         from dispersal_model.similar_culture_benchmark import similar_culture
     else:
-        def similar_culture(c1: cython.int, c2: cython.int) -> bool:
+        def similar_culture(c1: cython.ulong, c2: cython.ulong) -> bool:
             return cultural_distance(c1, c2) < params.cooperation_threshold
+    c_util.set_p_attention(params.attention_probability)
+    attention = c_util.attention
 
 
 set_params(ParameterSetting())
@@ -634,7 +653,6 @@ def initialization() -> State:
     while new_patches:
         next = new_patches.pop()
         geo = hexgrid.geo_coordinates(next)
-        print(geo)
         if hexgrid.AMERICAS.w < geo[0] < hexgrid.AMERICAS.e:
             if hexgrid.AMERICAS.s < geo[1] < hexgrid.AMERICAS.n:
                 p = patch_from_grid_index(next)
@@ -687,6 +705,7 @@ def initialization() -> State:
 # 3](#3.-Process-overview-and-scheduling)
 #
 # ## 7.1 Resource use
+@cython.inline
 @cython.ccall
 def use_resources_and_maybe_shrink(family: Family):  # -> None
     """Use up a family's resources.
@@ -707,6 +726,7 @@ def use_resources_and_maybe_shrink(family: Family):  # -> None
         family.stored_resources, family.effective_size)
 
 
+@cython.inline
 @cython.ccall
 def resources_at_season_end(resources: kcal, size: int) -> float:  # kcal
     """Check a family's resources at the end of the season.
@@ -729,6 +749,7 @@ def resources_at_season_end(resources: kcal, size: int) -> float:  # kcal
     return resources_after
 
 
+@cython.inline
 @cython.ccall
 def is_moribund(family: Family) -> int:  # bool
     """A family of less than 2 individuals is not a family any more.
@@ -743,6 +764,7 @@ def is_moribund(family: Family) -> int:  # bool
 
 
 # ## 7.2 Population growth
+@cython.inline
 @cython.ccall
 def maybe_grow(family: Family):  # -> None
     """Grow the family, if that's what should happen.
@@ -761,6 +783,7 @@ def maybe_grow(family: Family):  # -> None
 
 
 # ## 7.3 Creation of new agents
+@cython.inline
 @cython.ccall
 @cython.exceptval(check=False)
 def maybe_procreate(family: Family) -> Family:
@@ -795,6 +818,7 @@ def maybe_procreate(family: Family) -> Family:
 
 
 # ## 7.4 Migration
+@cython.inline
 @cython.ccall
 def decide_on_moving(
         family: Family,
@@ -892,6 +916,7 @@ def test_decide_on_moving_is_unbiased() -> Counter[hexgrid.Index]:
     return c
 
 
+@cython.inline
 @cython.ccall
 def movement_bookkeeping(
         family: Family, destination: hexgrid.Index, state: State):  # -> None
@@ -917,6 +942,7 @@ def movement_bookkeeping(
 
 
 # ## 7.5 Cooperative Resource Extraction
+@cython.inline
 @cython.ccall
 def extract_resources(
         patch: Patch, group: List[Family], total_labor_here: int) -> float:  # kcal
@@ -937,6 +963,7 @@ def extract_resources(
     return resources_extracted
 
 
+@cython.inline
 @cython.ccall
 def resources_from_patch(
         patch: Patch,
@@ -994,6 +1021,7 @@ def resources_from_patch(
             patch.resources * params.accessible_resources)
 
 
+@cython.inline
 @cython.ccall
 def effective_labor_through_cooperation(n_cooperators: int) -> float:
     """Effective labor contribution of a group of cooperators.
@@ -1032,6 +1060,7 @@ def test_effective_labor():  # -> None
              effective_labor_through_cooperation(numpy.arange(1, 100)))
 
 
+@cython.inline
 @cython.ccall
 def adjust_culture(cooperating_families: List[Family]):  # -> None
     """Equalize the cultures of families that cooperated."""
@@ -1047,6 +1076,7 @@ def adjust_culture(cooperating_families: List[Family]):  # -> None
         family.culture = target
 
 
+@cython.inline
 @cython.ccall
 def mutate_culture(family: Family):  # -> None
     """Change the culture of a family according to a small mutation rate.
@@ -1068,6 +1098,7 @@ def mutate_culture(family: Family):  # -> None
             params.culture_mutation_rate)
 
 
+@cython.inline
 @cython.ccall
 def exploit(patch: Patch, resource_reduction: kcal):  # -> None
     """Adjust a patch's resources according to current expoitation."""
@@ -1081,6 +1112,7 @@ def exploit(patch: Patch, resource_reduction: kcal):  # -> None
 
 
 # ## 7.6 Patch Resource Dynamics
+@cython.inline
 @cython.ccall
 def recover(patch: Patch):  # -> None
     """The resources of a patch recover following a logistic function."""

@@ -202,3 +202,4 @@ def in_random_order_ignoring_location(
 
     """
     return shuffle(sum((f for f in keyval.values()), []))
+

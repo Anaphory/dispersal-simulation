@@ -7,8 +7,9 @@ Provide the fastest one under a generic name for imports.
 import cython
 
 
+@cython.inline
 @cython.ccall
-def cultural_distance(c1: cython.int, c2: cython.int) -> cython.int:
+def cultural_distance(c1: cython.ulong, c2: cython.ulong) -> cython.ulong:
     """Cultural distance is the Hamming distance of the culture vectors.
 
     Because cultures are stored in binary, the Hamming distance is all the bits
@@ -36,18 +37,21 @@ def cultural_distance(c1: cython.int, c2: cython.int) -> cython.int:
     return bin(c1 ^ c2).count('1')
 
 
+@cython.inline
 @cython.ccall
-def similar_culture_1(c1: cython.int, c2: cython.int) -> int:  # bool
+def similar_culture_1(c1: cython.ulong, c2: cython.ulong) -> int:  # bool
     return cultural_distance(c1, c2) < 6
 
 
+@cython.inline
 @cython.ccall
-def similar_culture_2(c1: cython.int, c2: cython.int) -> int:  # bool
+def similar_culture_2(c1: cython.ulong, c2: cython.ulong) -> int:  # bool
     return bin(c1 ^ c2).count('1') < 6
 
 
+@cython.inline
 @cython.ccall
-def similar_culture_3(c1: cython.int, c2: cython.int) -> int:  # bool
+def similar_culture_3(c1: cython.ulong, c2: cython.ulong) -> int:  # bool
     f = c1 ^ c2
     return (
         (f & 1) +
@@ -72,8 +76,9 @@ def similar_culture_3(c1: cython.int, c2: cython.int) -> int:  # bool
         (f >> 19 & 1))
 
 
+@cython.inline
 @cython.ccall
-def similar_culture_4(c1: cython.int, c2: cython.int) -> int:  # bool
+def similar_culture_4(c1: cython.ulong, c2: cython.ulong) -> int:  # bool
     c = 0
     f = c1 ^ c2
     while f and c < 6:
@@ -82,7 +87,7 @@ def similar_culture_4(c1: cython.int, c2: cython.int) -> int:  # bool
     return c < 6
 
 
-similar_culture = similar_culture_2
+similar_culture = similar_culture_1
 
 if __name__ == "__main__":
     # Run the benchmark

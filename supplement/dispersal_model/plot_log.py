@@ -150,7 +150,7 @@ def plot_alaska_population(filename):
     plt.show()
 
 
-if __name__ == "__main__":
+def main():
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--log", type=argparse.FileType("r"), default="log")
@@ -159,4 +159,11 @@ if __name__ == "__main__":
     parser.add_argument("--limit", type=eval, default=None)
     parser.add_argument("--resources", action="store_true", default=False)
     args = parser.parse_args()
-    plot_series(args.log, template=args.template, limit=args.limit, show_resources=args.resources)
+    plot_series(args.log,
+                template=args.template,
+                limit=args.limit,
+                show_resources=args.resources)
+
+
+if __name__ == "__main__":
+    main()

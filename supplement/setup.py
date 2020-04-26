@@ -12,7 +12,8 @@ setup(
     author_email='gereon.kaiping@geo.uzh.ch',
     url='https://github.com/Anaphory/dispersal-simulation',
     packages=['dispersal_model'],
-    ext_modules=cythonize("dispersal_model/*.py",
+    ext_modules=cythonize(["dispersal_model/*.py",
+                           "dispersal_model/*.pyx"],
                           exclude=["dispersal_model/__main__.py",
                                    "dispersal_model/__init__.py"],
                           compiler_directives={"language_level": "3"},
@@ -48,7 +49,8 @@ setup(
         ],
     },
     entry_points={
-        'console_scripts': ['dispersal-model=dispersal_model.__main__:main'],
+        'console_scripts': ['dispersal-model=dispersal_model.__main__:main',
+                            'dispersal-plot=dispersal_model.plot_log:main'],
     },
     package_data={'dispersal_mdel': []},
 )
