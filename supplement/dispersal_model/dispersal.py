@@ -699,12 +699,12 @@ def initialization() -> State:
                     descendence="F",
                     culture=0b000_000_000_000_000,
                     location_history=[start1],
-                    stored_resources=16000000)],
+                    stored_resources=16_000_000)],
                 start2: [Family(
                     descendence="A",
                     culture=0b111_111_111_111_111,
                     location_history=[start2],
-                    stored_resources=16000000)],
+                    stored_resources=16_000_000)],
             },
         t=0)
 
@@ -948,10 +948,6 @@ def movement_bookkeeping(
     if destination == family.location:
         return
     try:
-        family.location_history.remove(destination)
-    except ValueError:
-        pass
-    try:
         state.families[family.location].remove(family)
     except ValueError:
         pass
@@ -1107,7 +1103,7 @@ def mutate_culture(family: Family):  # -> None
     if family.seasons_till_next_mutation:
         family.seasons_till_next_mutation -= 1
     else:
-        if family.seasons_till_next_mutation == 8 or (
+        if family.seasons_till_next_mutation == 0 or (
                 family.seasons_till_next_mutation is None and
                 random.random() < params.culture_mutation_rate):
             i = random.randrange(params.culture_dimensionality)
