@@ -23,3 +23,6 @@ tick*.png
 # Python stuff
 *.pyc
 __pycache__
+
+# Rust
+target/
