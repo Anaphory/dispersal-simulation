@@ -222,7 +222,7 @@ def step(state: State) -> State:
                 descendant,
                 current_patch=state.patches[family.location],
                 known_destinations=observe_neighbors(
-                    family, state.patches, state.families,
+                    descendant, state.patches, state.families,
                     hexgrid.neighbors_within_distance(
                         family.location,
                         meters(52413))),

@@ -2,14 +2,19 @@ use std::f64::consts::PI;
 use rand::prelude::*;
 use rand_distr::Normal;
 use rayon::prelude::*;
+use std::collections::HashMap;
 
 // Hexgrid
 use libh3::{geo_to_h3, GeoCoord, H3Index};
 
 fn closest_grid_point(longitude: f64, latitude: f64) -> Option<H3Index> {
-    let point = GeoCoord {lat: latitude* PI / 180.,
+    let point = GeoCoord {lat: latitude * PI / 180.,
                           lon: longitude * PI / 180.};
     return geo_to_h3(&point, 5).ok();
+}
+
+fn nearby_locations(index: &H3Index) -> Vec<H3Index> {
+    return libh3::k_ring_distances(*index, 5).iter().map(|(i, _d)| {*i}).collect()
 }
 
 fn geo_coordinates(index: H3Index) -> GeoCoord {
@@ -20,9 +25,10 @@ fn geo_coordinates(index: H3Index) -> GeoCoord {
 
 fn patch_from_coordinates(coordinates: GeoCoord, data: &Vec<u16>, pixels_width: usize) -> Option<KCal> {
     let column = ((coordinates.lon + PI) / PI / 2. * pixels_width as f64).round() as usize;
-    let row = ((coordinates.lat + PI / 2.) / PI * (data.len() / pixels_width) as f64).round() as usize;
-    let index = row * data.len() / pixels_width + column;
+    let row = ((-coordinates.lat + PI / 2.) / PI * (data.len() / pixels_width) as f64).round() as usize;
+    let index = row * pixels_width + column;
     let precipitation = data.get(index)?;
+
     if *precipitation == 0 {
         return None;
     } else {
@@ -35,30 +41,29 @@ fn patch_from_coordinates(coordinates: GeoCoord, data: &Vec<u16>, pixels_width: 
 type KCal = f32;
 type HalfYears = u32;
 
-static attention_probability: f32 = 0.1;
-static time_step_energy_use: KCal = 10.;
-static storage_loss: f32 = 0.33;
-static resource_recovery: f32 = 0.20;
-static culture_mutation_rate: f32 = 6e-3;
-static culture_dimensionality: u8 = 20;
-static cooperation_gain: f32 = 0.5;
-static accessible_resources: f32 = 0.2;
-static evidence_needed: f32 = 0.3;
-
-static boundary_west: f64 = -168.571541;
-static boundary_east: f64 = -34.535395;
-static boundary_south: f64 = -56.028198;
-static boundary_north: f64 = 74.52671;
-
 struct Family {
     descendence: String,
     culture: Culture,
+    location: H3Index,
     location_history: Vec<H3Index>,
     number_offspring: u16,
     effective_size: usize,
     stored_resources: KCal,
     seasons_till_next_child: HalfYears,
     seasons_till_next_mutation: HalfYears
+}
+
+impl std::fmt::Debug for Family {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let geo = geo_coordinates(self.location);
+
+        f.debug_struct("Point")
+            .field("descendence", &self.descendence)
+            .field("lat", &(geo.lat * 180. / PI))
+            .field("lon", &(geo.lat * 180. / PI))
+            .field("culture", &self.culture)
+            .finish()
+    }
 }
 
 type Culture = u32;
@@ -69,58 +74,236 @@ struct Patch {
 }
 
 struct State {
-    patches: std::collections::HashMap<H3Index, Patch>,
+    patches: HashMap<H3Index, Patch>,
+    //families: HashMap<H3Index, Vec<Family>>,
     families: Vec<Family>,
     t: HalfYears
 }
 
+impl PartialEq for Family {fn eq(&self, other: &Self) -> bool {return self.descendence == other.descendence;}}
 
-
-fn step(state: &mut State) {
-    let mut rng = thread_rng();
-
-    state.families.shuffle(&mut rng);
-    for family in &mut state.families {
-        use_resources_and_maybe_shrink(family);
+fn by_location(families: &Vec<Family>) -> HashMap<H3Index, HashMap<Culture, usize>> {
+    let mut cultures_by_location: HashMap<H3Index, HashMap<Culture, usize>> = HashMap::new();
+    for family in families.iter() {
+        let cultures = cultures_by_location.entry(family.location).or_insert(HashMap::new());
+        let counter = cultures.entry(family.culture).or_insert(0);
+        *counter += 1;
     }
+    return cultures_by_location;
 }
 
-fn known_location<'a>(history: &'a Vec<H3Index>, nearby: &'a Vec<H3Index>) -> Vec<&'a H3Index> {
-    return history[0..4].iter().chain(
-        nearby.iter().filter(|n| {
-            !history[0..4].contains(n) && (
-                history[4..8].contains(n) || attention())}
-        )
+fn step(families: &mut Vec<Family>, patches: &HashMap<H3Index, Patch>, p: &Parameters) -> HashMap<H3Index, Vec<Family>> {
+    // First, families adjust. These things can happen in parallel for families
+    // outside interaction range.
+    let mut families_by_location: HashMap<H3Index, Vec<Family>> = HashMap::new();
+    let cultures_by_location = by_location(families);
+
+    let mut rng = rand::thread_rng();
+    families.shuffle(&mut rng);
+
+    for mut family in families.drain(..) {
+        // Submodule 7.1
+        use_resources_and_maybe_shrink(&mut family, p);
+        if is_moribund(&family) {
+            continue;
+        }
+
+        // Submodule 7.2
+        maybe_grow(&mut family);
+
+        let nearby = nearby_locations(&family.location);
+        // Submodule 7.3
+        let descendant = maybe_procreate(&mut family);
+        match descendant {
+            None => {},
+            Some(descendant) => {
+            // Migration is handled in Submodule 7.4. In terms of scheduling a
+            // new family can (and if possible should) move immediately,
+            // immediately before their parent. This behaviour is taken from del
+            // Castillo (2013). Also, a descendant family will move *before*
+            // their progenitor.
+                let observed = observe_neighbors(
+                    &descendant, patches, &cultures_by_location,
+                    &nearby,
+                    &p.attention_probability);
+                let destination = decide_on_moving(
+                    &descendant,
+                    observed,
+                    true,
+                    p);
+                match destination {
+                    None => {},
+                    Some(destination) => {
+                        families_by_location.entry(destination).or_insert(vec![]).push(descendant);
+                    }
+                }
+            }
+        }
+        // Subsequent earlier moves affect the possible targets of later moves,
+        // so scheduling matters and shuffling is important to remove
+        // first-mover effects.
+
+        let observed = observe_neighbors(
+            &family, patches, &cultures_by_location,
+            &nearby,
+            &p.attention_probability);
+        let destination = decide_on_moving(
+            &family,
+            observed,
+            true,
+            p);
+        match destination {
+            None => {},
+            Some(destination) => {
+                families_by_location.entry(destination).or_insert(vec![]).push(family);
+            }
+        }
+    }
+    return families_by_location;
+}
+
+fn step_part_2(families_by_location: &mut HashMap<H3Index, Vec<Family>>, patches: &mut HashMap<H3Index, Patch>, p: &Parameters) -> Option<()> {
+    // Then, the resources of a patch are updated according to the families
+    // exploiting them over the season. This is described in Submodule 7.5.
+    // Everything here happens locally to a patch, with no external interaction,
+    // so this can be done in parallel.
+    for (patch_id, families) in families_by_location {
+        let mut patch = patches.get_mut(&patch_id)?;
+        let mut resource_reduction: KCal = 0.0;
+        let (cooperatives, sum_labor) = cooperate(families.iter_mut().collect());
+
+        for cooperating_families in cooperatives {
+            resource_reduction += extract_resources(
+                &mut patch, cooperating_families, sum_labor,
+                p);
+        }
+
+        exploit(&mut patch, resource_reduction);
+    }
+
+    // Then, patches advance to the next season according to Submodule 7.6.
+    for mut patch in patches.values_mut() {
+        recover(&mut patch, &p.resource_recovery);
+    }
+
+    return Some(());
+    // The old state has thus been transformed into the new state.
+}
+
+fn similar_culture(c1: &Culture, c2: &Culture) -> bool {
+    return (c1 ^ c2).count_ones() > 0;
+}
+
+fn cooperate<'a>(families_in_this_location: Vec<&'a mut Family>) -> (Vec<Vec<&'a mut Family>>, usize){
+    let mut sum_labor: usize = 0;
+    let mut groups: Vec<Vec<&mut Family>> = vec![];
+    for family in families_in_this_location {
+        sum_labor += family.effective_size;
+        let mut joined_group: Option<&mut Vec<&mut Family>> = None;
+        for group in groups.iter_mut() {
+            let mut join = true;
+            for other_family in group.iter() {
+                if !similar_culture(&family.culture, &other_family.culture) {
+                    join = false;
+                    break;
+                }
+            }
+            if join {
+                joined_group = Some(group);
+                break;
+            }
+        }
+        match joined_group {
+            None => {
+                groups.push(vec![family]);
+            },
+            Some(group) => {
+                group.push(family);
+            }
+        }
+    }
+    return (groups, sum_labor)
+}
+
+struct Parameters {
+    attention_probability: f32,
+    time_step_energy_use: KCal,
+    storage_loss: f32,
+    resource_recovery: f32,
+    culture_mutation_rate: f64,
+    culture_dimensionality: u8,
+    cooperation_gain: f32,
+    accessible_resources: f32,
+    evidence_needed: f32,
+
+    boundary_west: f64,
+    boundary_east: f64,
+    boundary_south: f64,
+    boundary_north: f64
+}
+
+fn known_location<'a>(history: &'a Vec<H3Index>, nearby: &'a Vec<H3Index>, attention_probability: &f32) -> Vec<&'a H3Index> {
+    return nearby.iter().filter(|n| {
+                history[0..min(8, history.len())].contains(n) || attention(attention_probability)}
     ).collect();
 }
 
-fn attention() -> bool {
-    return random::<f32>() < attention_probability;
+fn attention(attention_probability: &f32) -> bool {
+    return random::<f32>() < *attention_probability;
 }
 
-fn observe_neghbors<'a>(
+fn scout<'a>(location: H3Index,
+             reference_culture: &Culture,
+             patches: &'a HashMap<H3Index, Patch>,
+             cultures_by_location: &HashMap<H3Index, HashMap<Culture, usize>>)
+             -> Option<(H3Index, &'a Patch, usize, usize)> {
+    let cultures = cultures_by_location.get(&location)?;
+    let mut coop: usize = 0;
+    let mut comp: usize = 0;
+    for (culture, count) in cultures {
+        if similar_culture(reference_culture, culture) {
+            coop += count;
+        } else {
+            comp += count;
+        }
+    }
+    return Some((location, patches.get(&location)?, coop, comp))
+}
+
+fn observe_neighbors<'a>(
     family: &'a Family,
-    patches: &'a std::collections::HashMap<H3Index, Patch>,
-    all_families: std::collections::HashMap<H3Index, Vec<Family>>,
-    neighbors: &'a Vec<H3Index>) -> Vec<(&'a H3Index, Option<&'a Patch>, usize, usize)> {
-    known_location(&family.location_history, neighbors).iter().filter(
-        |k| {patches.contains_key(k)}
-    ).map(|l| {
-        // FIXME incomplete
-        (*l, patches.get(l), 0, 0)
-    }).collect()
+    patches: &'a HashMap<H3Index, Patch>,
+    cultures_by_location: &HashMap<H3Index, HashMap<Culture, usize>>,
+    neighbors: &'a Vec<H3Index>,
+    attention_probability: &f32) -> Vec<(H3Index, &'a Patch, usize, usize)> {
+    let mut result: Vec<(H3Index, &'a Patch, usize, usize)> = vec![];
+    match scout(family.location, &family.culture, patches, cultures_by_location) {
+        None => {},
+        Some((location, patch, cooperators, competitors)) =>
+            result.push((location, patch, cooperators, competitors))
+    }
+    for location in known_location(&family.location_history, neighbors, attention_probability) {
+        match scout(*location, &family.culture, patches, cultures_by_location) {
+            None => {},
+            Some((location, patch, cooperators, competitors)) =>
+                result.push((location, patch, cooperators, competitors))
+        }
+    }
+    return result;
 }
 
-fn initialization(data: &Vec<u16>, width: usize) -> Option<State> {
+fn initialization(data: &Vec<u16>, width: usize, p: &Parameters) -> Option<State> {
     let start1: H3Index = closest_grid_point(-159.873 , 65.613)?;
     let start2: H3Index = closest_grid_point(-158.2718, 60.8071)?;
 
-    let mut patches: std::collections::HashMap<H3Index, Patch> = std::collections::HashMap::new();
-    let mut new_patches: std::collections::HashSet<H3Index> = std::collections::HashSet::new();
-    new_patches.insert(start1);
-    new_patches.insert(start2);
-    while !new_patches.is_empty() {
-        let next = match new_patches.drain().next() {
+    let area: f32 = libh3::hex_area_km_2(5) as f32;
+
+    let mut patches: HashMap<H3Index, Option<Patch>> = HashMap::new();
+    let mut new_patches: std::collections::BinaryHeap<H3Index> = std::collections::BinaryHeap::new();
+    new_patches.push(start1);
+    new_patches.push(start2);
+    loop {
+        let next = match new_patches.pop() {
             None => break,
             Some(n) => n
         };
@@ -130,76 +313,85 @@ fn initialization(data: &Vec<u16>, width: usize) -> Option<State> {
         let geo = geo_coordinates(next);
         let latitude = geo.lat * 180. / PI;
         let longitude = geo.lon * 180. / PI;
-        println!("{:}: {:}, {:}", next, longitude, latitude);
-        if boundary_west < longitude && longitude < boundary_east &&
-            boundary_south < latitude && latitude < boundary_north {
-                let p = patch_from_coordinates(geo, data, width);
-                match p {
-                    None => continue,
-                    Some(resources) => patches.insert(next, Patch{
-                        resources: resources,
-                        max_resources: resources,
-                    })
+        if p.boundary_west < longitude && longitude < p.boundary_east &&
+            p.boundary_south < latitude && latitude < p.boundary_north {
+                let patch = patch_from_coordinates(geo, data, width);
+                match patch {
+                    None => {
+                        patches.insert(next, None);
+                        continue;
+                    },
+                    Some(resources) => {
+                        patches.insert(next, Some(Patch{
+                            resources: resources * p.time_step_energy_use * area,
+                            max_resources: resources * p.time_step_energy_use * area}));
+                    }
                 };
-                for (q, r) in libh3::k_ring_distances(next, 5) {
+                for q in nearby_locations(&next) {
                     if patches.contains_key(&q) {
                         continue;
                     }
                     new_patches.push(q);
                 }
+            } else {
+                patches.insert(next, None);
             }
     }
+    let f1 = Family {
+        descendence: String::from("A"),
+        location: start1,
+        location_history: vec![],
+        seasons_till_next_child: 12*2,
+        culture: 0b000_000_000_000_000,
+
+        effective_size: 2,
+        number_offspring: 0,
+        seasons_till_next_mutation: 0, // FIXME: Don't mutate immediately
+        stored_resources: 16_000_000.
+    };
+    let f2 = Family {
+        descendence: String::from("F"),
+        location: start2,
+        location_history: vec![],
+        seasons_till_next_child: 12*2,
+        culture: 0b111_111_111_111_111,
+
+        effective_size: 2,
+        number_offspring: 0,
+        seasons_till_next_mutation: 0, // FIXME: Don't mutate immediately
+        stored_resources: 16_000_000.
+    };
+    // let families: HashMap<H3Index, Vec<Family>> = HashMap::new();
+    // families.insert(start1, vec![f1]);
+    // families.insert(start2, vec![f2]);
     return Some(State {
-        patches: patches,
-        families: vec![
-            Family {
-                descendence: String::from("A"),
-                location_history: vec![start1],
-                seasons_till_next_child: 12*2,
-                culture: 0b000_000_000_000_000,
-
-                effective_size: 2,
-                number_offspring: 0,
-                seasons_till_next_mutation: 0, // FIXME: Don't mutate immediately
-                stored_resources: 16_000_000.
-            },
-            Family {
-                descendence: String::from("F"),
-                location_history: vec![start2],
-                seasons_till_next_child: 12*2,
-                culture: 0b111_111_111_111_111,
-
-                effective_size: 2,
-                number_offspring: 0,
-                seasons_till_next_mutation: 0, // FIXME: Don't mutate immediately
-                stored_resources: 16_000_000.
-            }
-        ],
+        patches: patches.drain().filter_map(|(i, p)| match p {None => None, Some(q) => Some((i, q))}).collect(),
+        families: vec![f1, f2],
         t: 0
     })
 }
 
-fn use_resources_and_maybe_shrink(family: &mut Family) {
+fn use_resources_and_maybe_shrink(family: &mut Family, p: &Parameters) {
     let resources = family.stored_resources;
     let mut size = family.effective_size;
-    while resources_at_season_end(resources, size) < 0. && size > 0 {
+    while resources_at_season_end(resources, size, p) < 0. && size > 0 {
         size -= 1;
         family.seasons_till_next_child = std::cmp::max(family.seasons_till_next_child, 2)
     }
     family.effective_size = size;
-    family.stored_resources = resources_at_season_end(family.stored_resources, size);
+    family.stored_resources = resources_at_season_end(family.stored_resources, size, p);
 }
 
-fn resources_at_season_end(resources: KCal, size: usize) -> KCal {
+fn resources_at_season_end(resources: KCal, size: usize, p: &Parameters) -> KCal {
     let mut resources_after: KCal = resources -
-        (size as f32) * time_step_energy_use;
+        (size as f32) * p.time_step_energy_use;
     if resources_after > 0. {
-        resources_after *= 1. - storage_loss;
+        resources_after *= 1. - p.storage_loss;
     }
     return resources_after;
 }
 
-fn is_moribund(family: Family) -> bool {
+fn is_moribund(family: &Family) -> bool {
     if family.effective_size < 2 {
         return true;
     } else {
@@ -223,8 +415,9 @@ fn maybe_procreate(family: &mut Family) -> Option<Family> {
         family.number_offspring += 1;
         family.effective_size -= 2;
         return Some(Family {
-            descendence: String::from("string"),
-            location_history: vec![*family.location_history.get(0)?],
+            descendence: format!("{}:{:}", family.descendence, family.number_offspring),
+            location: family.location,
+            location_history: vec![],
             seasons_till_next_child: 12*2,
             culture: family.culture,
 
@@ -238,9 +431,9 @@ fn maybe_procreate(family: &mut Family) -> Option<Family> {
 
 fn decide_on_moving<'a>(
     family: &'a Family,
-    current_patch: Patch,
-    known_destinations: Vec<(H3Index, Patch, usize, usize)>,
-    avoid_stay: bool) -> Option<H3Index> {
+    known_destinations: Vec<(H3Index, &Patch, usize, usize)>,
+    avoid_stay: bool,
+    p: &Parameters) -> Option<H3Index> {
     let mut kd = known_destinations.iter();
     let (mut target, mut patch, mut cooperators, mut competitors): (H3Index, &Patch, usize, usize);
     match kd.next() {
@@ -267,7 +460,7 @@ fn decide_on_moving<'a>(
             }
         }
     }
-    let mut max_gain: KCal = resources_from_patch(patch, cooperators, competitors, true) *
+    let mut max_gain: KCal = resources_from_patch(patch, cooperators, competitors, true, p) *
         family.effective_size as f32 / cooperators as f32;
     let current_gain = if avoid_stay {0.} else {max_gain};
     let mut c = 0.;
@@ -276,12 +469,13 @@ fn decide_on_moving<'a>(
             patch,
             family.effective_size + *cooperators,
             *competitors,
-            true
+            true,
+            p
         ) * (family.effective_size / (family.effective_size + *cooperators)) as f32;
         if expected_gain >= max_gain {
             if expected_gain <
                 current_gain +
-                time_step_energy_use * evidence_needed {
+                p.time_step_energy_use * p.evidence_needed {
                     continue;
                 }
             if expected_gain == max_gain {
@@ -297,35 +491,30 @@ fn decide_on_moving<'a>(
     return Some(target);
 }
 
-
-fn movement_bookkeeping(family: &mut Family, destination: H3Index, state: &mut State) -> Option<()> {
-    if destination == *family.location_history.get(0)? {
-        return Some(());
-    }
-    family.location_history.push(destination);
-    return Some(());
-}
-
-
-fn extract_resources(patch: Patch, group: Vec<&mut Family>, total_labor_here: usize) -> KCal {
+fn extract_resources(patch: &mut Patch, group: Vec<&mut Family>, total_labor_here: usize, p: &Parameters) -> KCal {
     let labor: u8 = group.iter().map(|f| {f.effective_size as u8}).sum();
     let resources_extracted = resources_from_patch(
         &patch, labor as usize, total_labor_here - labor as usize,
-        false);
+        false,
+        &p);
+    let mut group_copy: Vec<&mut Family> = vec![];
     for family in group {
         family.stored_resources +=
-            resources_extracted * family.effective_size as f32 / labor as f32
+            resources_extracted * family.effective_size as f32 / labor as f32;
+        group_copy.push(family);
     }
+    adjust_culture(group_copy, p);
     return resources_extracted
 }
 
-fn resources_from_patch(patch: &Patch, labor: usize, others_labor: usize, estimate: bool) -> KCal {
+
+fn resources_from_patch(patch: &Patch, labor: usize, others_labor: usize, estimate: bool, p: &Parameters) -> KCal {
     let mut my_relative_returns: f32 =
-        time_step_energy_use * labor as f32 *
-        effective_labor_through_cooperation(labor);
+        p.time_step_energy_use * labor as f32 *
+        effective_labor_through_cooperation(labor, &p.cooperation_gain);
     let mut rng = rand::thread_rng();
     if !estimate {
-        let dist = Normal::new(my_relative_returns, time_step_energy_use / (labor as f32).powf(0.5));
+        let dist = Normal::new(my_relative_returns, p.time_step_energy_use / (labor as f32).powf(0.5));
         match dist {
             Err(_) => {}
             Ok(d) => {
@@ -337,10 +526,10 @@ fn resources_from_patch(patch: &Patch, labor: usize, others_labor: usize, estima
     let mut others_relative_returns: f32 = 0.;
     if others_labor > 0 {
         others_relative_returns =
-            time_step_energy_use * others_labor as f32 *
-            effective_labor_through_cooperation(labor);
+            p.time_step_energy_use * others_labor as f32 *
+            effective_labor_through_cooperation(labor, &p.cooperation_gain);
         if !estimate {
-            let dist = Normal::new(my_relative_returns, time_step_energy_use / (labor as f32).powf(0.5));
+            let dist = Normal::new(my_relative_returns, p.time_step_energy_use / (labor as f32).powf(0.5));
             match dist {
                 Err(_) => {}
                 Ok(d) => {
@@ -353,19 +542,17 @@ fn resources_from_patch(patch: &Patch, labor: usize, others_labor: usize, estima
     return my_relative_returns /
         (my_relative_returns + others_relative_returns) * min(
             my_relative_returns + others_relative_returns,
-            patch.resources * accessible_resources
+            patch.resources * p.accessible_resources
         );
 }
 
-
-fn effective_labor_through_cooperation(n_cooperators: usize) -> f32 {
-    return 1. + (n_cooperators as f32 - 1.).powf(cooperation_gain) / 10.
+fn effective_labor_through_cooperation(n_cooperators: usize, cooperation_gain: &f32) -> f32 {
+    return 1. + (n_cooperators as f32 - 1.).powf(*cooperation_gain) / 10.
 }
 
-
-fn adjust_culture(mut cooperating_families: Vec<&mut Family>) {
+fn adjust_culture(mut cooperating_families: Vec<&mut Family>, p: &Parameters) {
     for f in cooperating_families.iter_mut() {
-        mutate_culture(f);
+        mutate_culture(f, p);
     }
     let family: Option<&&mut Family> = cooperating_families.choose(&mut rand::thread_rng());
     match family {
@@ -379,13 +566,14 @@ fn adjust_culture(mut cooperating_families: Vec<&mut Family>) {
     }
 }
 
-fn mutate_culture(family: &mut Family) {
+fn mutate_culture(family: &mut Family, p: &Parameters) {
     if family.seasons_till_next_mutation > 0 {
         family.seasons_till_next_mutation -= 1;
     }
     if family.seasons_till_next_mutation == 0 {
-        let i: u8 = rand::thread_rng().gen_range(0, culture_dimensionality);
+        let i: u8 = rand::thread_rng().gen_range(0, p.culture_dimensionality);
         family.culture ^= 1 << i;
+        family.seasons_till_next_mutation = random::<f64>().log(1. - p.culture_mutation_rate) as u32;
     }
 }
 
@@ -394,7 +582,7 @@ fn exploit(patch: &mut Patch, resource_reduction: KCal) {
     assert!(patch.resources > 0.);
 }
 
-fn recover(patch: &mut Patch) {
+fn recover(patch: &mut Patch, resource_recovery: &f32) {
     if patch.resources < patch.max_resources - 1. {
         patch.resources += patch.resources *
             resource_recovery *
@@ -402,36 +590,64 @@ fn recover(patch: &mut Patch) {
     }
 }
 
-fn min(a: f32, b: f32) -> f32 {if a < b {a} else {b}}
-fn max(a: f32, b: f32) -> f32 {if a > b {a} else {b}}
+fn min<T: PartialOrd>(a: T, b: T) -> T {if a < b {a} else {b}}
+fn max<T: PartialOrd>(a: T, b: T) -> T {if b < a {a} else {b}}
 
 fn main() {
     run();
 }
 
 fn run() -> Option<()> {
+    let mut parser = argparse::ArgumentParser::new();
+    parser.set_description("Run a dispersal simulation");
+    let p = Parameters {
+        attention_probability: 0.1,
+        time_step_energy_use: 10.,
+        storage_loss: 0.33,
+        resource_recovery: 0.20,
+        culture_mutation_rate: 6e-3,
+        culture_dimensionality: 20,
+        cooperation_gain: 0.5,
+        accessible_resources: 0.2,
+        evidence_needed: 0.3,
+
+        boundary_west: -168.571541,
+        boundary_east: -34.535395,
+        boundary_south: -56.028198,
+        boundary_north: 74.52671,
+    };
     let f = std::fs::File::open("wc2.1_5m_bio_12-16bit.tif").ok()?;
     let maybe_image = tiff::decoder::Decoder::new(f);
     let mut image = maybe_image.ok()?;
     let (width, height) = image.dimensions().ok()?;
-    println!("{}x{}", width, height);
+    println!("# {}x{}", width, height);
     let outcome = image.read_image().ok()?;
-    println!("Image read");
+    println!("# Image read");
     let vec = match outcome {
         tiff::decoder::DecodingResult::U8(v) => v.iter().map(|g| {*g as u16}).collect(),
         tiff::decoder::DecodingResult::U16(w) => w
     };
-    println!("Initialization…");
-    let s: State = initialization(&vec, width as usize)?;
-    println!("Checking patches");
+    println!("# Initialization…");
+    // FIXME: There is something messed up in lat/long -> image pixels. It works
+    // currently, but the names point towards a deep issue with the layout of
+    // the tiff in memory or similar.
+    let mut s: State = initialization(&vec, width as usize, &p)?;
 
-    // println!("x = {:?}", vec);
-    for p in s.patches.keys() {
-        let g = geo_coordinates(*p);
-        println!("[{}, {}],", g.lon, g.lat);
+    loop {
+        let mut families_by_location = step(&mut s.families, &s.patches, &p);
+        println!("{:?}", families_by_location);
+        step_part_2(&mut families_by_location, &mut s.patches, &p)?;
+        for (location, families) in families_by_location{
+            for mut family in families {
+                family.location_history.push(family.location);
+                family.location = location;
+                s.families.push(family);
+            }
+        };
+        if s.families.is_empty() {
+            break;
+        }
+        s.t += 1;
     }
-
     return Some(());
 }
-
-
