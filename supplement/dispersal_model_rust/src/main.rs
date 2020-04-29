@@ -326,7 +326,7 @@ fn observe_neighbors<'a>(
     return result;
 }
 
-fn initialization(data: &Vec<u16>, width: usize, p: &Parameters) -> Option<State> {
+fn initialization(precipitation: &Vec<u16>, width: usize, p: &Parameters) -> Option<State> {
     let start1: H3Index = closest_grid_point(-159.873 , 65.613)?;
     let start2: H3Index = closest_grid_point(-158.2718, 60.8071)?;
 
@@ -349,7 +349,7 @@ fn initialization(data: &Vec<u16>, width: usize, p: &Parameters) -> Option<State
         let longitude = geo.lon * 180. / PI;
         if p.boundary_west < longitude && longitude < p.boundary_east &&
             p.boundary_south < latitude && latitude < p.boundary_north {
-                let patch = patch_from_coordinates(geo, data, width);
+                let patch = patch_from_coordinates(geo, precipitation, width);
                 match patch {
                     None => {
                         patches.insert(next, None);
