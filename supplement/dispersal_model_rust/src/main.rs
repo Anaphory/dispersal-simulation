@@ -13,8 +13,8 @@ fn closest_grid_point(longitude: f64, latitude: f64) -> Option<H3Index> {
     geo_to_h3(&point, 5).ok()
 }
 
-fn nearby_locations(index: &H3Index) -> Vec<H3Index> {
-    libh3::k_ring_distances(*index, 5).iter().map(|(i, _d)| {*i}).collect()
+fn nearby_locations(index: H3Index) -> Vec<H3Index> {
+    libh3::k_ring_distances(index, 5).iter().map(|(i, _d)| {*i}).collect()
 }
 
 fn geo_coordinates(index: H3Index) -> GeoCoord {
@@ -23,11 +23,11 @@ fn geo_coordinates(index: H3Index) -> GeoCoord {
 
 // Util
 
-fn patch_from_coordinates(coordinates: GeoCoord, data: &Vec<u16>, pixels_width: usize) -> Option<KCal> {
+fn patch_from_coordinates(coordinates: GeoCoord, image_pixels: &Vec<u16>, pixels_width: usize) -> Option<KCal> {
     let column = ((coordinates.lon + PI) / PI / 2. * pixels_width as f64).round() as usize;
-    let row = ((-coordinates.lat + PI / 2.) / PI * (data.len() / pixels_width) as f64).round() as usize;
+    let row = ((-coordinates.lat + PI / 2.) / PI * (image_pixels.len() / pixels_width) as f64).round() as usize;
     let index = row * pixels_width + column;
-    let precipitation = data.get(index)?;
+    let precipitation = image_pixels.get(index)?;
 
     if *precipitation == 0 {
         None
@@ -288,16 +288,16 @@ fn scout<'a>(location: H3Index,
         None => return Some((location, patches.get(&location)?, 0, 0)),
         Some(c) => c
     };
-    let mut coop: usize = 0;
-    let mut comp: usize = 0;
+    let mut cooper: usize = 0;
+    let mut compet: usize = 0;
     for (culture, count) in cultures {
         if similar_culture(reference_culture, culture) {
-            coop += count;
+            cooper += count;
         } else {
-            comp += count;
+            compet += count;
         }
     }
-    Some((location, patches.get(&location)?, coop, comp))
+    Some((location, patches.get(&location)?, cooper, compet))
 }
 
 fn observe_neighbors<'a>(
@@ -595,11 +595,11 @@ fn decide_on_moving<'a>(
             None => {
                 return None
             }
-            Some((t, p, coop, comp)) => {
+            Some((t, p, cooper, compet)) => {
                 target = *t;
                 patch = p;
-                cooperators = *coop;
-                competitors = *comp;
+                cooperators = *cooper;
+                competitors = *compet;
             }
         }
     }
