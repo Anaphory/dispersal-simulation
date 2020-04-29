@@ -10,15 +10,15 @@ use libh3::{geo_to_h3, GeoCoord, H3Index};
 fn closest_grid_point(longitude: f64, latitude: f64) -> Option<H3Index> {
     let point = GeoCoord {lat: latitude * PI / 180.,
                           lon: longitude * PI / 180.};
-    return geo_to_h3(&point, 5).ok();
+    geo_to_h3(&point, 5).ok()
 }
 
 fn nearby_locations(index: &H3Index) -> Vec<H3Index> {
-    return libh3::k_ring_distances(*index, 5).iter().map(|(i, _d)| {*i}).collect()
+    libh3::k_ring_distances(*index, 5).iter().map(|(i, _d)| {*i}).collect()
 }
 
 fn geo_coordinates(index: H3Index) -> GeoCoord {
-    return libh3::h3_to_geo(index);
+    libh3::h3_to_geo(index)
 }
 
 // Util
@@ -30,11 +30,11 @@ fn patch_from_coordinates(coordinates: GeoCoord, data: &Vec<u16>, pixels_width: 
     let precipitation = data.get(index)?;
 
     if *precipitation == 0 {
-        return None;
+        None
     } else {
         let alpha = (10.0_f32).powf(-8.07);
         // FIXME: 4 is an arbitrary factor
-        return Some(4. * alpha * (*precipitation as f32).powf(2.64));
+        Some(4. * alpha * (*precipitation as f32).powf(2.64))
     }
 }
 
@@ -93,7 +93,7 @@ struct State {
     t: HalfYears
 }
 
-impl PartialEq for Family {fn eq(&self, other: &Self) -> bool {return self.descendence == other.descendence;}}
+impl PartialEq for Family {fn eq(&self, other: &Self) -> bool {self.descendence == other.descendence}}
 
 fn by_location(families: &Vec<Family>) -> HashMap<H3Index, HashMap<Culture, usize>> {
     let mut cultures_by_location: HashMap<H3Index, HashMap<Culture, usize>> = HashMap::new();
@@ -102,7 +102,7 @@ fn by_location(families: &Vec<Family>) -> HashMap<H3Index, HashMap<Culture, usiz
         let counter = cultures.entry(family.culture).or_insert(0);
         *counter += family.effective_size;
     }
-    return cultures_by_location;
+    cultures_by_location
 }
 
 fn step_part_1(families: &mut Vec<Family>, patches: &HashMap<H3Index, Patch>, p: &Parameters) -> HashMap<H3Index, Vec<Family>> {
@@ -177,7 +177,7 @@ fn step_part_1(families: &mut Vec<Family>, patches: &HashMap<H3Index, Patch>, p:
             }
         }
     }
-    return families_by_location;
+    families_by_location
 }
 
 fn step_part_2(families_by_location: &mut HashMap<H3Index, Vec<Family>>, patches: &mut HashMap<H3Index, Patch>, p: &Parameters) {
@@ -209,7 +209,7 @@ fn step_part_2(families_by_location: &mut HashMap<H3Index, Vec<Family>>, patches
 
 fn similar_culture(c1: &Culture, c2: &Culture) -> bool {
     // FIXME wasn't there a parameter for this?
-    return (c1 ^ c2).count_ones() < 6;
+    (c1 ^ c2).count_ones() < 6
 }
 
 fn cooperate<'a>(families_in_this_location: Vec<&'a mut Family>) -> (Vec<Vec<&'a mut Family>>, usize){
@@ -240,7 +240,7 @@ fn cooperate<'a>(families_in_this_location: Vec<&'a mut Family>) -> (Vec<Vec<&'a
             }
         }
     }
-    return (groups, sum_labor)
+    (groups, sum_labor)
 }
 
 struct Parameters {
@@ -272,11 +272,11 @@ fn known_location<'a>(history: &Vec<H3Index>, nearby: &Vec<H3Index>, attention_p
             continue;
         }
     }
-    return result;
+    result
 }
 
 fn attention(attention_probability: &f32) -> bool {
-    return random::<f32>() < *attention_probability;
+    random::<f32>() < *attention_probability
 }
 
 fn scout<'a>(location: H3Index,
@@ -297,7 +297,7 @@ fn scout<'a>(location: H3Index,
             comp += count;
         }
     }
-    return Some((location, patches.get(&location)?, coop, comp))
+    Some((location, patches.get(&location)?, coop, comp))
 }
 
 fn observe_neighbors<'a>(
@@ -323,7 +323,7 @@ fn observe_neighbors<'a>(
             }
         }
     }
-    return result;
+    result
 }
 
 fn initialization(precipitation: &Vec<u16>, width: usize, p: &Parameters) -> Option<State> {
@@ -398,7 +398,7 @@ fn initialization(precipitation: &Vec<u16>, width: usize, p: &Parameters) -> Opt
     // let families: HashMap<H3Index, Vec<Family>> = HashMap::new();
     // families.insert(start1, vec![f1]);
     // families.insert(start2, vec![f2]);
-    return Some(State {
+    Some(State {
         patches: patches.drain().filter_map(|(i, p)| match p {None => None, Some(q) => Some((i, q))}).collect(),
         families: vec![f1, f2],
         t: 0
@@ -422,15 +422,11 @@ fn resources_at_season_end(resources: KCal, size: usize, p: &Parameters) -> KCal
     if resources_after > 0. {
         resources_after *= 1. - p.storage_loss;
     }
-    return resources_after;
+    resources_after
 }
 
 fn is_moribund(family: &Family) -> bool {
-    if family.effective_size < 2 {
-        return true;
-    } else {
-        return false;
-    }
+    family.effective_size < 2
 }
 
 fn maybe_grow(family: &mut Family) {
@@ -444,11 +440,11 @@ fn maybe_grow(family: &mut Family) {
 
 fn maybe_procreate(family: &mut Family) -> Option<Family> {
     if family.effective_size < 10 {
-        return None
+        None
     } else {
         family.number_offspring += 1;
         family.effective_size -= 2;
-        return Some(Family {
+        Some(Family {
             descendence: format!("{}:{:}", family.descendence, family.number_offspring),
             location: family.location,
             location_history: vec![],
@@ -459,7 +455,7 @@ fn maybe_procreate(family: &mut Family) -> Option<Family> {
             number_offspring: 0,
             seasons_till_next_mutation: 0, // FIXME: Don't mutate immediately
             stored_resources: 0.
-        });
+        })
     }
 }
 
@@ -467,8 +463,8 @@ fn maybe_procreate(family: &mut Family) -> Option<Family> {
 fn test_decide_on_moving() {
     let patch1 = Patch{resources: 10., max_resources: 10.};
     let patch2 = Patch{resources: 100., max_resources: 100.};
-    let patch3 = Patch{resources: 100000., max_resources: 100000.};
-    let mut mini_param = Parameters {
+    let _patch3 = Patch{resources: 100000., max_resources: 100000.};
+    let mini_param = Parameters {
             attention_probability: 0.1,
             time_step_energy_use: 10.,
             storage_loss: 0.25,
@@ -635,7 +631,7 @@ fn decide_on_moving<'a>(
             max_gain = expected_gain;
         }
     }
-    return Some(target);
+    Some(target)
 }
 
 fn extract_resources(patch: &mut Patch, group: Vec<&mut Family>, total_labor_here: usize, p: &Parameters) -> KCal {
@@ -651,7 +647,7 @@ fn extract_resources(patch: &mut Patch, group: Vec<&mut Family>, total_labor_her
         group_copy.push(family);
     }
     adjust_culture(group_copy, p);
-    return resources_extracted
+    resources_extracted
 }
 
 #[test]
@@ -715,15 +711,15 @@ fn resources_from_patch(patch: &Patch, labor: usize, others_labor: usize, estima
             }
         }
     }
-    return my_relative_returns /
+    my_relative_returns /
         (my_relative_returns + others_relative_returns) * min(
             my_relative_returns + others_relative_returns,
             patch.resources * p.accessible_resources
-        );
+        )
 }
 
 fn effective_labor_through_cooperation(n_cooperators: usize, cooperation_gain: &f32) -> f32 {
-    return 1. + (n_cooperators as f32 - 1.).powf(*cooperation_gain) / 10.
+    1. + (n_cooperators as f32 - 1.).powf(*cooperation_gain) / 10.
 }
 
 fn adjust_culture(mut cooperating_families: Vec<&mut Family>, p: &Parameters) {
@@ -779,7 +775,7 @@ fn run() -> Option<()> {
     parser.set_description("Run a dispersal simulation");
     let p = Parameters {
         attention_probability: 0.1,
-        time_step_energy_use: 2263. as KCal * 365.24219 / 2.,
+        time_step_energy_use: 2263. as KCal * 365.242_2 / 2.,
         storage_loss: 0.33,
         resource_recovery: 0.20,
         culture_mutation_rate: 6e-3,
@@ -831,5 +827,5 @@ fn run() -> Option<()> {
         s.t += 1;
         println!("t={:}", s.t);
     }
-    return Some(());
+    Some(())
 }
