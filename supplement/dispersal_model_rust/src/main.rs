@@ -430,7 +430,7 @@ fn is_moribund(family: &Family) -> bool {
 }
 
 fn maybe_grow(family: &mut Family) {
-    if family.seasons_till_next_child <= 0 {
+    if family.seasons_till_next_child == 0 {
         family.effective_size += 1;
         family.seasons_till_next_child = 2;
     } else {
@@ -583,11 +583,11 @@ fn decide_on_moving<'a>(
         None => {
             return None
         }
-        Some((t, p, coop, comp)) => {
+        Some((t, p, cooper, compet)) => {
             target = *t;
             patch = p;
-            cooperators = *coop;
-            competitors = *comp;
+            cooperators = *cooper;
+            competitors = *compet;
         }
     };
     if avoid_stay {
@@ -621,7 +621,7 @@ fn decide_on_moving<'a>(
                 p.time_step_energy_use * p.evidence_needed {
                     continue;
                 }
-            if expected_gain == max_gain {
+            if (expected_gain - max_gain).abs() < std::f32::EPSILON {
                 c += 1.;
                 if random::<f32>() < c / (1. + c) {
                     continue
