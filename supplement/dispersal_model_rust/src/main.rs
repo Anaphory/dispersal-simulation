@@ -208,7 +208,8 @@ fn step_part_2(families_by_location: &mut HashMap<H3Index, Vec<Family>>, patches
 }
 
 fn similar_culture(c1: &Culture, c2: &Culture) -> bool {
-    return (c1 ^ c2).count_ones() > 0;
+    // FIXME wasn't there a parameter for this?
+    return (c1 ^ c2).count_ones() < 6;
 }
 
 fn cooperate<'a>(families_in_this_location: Vec<&'a mut Family>) -> (Vec<Vec<&'a mut Family>>, usize){
