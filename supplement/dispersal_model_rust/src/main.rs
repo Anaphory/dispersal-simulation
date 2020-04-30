@@ -1,76 +1,48 @@
+// Load useful modules
 use rand::prelude::*;
 use rand_distr::Normal;
 use rayon::prelude::*;
 use std::collections::HashMap;
 
-mod hexgrid {
-    use std::f64::consts::PI;
-
-    pub use libh3::{geo_to_h3, GeoCoord, H3Index as Index};
-
-    pub fn closest_grid_point(longitude: f64, latitude: f64) -> Option<Index> {
-        let point = GeoCoord {
-            lat: latitude * PI / 180.,
-            lon: longitude * PI / 180.,
-        };
-        geo_to_h3(&point, 5).ok()
-    }
-
-    pub fn nearby_locations(index: Index) -> Vec<Index> {
-        libh3::k_ring_distances(index, 5)
-            .iter()
-            .map(|(i, _d)| *i)
-            .collect()
-    }
-
-    pub fn geo_coordinates(index: Index) -> GeoCoord {
-        libh3::h3_to_geo(index)
-    }
-}
+mod ecology;
+mod hexgrid;
 
 use std::f64::consts::PI;
-
-// Util
-
-fn load_precipitation_tif() -> Option<(Vec<u16>, u32)> {
-    let f = std::fs::File::open("wc2.1_5m_bio_12-16bit.tif").ok()?;
-    let maybe_image = tiff::decoder::Decoder::new(f);
-    let mut image = maybe_image.ok()?;
-    let (width, height) = image.dimensions().ok()?;
-    println!("# {}x{}", width, height);
-    let outcome = image.read_image().ok()?;
-    println!("# Image read");
-    let vec = match outcome {
-        tiff::decoder::DecodingResult::U8(v) => v.iter().map(|g| u16::from(*g)).collect(),
-        tiff::decoder::DecodingResult::U16(w) => w,
-    };
-    Some((vec, width))
-}
-
-fn patch_from_coordinates(
-    coordinates: hexgrid::GeoCoord,
-    image_pixels: &Vec<u16>,
-    pixels_width: usize,
-) -> Option<KCal> {
-    let column = ((coordinates.lon + PI) / PI / 2. * pixels_width as f64).round() as usize;
-    let row = ((-coordinates.lat + PI / 2.) / PI * (image_pixels.len() / pixels_width) as f64)
-        .round() as usize;
-    let index = row * pixels_width + column;
-    let precipitation = image_pixels.get(index)?;
-
-    if *precipitation == 0 {
-        None
-    } else {
-        let alpha = (10.0_f32).powf(-8.07);
-        // FIXME: 4 is an arbitrary factor
-        Some(4. * alpha * (*precipitation as f32).powf(2.64))
-    }
-}
 
 // Units used
 type KCal = f32;
 type HalfYears = u32;
 
+/*
+Model Description
+=================
+
+This model description follows the ODD (Overview, Design concept, Details)
+protocol (Grimm et al., 2006; Grimm et al., 2010). The model description
+follows the idea of literate programming (Knuth 1992) to the extent useful in
+an IPython Notebook – the actual model is generated from this file that
+documents the model, but the source code is largely commented using
+natural-language descriptions, not generated from them (as would be the case
+in a literal program).
+
+# 1. Purpose
+
+The settlement model generates a deep phylogeny of hunter-gatherer cultures
+based on culture-mediated cooperation and resource-driven migration. It is a
+demographic migration model in which the areal distribution of languages is
+an emergent property, not an imposed structure.
+
+The summary statistics of this phylogeny (in particular diversification
+rates) are to be compared to values known from language evolution. The model
+is structured to be easily applied to study the history of the settlement of
+the Americas at a later time. It would requires paleoclimate data to produce
+results that can be compared to that history.
+
+
+# 2. Entities, state variables, and scales
+
+The main agents of the simulation are families.
+                                                                         */
 struct Family {
     descendence: String,
     culture: Culture,
@@ -83,30 +55,7 @@ struct Family {
     seasons_till_next_mutation: HalfYears,
 }
 
-impl std::fmt::Debug for Patch {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Patch")
-            .field("r", &self.resources)
-            .field("/", &self.max_resources)
-            .finish()
-    }
-}
-
-impl std::fmt::Debug for Family {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let geo = hexgrid::geo_coordinates(self.location);
-
-        f.debug_struct("Family")
-            .field("descendence", &self.descendence)
-            .field("size", &self.effective_size)
-            .field("seasons_till_next_child", &self.seasons_till_next_child)
-            .field("lat", &(geo.lat * 180. / PI))
-            .field("lon", &(geo.lon * 180. / PI))
-            .field("culture", &format_args!("{:020b}", &self.culture))
-            .field("stored_resources", &self.stored_resources)
-            .finish()
-    }
-}
+mod debug;
 
 type Culture = u32;
 
@@ -133,7 +82,7 @@ fn by_location(families: &Vec<Family>) -> HashMap<hexgrid::Index, HashMap<Cultur
     for family in families.iter() {
         let cultures = cultures_by_location
             .entry(family.location)
-            .or_insert(HashMap::new());
+            .or_insert_with(HashMap::new);
         let counter = cultures.entry(family.culture).or_insert(0);
         *counter += family.effective_size;
     }
@@ -180,7 +129,7 @@ fn step_part_1(
                     patches,
                     &cultures_by_location,
                     &nearby,
-                    &p.attention_probability,
+                    p.attention_probability,
                 );
                 let destination = decide_on_moving(&descendant, observed, true, p);
                 match destination {
@@ -208,7 +157,7 @@ fn step_part_1(
             patches,
             &cultures_by_location,
             &nearby,
-            &p.attention_probability,
+            p.attention_probability,
         );
         let destination = decide_on_moving(&family, observed, true, p);
         match destination {
@@ -316,10 +265,10 @@ struct Parameters {
     boundary_north: f64,
 }
 
-fn known_location<'a>(
+fn known_location(
     history: &Vec<hexgrid::Index>,
     nearby: &Vec<hexgrid::Index>,
-    attention_probability: &f32,
+    attention_probability: f32,
 ) -> Vec<hexgrid::Index> {
     let mut result = vec![];
     for location in nearby {
@@ -335,13 +284,13 @@ fn known_location<'a>(
     result
 }
 
-fn attention(attention_probability: &f32) -> bool {
-    random::<f32>() < *attention_probability
+fn attention(attention_probability: f32) -> bool {
+    random::<f32>() < attention_probability
 }
 
 fn scout<'a>(
     location: hexgrid::Index,
-    reference_culture: &Culture,
+    reference_culture: Culture,
     patches: &'a HashMap<hexgrid::Index, Patch>,
     cultures_by_location: &HashMap<hexgrid::Index, HashMap<Culture, usize>>,
 ) -> Option<(hexgrid::Index, &'a Patch, usize, usize)> {
@@ -352,7 +301,7 @@ fn scout<'a>(
     let mut cooper: usize = 0;
     let mut compet: usize = 0;
     for (culture, count) in cultures {
-        if similar_culture(reference_culture, culture) {
+        if similar_culture(&reference_culture, culture) {
             cooper += count;
         } else {
             compet += count;
@@ -366,12 +315,12 @@ fn observe_neighbors<'a>(
     patches: &'a HashMap<hexgrid::Index, Patch>,
     cultures_by_location: &HashMap<hexgrid::Index, HashMap<Culture, usize>>,
     neighbors: &Vec<hexgrid::Index>,
-    attention_probability: &f32,
+    attention_probability: f32,
 ) -> Vec<(hexgrid::Index, &'a Patch, usize, usize)> {
     let mut result: Vec<(hexgrid::Index, &'a Patch, usize, usize)> = vec![];
     match scout(
         family.location,
-        &family.culture,
+        family.culture,
         patches,
         cultures_by_location,
     ) {
@@ -384,7 +333,7 @@ fn observe_neighbors<'a>(
         if location == family.location {
             continue;
         }
-        match scout(location, &family.culture, patches, cultures_by_location) {
+        match scout(location, family.culture, patches, cultures_by_location) {
             None => {}
             Some((location, patch, cooperators, competitors)) => {
                 result.push((location, patch, cooperators, competitors));
@@ -421,7 +370,7 @@ fn initialization(precipitation: &Vec<u16>, width: usize, p: &Parameters) -> Opt
             && p.boundary_south < latitude
             && latitude < p.boundary_north
         {
-            let patch = patch_from_coordinates(geo, precipitation, width);
+            let patch = ecology::patch_from_coordinates(geo, precipitation, width);
             match patch {
                 None => {
                     patches.insert(next, None);
@@ -939,9 +888,9 @@ fn run() -> Option<()> {
         accessible_resources: 0.2,
         evidence_needed: 0.3,
 
-        boundary_west: -168.571541,
-        boundary_east: -34.535395,
-        boundary_south: -56.028198,
+        boundary_west: -168.571_541,
+        boundary_east: -34.535_395,
+        boundary_south: -56.028_198,
         boundary_north: 74.52671,
     };
 
@@ -949,7 +898,7 @@ fn run() -> Option<()> {
     // FIXME: There is something messed up in lat/long -> image pixels. It works
     // currently, but the names point towards a deep issue with the layout of
     // the tiff in memory or similar.
-    let (vec, width) = load_precipitation_tif()?;
+    let (vec, width) = ecology::load_precipitation_tif()?;
     let mut s: State = initialization(&vec, width as usize, &p)?;
 
     loop {
