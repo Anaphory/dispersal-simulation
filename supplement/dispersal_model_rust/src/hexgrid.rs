@@ -20,3 +20,7 @@ pub fn nearby_locations(index: Index) -> Vec<Index> {
 pub fn geo_coordinates(index: Index) -> GeoCoord {
     libh3::h3_to_geo(index)
 }
+
+pub fn hex_distance(i1: Index, i2: Index) -> i32 {
+    libh3::h3_distance(i1, i2).unwrap_or(-1)
+}

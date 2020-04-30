@@ -27,6 +27,10 @@ the Americas at a later time. It would requires paleoclimate data to produce
 results that can be compared to that history.
 */
 
+// TODO: Dear Rustacean, I know that my use of documentation comments is
+// hazardous, because they land in the generated documentation in a different
+// order, or attached to things that are only accidentally coming afterwards.
+
 // Load useful modules
 use rand::prelude::*;
 use rand_distr::Normal;
@@ -63,7 +67,7 @@ The main decision-making agents of the simulation are families. Families can
 migrate between cells and form links to other families in the context of
 cooperation to extract resources.
  */
-struct Family {
+pub struct Family {
     /// The agent's history of decendence, also serving as unique ID.
     descendence: String,
     /// The effective size of the family in number of adults. One adult is
@@ -312,7 +316,8 @@ mod concepts {}
 /**
 ## 4.1 Basic priciples
 
-### Which general concepts, theories, hypotheses, or modeling approaches are underlying the model’s design?
+### Which general concepts, theories, hypotheses, or modeling approaches are
+### underlying the model’s design?
 
 According to its purpose of providing a model for language dispersal and split,
 our model draws on existing publications looking at for cultures changing in
@@ -323,25 +328,38 @@ change in the agents: Drift and assimilation. In isolation, agents' cultures
 undergo drift. Where social interactions happen, drift is counterbalanced by
 cultural assimilation for agents that cooperate with each other. In the case of
 that model, agents interact with other agents in a limited range and based on
-need. We posit a similar basic *relationship between cooperation driving
+need. We posit a similar basic relationship between *cooperation driving
 cultural assimilation, and cultural similarity conditioning cooperation*. Due to
 the larger scope of our model, however, we avoid tracking networks of pairwise
 interactions and instead assume that cooperation happens in patches,
 unconditionally between all individuals of compatible culture in that patch.
 
 This interaction between cooperation and culture is the main addition to an
-otherwise demographic dispersal model. A major necessary feature of the
-dispersal component for the culture component is to allow group fission and
-fusion, to allow culture splits to emerge from low-level agent interactions, but
-to also drive incentives for agents to congregate, cooperate, and assimilate
-their cultures. As such, the model draws heavily on the agent-based model by
-crema2014simulation, crema2015modeling, with minor variants.
+otherwise *demographic dispersal model*. The migratory pattern we will see are
+not imposed by any geographical structure, buy by the carrying capacities of the
+individual patches. Difficult terrain (mountains, seas) is, to the model, just
+terrain with a low carrying capacity, but does not a priori prevent agents from
+crossing it if they can reach a patch on the other side that is habitable. Due
+to a limited interaction range, however, larger uninhabitable areas do provide
+an impediment to movement, because agents naturally avoid moving into them if
+better options exist.
+
+A major necessary feature of the dispersal component for the culture component
+is to allow *group fission and fusion*, to allow culture splits to emerge from
+low-level agent interactions, but to also drive incentives for agents to
+congregate, cooperate, and assimilate their cultures. As such, the model draws
+heavily on the agent-based model by crema2014simulation, crema2015modeling, with
+minor variants.
 
 FIXME: Given that statement, I should really construct an implementation of
 Crema's model compatible with my setup, where the differences are explicitly
 visible as model parameters that I use differently from them. My patch topology
 is different, what else?
+ */
 
+mod crema2014simulaton {}
+
+/**
 One of the deviations from Crema's model, and also from PSMED, is the geography
 underlying the simulation. Crema and Barceló use a quadratic grid with arbitrary
 fixed or randomly generated resources. A long-term goal for our model it
@@ -364,17 +382,64 @@ cultures from unconstrained evolutionary drift.
 
 ### Are they used at the level of submodels, or is their scope the system level?
 
-### Will the model provide insights about the basic principles themselves, i.e., their scope, their usefulness in real-world scenarios, validation, or modification?
+### Will the model provide insights about the basic principles themselves, i.e.,
+### their scope, their usefulness in real-world scenarios, validation, or
+### modification?
 
-### Does the model use new, or previously developed, theory for agent traits from which system dynamics emerge?
+### Does the model use new, or previously developed, theory for agent traits
+### from which system dynamics emerge?
  */
+
+mod basic_principles {}
 
 /**
  ## 4.2 Emergence
+
 */
+mod emergence {
+    use crate::hexgrid;
+    use crate::cultural_distance;
+
+    /**
+    The main emergent property will be culturally somewhat uniform territories. We
+    expect that the interplay of migration, cooperation and cultural similarity
+    leads to regions sharing similar cultures, with noticeable boundaries. This
+    means that the plot of cultural distances vs. geographical distances should
+    therefore show small cultural distances for small geographical distances. There
+    should be a critical geographical distance of cohesion where the distribution of
+    cultural distances becomes bimodal, with one mode being lower than the
+    cooperation threshold and one mode above the cooperation threshold. For large
+    geographical distances, the cultural distances should be high, but with a big
+    variance. The critical geographical distance is likely to depend on the region,
+    being larger in more marginal environments where migration is more frequent.
+    */
+    pub fn cultural_distance_by_geographical_distance(families: &Vec<crate::Family>) {
+        let mut gd_cd: Vec<(i32, u32)> = vec![];
+        for f1 in families {
+            for f2 in families {
+                if f1 == f2 {
+                    break;
+                }
+                gd_cd.push((
+                    hexgrid::hex_distance(f1.location, f2.location),
+                    cultural_distance(&f1.culture, &f2.culture)));
+            }
+        }
+    }
+
+    /**
+    Underlying the model is
+    */
+}
+
+fn cultural_distance(c1: &Culture, c2: &Culture) -> u32 {
+    // FIXME wasn't there a parameter for this?
+    (c1 ^ c2).count_ones()
+}
+
 fn similar_culture(c1: &Culture, c2: &Culture) -> bool {
     // FIXME wasn't there a parameter for this?
-    (c1 ^ c2).count_ones() < 6
+    cultural_distance(c1, c2) < 6
 }
 
 fn cooperate<'a>(
