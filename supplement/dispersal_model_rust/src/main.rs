@@ -179,6 +179,19 @@ struct State {
 /**
 # 3. Process overview and scheduling
 
+### How is time modeled in the IBM: using discrete time steps, continuous time,
+### or both? If both are used, is dynamic scheduling use for events that happen
+### quickly compared to the model’s time step and are highly dependent on
+### execution order?
+
+### What model processes or events are grouped into actions that are executed
+### together? Do these actions produce synchronous or asynchronous updating of
+### the model?
+
+### How are actions modeled as happening concurrently actually executed? What
+### actions are on a fixed schedule, in what order? Are some actions executed in
+### random order? What basis is provided for these scheduling decisions?
+
 The model progresses in discrete time steps, each corresponding to half a year
 of simulated time. The entire simulation consists of repeating the step to
 simulate 15000 years. The structure of a single time step consist of two parts,
@@ -393,7 +406,14 @@ cultures from unconstrained evolutionary drift.
 mod basic_principles {}
 
 /**
- ## 4.2 Emergence
+## 4.2 Emergence
+
+### Which processes in the IBM are modeled as emerging from a mechanistic
+### representation of adaptive traits of individuals?
+
+### Do the system-level phenomena the IBM is designed to explain emerge from
+### individual traits, or are they imposed by rules that force the model to
+### produce a certain result?
 
 */
 mod emergence {
@@ -428,9 +448,167 @@ mod emergence {
     }
 
     /**
-    Underlying the model is
-    */
+    Underlying the model is a fission-fusiom model of group dynamics
+    (crema2014simulation), so we expect a similar analysis to apply to our
+    model. Crema observes actual fission-fusion cycles only for a small part of
+    the parameter space (“Primate systems emerge only temporarily, either as
+    part of a limit-cycle equilibrium, or as a short-term transition from a
+    convex equilibrium. In either case, they require some level of system
+    connectivity, defined here by the spatial range of interaction (h), the
+    frequency of decision-making (z), and the sample proportion of observed
+    neighbour agents (k)”), so it is not clear whether we should expect them for
+    our model.
+     */
+    fn crema_fission_fusion_analysis() {
+        // TODO: write this
+    }
 }
+
+/**
+## 4.3 Adaptation
+
+### What adaptive traits do the model individuals have to improve their
+### potential fitness, in response to changes in themselves or their
+### environment?
+
+### Which adaptive traits are modeled as direct fitness-seeking, with
+### individuals making decisions explicitly to improve their expected success at
+### passing genes on to future generations?
+
+### Which adaptive traits are modeled as indirect fitness-seeking, in which
+### individuals make decisions to meet a specific objective that indirectly
+### contributes to future success at passing genes on?
+
+The only trait agents have control over is their location. Agents optimize (in
+the limits of their knowledge) their location to increase the amount of
+resources they gather. The resources gathered indirectly contribute to future
+success: A certain minimum of gathered resources is necessary to procreate, but
+extremely large amounts gathered soon do not increase the immediate rate of
+procreation and can in extreme cases (overexploitation of local resources) even
+be detrimental in the long run.
+*/
+mod adaptation {
+    // TODO: construct some test cases for comparing adaptation using
+    // decide_on_moving with random and static cases, for low resources (where
+    // decision is useful), medium resources (where it matters, but little) and
+    // a constructed extreme case with over-exploitation, where it is actually
+    // detrimental.
+}
+
+/**
+## 4.4 Fitness
+
+### For traits modeled as direct fitness-seeking, how complete is the fitness
+### measure used to evaluate decision alternatives? The fitness measure is the
+### individual’s internal model of how its expected fitness depends on which
+### alternative it chooses. Which elements of potential fitness – survival to
+### reproduction, attainment of reproductive size or life stage, gonad
+### production, etc. – are represented in the fitness measure? Is the
+### completeness of the fitness measure consistent with the IBM’s objectives?
+
+### How direct is the fitness measure? What variables and mechanisms are used to
+### represent how an individual’s decision affects its future fitness? Is the
+### choice of variables and mechanisms consistent with the IBM’s objectives and
+### the biology of the system being modeled? Does the fitness measure have a
+### clear biological meaning? Does the fitness measure allow the individual to
+### make appropriate decisions even when none of the alternatives are good?
+
+### How is the individual’s current state considered in modeling fitness
+### consequences of decisions?
+
+### Should the fitness measure change with life stage, season, or other
+### conditions?
+*/
+mod fitness {
+    // This is hard. While accessible resources are not immediately fitness,
+    // they have some fitness benefits, as described under Adaptation.
+
+    // Also, another Family attribute, `seasons_till_next_child`, is (ab)used to
+    // represent life stage, and in the first life stage of a family, there is
+    // no change in ‘reproductive size’, in the second stage, ‘reproductive
+    // size’ is attained, and then the families start to fission regularily.
+}
+
+/**
+## 4.5 Prediction
+
+### In estimating future fitness consequences of their decisions, how do
+### individuals predict the future conditions (internal as well as
+### environmental) they will experience? Do the simulated prediction methods
+### produce realistic behavior while being biologically realistic? Are
+### prediction methods appropriate for the time scales used to model
+### fitness-seeking? Do the individual’s predictions make use of memory? Of
+### learning? Environmental cues?
+
+### What tacit predictions are included in the IBM? What assumptions are
+### implicitly embedded in the tacit predictions?
+*/
+
+
+/**
+## 4.6 Interaction
+
+### What kinds of interaction among individuals are assumed? Do individuals
+### interact directly with other individuals? (With all others or only with
+### neighbors?) Or are interactions mediated, e.g., through competition for a
+### shared resource? Or do individuals interact with a “field” of effects
+### produced by neighbors?
+
+### What real interaction mechanisms, at what spatial and temporal scales, were
+### the IBM’s interaction design based on?
+*/
+
+/**
+## 4.7 Sensing
+
+### What variables (describing both their environment and themselves) are
+### individuals assumed to sense or “know” and consider in their adaptive
+### decisions?
+
+### What sensing mechanisms are explicitly simulated? Does the IBM represent the
+### actual sensing process?
+
+### If sensing is not simulated explicitly, what assumptions are made about how
+### individuals “know” each sensed variable? With what certainty or accuracy are
+### individuals assumed able to sense each variable? Over what distances?
+ */
+
+/**
+## 4.6 Stochasticity
+
+### Are stochastic processes used to simulate variability in input or driving
+### variables? Is stochasticity preferable to using observed values? Is it
+### clearly desirable for these inputs or drivers to be variable?
+
+### What traits use stochastic processes to reproduce behavior observed in real
+### organisms? Is this approach clearly recognized and used as an empirical
+### model?
+
+### What variable low-level processes are represented empirically as stochastic
+### processes? Is the variability important to include in the IBM?
+ */
+
+/**
+## 4.7 Collectives
+
+### Are collectives represented in the IBM? Collectives are aggregations of
+### individuals (flocks, social groups, stands of plants) included in an IBM
+### because the state and behavior of an individual depends strongly on (a)
+### whether the individual is in a collective, and if so, (b) the state of the
+### collective.
+
+### How are collectives represented? Do collectives occur only as phenomena
+### emerging from individual behavior, or are individuals given traits that
+### impose the formation of collectives? Or are collectives represented as
+### explicit entities with their own state variables and traits?
+ */
+
+/*
+
+    Observation
+    (24)	What kinds of model results must be observed to test the IBM and meet its objectives?
+    (25)	From what perspectives are observations of results taken: omniscient, model individual, or virtual ecologist?
+*/
 
 fn cultural_distance(c1: &Culture, c2: &Culture) -> u32 {
     // FIXME wasn't there a parameter for this?
