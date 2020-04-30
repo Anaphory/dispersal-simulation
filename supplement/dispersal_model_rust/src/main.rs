@@ -3,19 +3,22 @@ Model Description
 =================
 
 This model description follows the ODD (Overview, Design concept, Details)
-protocol (Grimm et al., 2006; Grimm et al., 2010). The model description
-follows the idea of literate programming (Knuth 1992) to the extent useful in
-an IPython Notebook – the actual model is generated from this file that
-documents the model, but the source code is largely commented using
-natural-language descriptions, not generated from them (as would be the case
-in a literal program).
+protocol (Grimm et al., 2006; Grimm et al., 2010). The model description follows
+the idea of literate programming (Knuth 1992) to the extent useful in Rust
+source code – the actual model is generated from this file that documents the
+model, but the source code is largely commented using natural-language
+descriptions, not generated from them (as would be the case in a literal
+program).
 
 # 1. Purpose
 
-The settlement model generates a deep phylogeny of hunter-gatherer cultures
-based on culture-mediated cooperation and resource-driven migration. It is a
-demographic migration model in which the areal distribution of languages is
-an emergent property, not an imposed structure.
+The dispersal model generates a deep phylogeny of hunter-gatherer cultures based
+on culture-mediated cooperation and resource-driven migration. It is a
+demographic migration model in which the areal distribution of languages is an
+emergent property, not an imposed structure. The model is designed with
+extension to more concrete research questions in mind. In the current, first
+stage, the purpose of the model is to investigate how languages disperse and
+split, driven only by the necessary interactions between humans.
 
 The summary statistics of this phylogeny (in particular diversification
 rates) are to be compared to values known from language evolution. The model
@@ -296,6 +299,79 @@ fn step_part_2(
     }
 }
 
+/**
+# 4. Design concepts
+
+Under the ODD protocol, the design principles largely fall into questions. Where
+my answer indicates an invariant property of the simulation, I provide a test
+function that checks that invariance if possible.
+
+ */
+mod concepts {}
+
+/**
+## 4.1 Basic priciples
+
+### Which general concepts, theories, hypotheses, or modeling approaches are underlying the model’s design?
+
+According to its purpose of providing a model for language dispersal and split,
+our model draws on existing publications looking at for cultures changing in
+time and space, focussing on taking a bottom-up approach on languages splitting.
+A major useful reference is the PSMED model (delcastillo2013modeling,
+barcelo2013psmed, barcelo2015simulating), which includes two drivers of cultural
+change in the agents: Drift and assimilation. In isolation, agents' cultures
+undergo drift. Where social interactions happen, drift is counterbalanced by
+cultural assimilation for agents that cooperate with each other. In the case of
+that model, agents interact with other agents in a limited range and based on
+need. We posit a similar basic *relationship between cooperation driving
+cultural assimilation, and cultural similarity conditioning cooperation*. Due to
+the larger scope of our model, however, we avoid tracking networks of pairwise
+interactions and instead assume that cooperation happens in patches,
+unconditionally between all individuals of compatible culture in that patch.
+
+This interaction between cooperation and culture is the main addition to an
+otherwise demographic dispersal model. A major necessary feature of the
+dispersal component for the culture component is to allow group fission and
+fusion, to allow culture splits to emerge from low-level agent interactions, but
+to also drive incentives for agents to congregate, cooperate, and assimilate
+their cultures. As such, the model draws heavily on the agent-based model by
+crema2014simulation, crema2015modeling, with minor variants.
+
+FIXME: Given that statement, I should really construct an implementation of
+Crema's model compatible with my setup, where the differences are explicitly
+visible as model parameters that I use differently from them. My patch topology
+is different, what else?
+
+One of the deviations from Crema's model, and also from PSMED, is the geography
+underlying the simulation. Crema and Barceló use a quadratic grid with arbitrary
+fixed or randomly generated resources. A long-term goal for our model it
+applicability to real-world language dispersal processes. A hexagonal grid has
+some advantages over a quadratic grid on the plane, in that all hexagons within
+a fixed number of steps from a focus are a much better approximation of a circle
+than all squares within a fixed number of steps from a central square. Hexagons
+also have nicer properties for delineating boundaries, which need some
+approximation for square grids (cf. kuijper2004detecting, which is not directly
+on finding boundaries, but solving that problem nonetheless). On a sphere such
+as Earth, using a hexagonal grid has the additional advantage of reducing
+distortions. Using hexagonal grids in continental or global dispersal
+simulations is well-established (gavin2017processbased, callegari2013agentbased).
+
+Our model is thus an agent-based model of the emergence of cultural areas from
+fission-fusion dynamics, where local cooperation is the main driver to prevent
+cultures from unconstrained evolutionary drift.
+
+### How were they taken into account?
+
+### Are they used at the level of submodels, or is their scope the system level?
+
+### Will the model provide insights about the basic principles themselves, i.e., their scope, their usefulness in real-world scenarios, validation, or modification?
+
+### Does the model use new, or previously developed, theory for agent traits from which system dynamics emerge?
+ */
+
+/**
+ ## 4.2 Emergence
+*/
 fn similar_culture(c1: &Culture, c2: &Culture) -> bool {
     // FIXME wasn't there a parameter for this?
     (c1 ^ c2).count_ones() < 6
