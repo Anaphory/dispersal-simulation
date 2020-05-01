@@ -265,7 +265,7 @@ fn step_part_1(
             // taken from del Castillo (2013). Also, a descendant family
             // will move directly before their progenitor.
             Some(descendant) => {
-                let observed = observe_neighbors(
+                let observed = sensing::observe_neighbors(
                     &descendant,
                     patches,
                     &cultures_by_location,
@@ -283,7 +283,7 @@ fn step_part_1(
                 // cultures_by_location here.
             }
         }
-        let observed = observe_neighbors(
+        let observed = sensing::observe_neighbors(
             &family,
             patches,
             &cultures_by_location,
@@ -311,7 +311,6 @@ external interaction, so this can be done in parallel. After exploitation,
 patches recover advance to the next season according to Submodule 7.6. This
 concludes a time step.
  */
-use emergence::cooperate;
 
 fn step_part_2(
     families_by_location: &mut HashMap<hexgrid::Index, Vec<Family>>,
@@ -328,7 +327,7 @@ fn step_part_2(
             max_resources: 0.0,
         });
         let mut resource_reduction: KCal = 0.0;
-        let (cooperatives, sum_labor) = cooperate(families.iter_mut().collect());
+        let (cooperatives, sum_labor) = collectives::cooperatives(families.iter_mut().collect());
 
         for cooperating_families in cooperatives {
             resource_reduction += extract_resources(&mut patch, cooperating_families, sum_labor, p);
@@ -503,37 +502,9 @@ mod emergence {
     agents, but entirely determined by their cultures.
      */
 
-    pub fn cooperate<'a>(
-        families_in_this_location: Vec<&'a mut Family>,
-    ) -> (Vec<Vec<&'a mut Family>>, usize) {
-        let mut sum_labor: usize = 0;
-        let mut groups: Vec<Vec<&mut Family>> = vec![];
-        for family in families_in_this_location {
-            sum_labor += family.effective_size;
-            let mut joined_group: Option<&mut Vec<&mut Family>> = None;
-            for group in groups.iter_mut() {
-                let mut join = true;
-                for other_family in group.iter() {
-                    if !similar_culture(&family.culture, &other_family.culture) {
-                        join = false;
-                        break;
-                    }
-                }
-                if join {
-                    joined_group = Some(group);
-                    break;
-                }
-            }
-            match joined_group {
-                None => {
-                    groups.push(vec![family]);
-                }
-                Some(group) => {
-                    group.push(family);
-                }
-            }
-        }
-        (groups, sum_labor)
+    pub fn similar_culture(c1: &Culture, c2: &Culture) -> bool {
+        // FIXME wasn't there a parameter for this?
+        cultural_distance(c1, c2) < 6
     }
 }
 
@@ -586,7 +557,7 @@ mod adaptation {
             cooperators = *c;
             competitors = *d;
         }
-        let mut max_gain: KCal = expected_resources_from_patch(
+        let mut max_gain: KCal = prediction::expected_resources_from_patch(
             family.effective_size,
             patch,
             cooperators,
@@ -641,8 +612,13 @@ mod objectives {
         let mut c = 0;
         let mut target: Option<hexgrid::Index> = None;
         for (coords, patch, cooperators, competitors) in kd {
-            let expected_gain =
-                expected_resources_from_patch(size, patch, *cooperators, *competitors, p);
+            let expected_gain = prediction::expected_resources_from_patch(
+                size,
+                patch,
+                *cooperators,
+                *competitors,
+                p,
+            );
             if expected_gain >= *max_gain {
                 if expected_gain < threshold {
                     continue;
@@ -662,20 +638,53 @@ mod objectives {
         target
     }
 }
+/**
+## 4.5 Learning
+
+> Many individuals or agents (but also organizations and institutions) change
+> their adaptive traits over time as a consequence of their experience? If so,
+> how?
+
+There is a minor effect of experience on location choice in that a family knows
+nearby locations only with a small random chance, but they always have knowledge
+about the locations they were at in the last 4 years (8 time steps).
+
+TODO: Put that 4 in a static variable and put a doctest here that confirms it.
+ */
+
+mod learning {
+    use crate::*;
+
+    pub fn known_location(
+        history: &Vec<hexgrid::Index>,
+        nearby: &Vec<hexgrid::Index>,
+        attention_probability: f32,
+    ) -> Vec<hexgrid::Index> {
+        let mut result = vec![];
+        for location in nearby {
+            if history[0..min(8, history.len())].contains(&location) {
+                result.push(*location);
+                continue;
+            }
+            if sensing::attention(attention_probability) {
+                result.push(*location);
+                continue;
+            }
+        }
+        result
+    }
+}
 
 /**
-## 4.5 Prediction
+## 4.6 Prediction
 
-### In estimating future fitness consequences of their decisions, how do
-### individuals predict the future conditions (internal as well as
-### environmental) they will experience? Do the simulated prediction methods
-### produce realistic behavior while being biologically realistic? Are
-### prediction methods appropriate for the time scales used to model
-### fitness-seeking? Do the individual’s predictions make use of memory? Of
-### learning? Environmental cues?
-
-### What tacit predictions are included in the IBM? What assumptions are
-### implicitly embedded in the tacit predictions?
+> Prediction is fundamental to successful decision-making; if an agent’s
+> adaptive traits or learning procedures are based on estimating future
+> consequences of decisions, how do agents predict the future conditions (either
+> environmental or internal) they will experience? If appropriate, what internal
+> models are agents assumed to use to estimate future conditions or consequences
+> of their decisions? What tacit or hidden predictions are implied in these
+> internal model assumptions?
 
 Agents predict and hypothesize their payoff, in terms of extracted resources, at
 the end of the time step and decide accordingly. The actual estimation procedure
@@ -687,31 +696,113 @@ effects, thus giving the expectation instead of the actual value.
 The prediction is based on the current state of the model, with very little
 extrapolation whatsoever. An agent only adds their own effective size to the
 current distribution of individuals in the target location. Agents do not
-account for their own growth, split, or the following moves of other agents.
+account for the following moves of other agents, and even less so for growth,
+split, or other effects to themselves or others in future time steps.
  */
-fn expected_resources_from_patch(
-    my_effective_size: usize,
-    patch: &Patch,
-    cooperators: usize,
-    competitors: usize,
-    p: &Parameters,
-) -> KCal {
-    assert!(my_effective_size + cooperators > 0);
-    resources_from_patch(patch, my_effective_size + cooperators, competitors, true, p)
-        * (my_effective_size as f32 / (my_effective_size + cooperators) as f32)
+mod prediction {
+    use crate::*;
+
+    pub fn expected_resources_from_patch(
+        my_effective_size: usize,
+        patch: &Patch,
+        cooperators: usize,
+        competitors: usize,
+        p: &Parameters,
+    ) -> KCal {
+        assert!(my_effective_size + cooperators > 0);
+        resources_from_patch(patch, my_effective_size + cooperators, competitors, true, p)
+            * (my_effective_size as f32 / (my_effective_size + cooperators) as f32)
+    }
 }
 
 /**
-## 4.6 Interaction
+## 4.7 Sensing
 
-### What kinds of interaction among individuals are assumed? Do individuals
-### interact directly with other individuals? (With all others or only with
-### neighbors?) Or are interactions mediated, e.g., through competition for a
-### shared resource? Or do individuals interact with a “field” of effects
-### produced by neighbors?
+> What internal and environmental state variables are individuals assumed to
+> sense and consider in their decisions? What state variables of which other
+> individuals and entities can an individual perceive; for example, signals that
+> another individual may intentionally or unintentionally send? Sensing is often
+> assumed to be local, but can happen through networks or can even be assumed to
+> be global (e.g., a forager on one site sensing the resource levels of all
+> other sites it could move to). If agents sense each other through social
+> networks, is the structure of the network imposed or emergent? Are the
+> mechanisms by which agents obtain information modeled explicitly, or are
+> individuals simply assumed to know these variables?
 
-### What real interaction mechanisms, at what spatial and temporal scales, were
-### the IBM’s interaction design based on?
+ */
+
+mod sensing {
+    use crate::*;
+
+    pub fn attention(attention_probability: f32) -> bool {
+        random::<f32>() < attention_probability
+    }
+    pub fn scout<'a>(
+        location: hexgrid::Index,
+        reference_culture: Culture,
+        patches: &'a HashMap<hexgrid::Index, Patch>,
+        cultures_by_location: &HashMap<hexgrid::Index, HashMap<Culture, usize>>,
+    ) -> Option<(hexgrid::Index, &'a Patch, usize, usize)> {
+        let cultures = match cultures_by_location.get(&location) {
+            None => return Some((location, patches.get(&location)?, 0, 0)),
+            Some(c) => c,
+        };
+        let mut cooper: usize = 0;
+        let mut compet: usize = 0;
+        for (culture, count) in cultures {
+            if emergence::similar_culture(&reference_culture, culture) {
+                cooper += count;
+            } else {
+                compet += count;
+            }
+        }
+        Some((location, patches.get(&location)?, cooper, compet))
+    }
+
+    pub fn observe_neighbors<'a>(
+        family: &'a Family,
+        patches: &'a HashMap<hexgrid::Index, Patch>,
+        cultures_by_location: &HashMap<hexgrid::Index, HashMap<Culture, usize>>,
+        neighbors: &Vec<hexgrid::Index>,
+        attention_probability: f32,
+    ) -> Vec<(hexgrid::Index, &'a Patch, usize, usize)> {
+        let mut result: Vec<(hexgrid::Index, &'a Patch, usize, usize)> = vec![];
+        match scout(
+            family.location,
+            family.culture,
+            patches,
+            cultures_by_location,
+        ) {
+            None => {}
+            Some((location, patch, cooperators, competitors)) => {
+                result.push((location, patch, cooperators, competitors))
+            }
+        }
+        for location in
+            learning::known_location(&family.location_history, neighbors, attention_probability)
+        {
+            if location == family.location {
+                continue;
+            }
+            match scout(location, family.culture, patches, cultures_by_location) {
+                None => {}
+                Some((location, patch, cooperators, competitors)) => {
+                    result.push((location, patch, cooperators, competitors));
+                }
+            }
+        }
+        result
+    }
+}
+
+/**
+## 4.8 Interaction
+
+> What kinds of interactions among agents are assumed? Are there direct
+> interactions in which individuals encounter and affect others, or are
+> interactions indirect, e.g., via competition for a medi- ating resource? If
+> the interactions involve communication, how are such communications
+> represented?
 
 Agents compete for limited resources. There is a maximum of resources that can
 be extracted from a patch, and the extracted resources are distributed among all
@@ -719,195 +810,142 @@ agents in that patch. This distribution is not completely even: Members of a
 bigger group of cooperators competing with a smaller cooperative gets an
 over-proportional part of the total extracted, measured by their effective size.
  */
-fn split_resources(
-    my_relative_returns: KCal,
-    others_relative_returns: KCal,
-    total_resources_available: KCal,
-) -> KCal {
-    assert!(my_relative_returns + others_relative_returns > 0.);
-    my_relative_returns / (my_relative_returns + others_relative_returns)
-        * min(
-            my_relative_returns + others_relative_returns,
-            total_resources_available,
-        )
+mod interaction {
+    use crate::*;
+    pub fn split_resources(
+        my_relative_returns: KCal,
+        others_relative_returns: KCal,
+        total_resources_available: KCal,
+    ) -> KCal {
+        assert!(my_relative_returns + others_relative_returns > 0.);
+        let my_part = my_relative_returns / (my_relative_returns + others_relative_returns)
+            * min(
+                my_relative_returns + others_relative_returns,
+                total_resources_available,
+            );
+        assert!(my_part.is_finite());
+        my_part
+    }
+    /**
+    A single human can forage a certain amount, but by the assumptions of the model,
+    two cooperating foragers gain more resources together than they would
+    individually. The effective labor returned by this function is the factor by
+    which 2 cooperating foragers are better than 2 separate foragers.
+
+    This formula follows Crema (2014), with the caveat that Crema computes payoffs,
+    whereas we compute a multiplicative factor (effective labor) which is multiplied
+    with the standard resource gain to give the acutal resource payoffs. Given that
+    Crema's payoffs have a mean of μ=10, we adjust our effective labor by the
+    opposite factor.
+
+    TODO: I actually dislike this weakly motivated k → k + m k ^ (α + 1) quite a
+    bit, so it would be nice to take a different formula, and to cross-check how
+    Crema's results change for that different formula.
+    */
+
+    // TODO: Does this belong here or under emergence?
+    pub fn effective_labor_through_cooperation(n_cooperators: usize, cooperation_gain: f32) -> f32 {
+        1. + (n_cooperators as f32 - 1.).powf(cooperation_gain) / 10.
+    }
 }
 
 /**
-A single human can forage a certain amount, but by the assumptions of the model,
-two cooperating foragers gain more resources together than they would
-individually. The effective labor returned by this function is the factor by
-which 2 cooperating foragers are better than 2 separate foragers.
 
-This formula follows Crema (2014), with the caveat that Crema computes payoffs,
-whereas we compute a multiplicative factor (effective labor) which is multiplied
-with the standard resource gain to give the acutal resource payoffs. Given that
-Crema's payoffs have a mean of μ=10, we adjust our effective labor by the
-opposite factor.
-
-TODO: I actually dislike this weakly motivated k → k + m k ^ (α + 1) quite a
-bit, so it would be nice to take a different formula, and to cross-check how
-Crema's results change for that different formula.
-*/
-fn effective_labor_through_cooperation(n_cooperators: usize, cooperation_gain: f32) -> f32 {
-    1. + (n_cooperators as f32 - 1.).powf(cooperation_gain) / 10.
-}
-
-/**
-## 4.7 Sensing
-
-### What variables (describing both their environment and themselves) are
-### individuals assumed to sense or “know” and consider in their adaptive
-### decisions?
-
-### What sensing mechanisms are explicitly simulated? Does the IBM represent the
-### actual sensing process?
-
-### If sensing is not simulated explicitly, what assumptions are made about how
-### individuals “know” each sensed variable? With what certainty or accuracy are
-### individuals assumed able to sense each variable? Over what distances?
- */
-
-fn attention(attention_probability: f32) -> bool {
-    random::<f32>() < attention_probability
-}
-
-/**
-## 4.8 Stochasticity
-
-### Are stochastic processes used to simulate variability in input or driving
-### variables? Is stochasticity preferable to using observed values? Is it
-### clearly desirable for these inputs or drivers to be variable?
-
-### What traits use stochastic processes to reproduce behavior observed in real
-### organisms? Is this approach clearly recognized and used as an empirical
-### model?
-
-### What variable low-level processes are represented empirically as stochastic
-### processes? Is the variability important to include in the IBM?
- */
-
-/**
-## 4.9 Collectives
-
-### Are collectives represented in the IBM? Collectives are aggregations of
-### individuals (flocks, social groups, stands of plants) included in an IBM
-### because the state and behavior of an individual depends strongly on (a)
-### whether the individual is in a collective, and if so, (b) the state of the
-### collective.
-
-### How are collectives represented? Do collectives occur only as phenomena
-### emerging from individual behavior, or are individuals given traits that
-### impose the formation of collectives? Or are collectives represented as
-### explicit entities with their own state variables and traits?
- */
-
-/*
-
-    Observation
-    (24)	What kinds of model results must be observed to test the IBM and meet its objectives?
-    (25)	From what perspectives are observations of results taken: omniscient, model individual, or virtual ecologist?
 */
 
-fn cultural_distance(c1: &Culture, c2: &Culture) -> u32 {
-    // FIXME wasn't there a parameter for this?
-    (c1 ^ c2).count_ones()
-}
+/**
+## 4.9 Stochasticity
 
-fn similar_culture(c1: &Culture, c2: &Culture) -> bool {
-    // FIXME wasn't there a parameter for this?
-    cultural_distance(c1, c2) < 6
-}
+> What processes are modeled by assuming they are random or partly random? Is
+> stochasticity used, for example, to reproduce variability in processes for
+> which it is unimportant to model the actual causes of the variability? Is it
+> used to cause model events or behaviors to occur with a specified frequency?
 
-pub struct Parameters {
-    attention_probability: f32,
-    time_step_energy_use: KCal,
-    storage_loss: f32,
-    resource_recovery: f32,
-    culture_mutation_rate: f64,
-    culture_dimensionality: u8,
-    cooperation_gain: f32,
-    accessible_resources: f32,
-    evidence_needed: f32,
+TODO: Is there a way to get rust to aggregate all functions that use it? Can I
+maybe somehow abuse the trait system to all those locations show up here, with
+comments?
+ */
 
-    boundary_west: f64,
-    boundary_east: f64,
-    boundary_south: f64,
-    boundary_north: f64,
-}
+/**
+## 4.10 Collectives
 
-fn known_location(
-    history: &Vec<hexgrid::Index>,
-    nearby: &Vec<hexgrid::Index>,
-    attention_probability: f32,
-) -> Vec<hexgrid::Index> {
-    let mut result = vec![];
-    for location in nearby {
-        if history[0..min(8, history.len())].contains(&location) {
-            result.push(*location);
-            continue;
-        }
-        if attention(attention_probability) {
-            result.push(*location);
-            continue;
-        }
-    }
-    result
-}
-fn scout<'a>(
-    location: hexgrid::Index,
-    reference_culture: Culture,
-    patches: &'a HashMap<hexgrid::Index, Patch>,
-    cultures_by_location: &HashMap<hexgrid::Index, HashMap<Culture, usize>>,
-) -> Option<(hexgrid::Index, &'a Patch, usize, usize)> {
-    let cultures = match cultures_by_location.get(&location) {
-        None => return Some((location, patches.get(&location)?, 0, 0)),
-        Some(c) => c,
-    };
-    let mut cooper: usize = 0;
-    let mut compet: usize = 0;
-    for (culture, count) in cultures {
-        if similar_culture(&reference_culture, culture) {
-            cooper += count;
-        } else {
-            compet += count;
-        }
-    }
-    Some((location, patches.get(&location)?, cooper, compet))
-}
+> Do the individuals form or belong to aggregations that affect, and are
+> affected by, the individuals? How are collectives represented? Is a particular
+> collective an emergent property of the individuals, such as a flock of birds
+> that assembles as a result of individual behaviors, or is the collective
+> simply a definition by the modeler, such as the set of individuals with
+> certain properties, defined as a separate kind of entity with its own state
+> variables and traits?
+ */
+mod collectives {
+    use crate::*;
 
-fn observe_neighbors<'a>(
-    family: &'a Family,
-    patches: &'a HashMap<hexgrid::Index, Patch>,
-    cultures_by_location: &HashMap<hexgrid::Index, HashMap<Culture, usize>>,
-    neighbors: &Vec<hexgrid::Index>,
-    attention_probability: f32,
-) -> Vec<(hexgrid::Index, &'a Patch, usize, usize)> {
-    let mut result: Vec<(hexgrid::Index, &'a Patch, usize, usize)> = vec![];
-    match scout(
-        family.location,
-        family.culture,
-        patches,
-        cultures_by_location,
-    ) {
-        None => {}
-        Some((location, patch, cooperators, competitors)) => {
-            result.push((location, patch, cooperators, competitors))
-        }
-    }
-    for location in known_location(&family.location_history, neighbors, attention_probability) {
-        if location == family.location {
-            continue;
-        }
-        match scout(location, family.culture, patches, cultures_by_location) {
-            None => {}
-            Some((location, patch, cooperators, competitors)) => {
-                result.push((location, patch, cooperators, competitors));
+    pub fn cooperatives<'a>(
+        families_in_this_location: Vec<&'a mut Family>,
+    ) -> (Vec<Vec<&'a mut Family>>, usize) {
+        let mut sum_labor: usize = 0;
+        let mut groups: Vec<Vec<&mut Family>> = vec![];
+        for family in families_in_this_location {
+            sum_labor += family.effective_size;
+            let mut joined_group: Option<&mut Vec<&mut Family>> = None;
+            for group in groups.iter_mut() {
+                let mut join = true;
+                for other_family in group.iter() {
+                    if !emergence::similar_culture(&family.culture, &other_family.culture) {
+                        join = false;
+                        break;
+                    }
+                }
+                if join {
+                    joined_group = Some(group);
+                    break;
+                }
+            }
+            match joined_group {
+                None => {
+                    groups.push(vec![family]);
+                }
+                Some(group) => {
+                    group.push(family);
+                }
             }
         }
+        (groups, sum_labor)
     }
-    result
 }
 
+/*
+# 4.11 Observation
+
+> What data are collected from the ABM for testing, understanding, and analyzing
+> it, and how and when are they collected? Are all output data freely used, or
+> are only certain data sampled and used, to imitate what can be observed in an
+> empirical study (‘virtual ecologist’)?
+
+Data collection happens every time step and is global.
+ */
+mod observation {
+    use crate::*;
+
+    pub fn print_families_by_location(families_by_location: &HashMap<hexgrid::Index, Vec<Family>>) {
+    println!(
+        "{:?}",
+        families_by_location
+            .iter()
+            .map(|(k, v)| {
+                let g = hexgrid::geo_coordinates(*k);
+                (g.lon, g.lat, v.len())
+            })
+            .collect::<Vec<(f64, f64, usize)>>()
+    );
+    }
+}
+
+
+/**
+5. Initialization
+
+*/
 fn initialization(precipitation: &Vec<u16>, width: usize, p: &Parameters) -> Option<State> {
     let start1: hexgrid::Index = hexgrid::closest_grid_point(-159.873, 65.613)?;
     let start2: hexgrid::Index = hexgrid::closest_grid_point(-158.2718, 60.8071)?;
@@ -999,6 +1037,30 @@ fn initialization(precipitation: &Vec<u16>, width: usize, p: &Parameters) -> Opt
         families: vec![f1, f2],
         t: 0,
     })
+}
+
+
+fn cultural_distance(c1: &Culture, c2: &Culture) -> u32 {
+    // FIXME wasn't there a parameter for this?
+    (c1 ^ c2).count_ones()
+}
+
+
+pub struct Parameters {
+    attention_probability: f32,
+    time_step_energy_use: KCal,
+    storage_loss: f32,
+    resource_recovery: f32,
+    culture_mutation_rate: f64,
+    culture_dimensionality: u8,
+    cooperation_gain: f32,
+    accessible_resources: f32,
+    evidence_needed: f32,
+
+    boundary_west: f64,
+    boundary_east: f64,
+    boundary_south: f64,
+    boundary_north: f64,
 }
 
 fn use_resources_and_maybe_shrink(size: &mut usize, resources: &mut KCal, p: &Parameters) -> bool {
@@ -1270,7 +1332,7 @@ fn resources_from_patch(
 ) -> KCal {
     let mut my_relative_returns: f32 = p.time_step_energy_use
         * labor as f32
-        * effective_labor_through_cooperation(labor, p.cooperation_gain);
+        * interaction::effective_labor_through_cooperation(labor, p.cooperation_gain);
     let mut rng = rand::thread_rng();
     if !estimate {
         let dist = Normal::new(
@@ -1292,7 +1354,7 @@ fn resources_from_patch(
     if others_labor > 0 {
         others_relative_returns = p.time_step_energy_use
             * others_labor as f32
-            * effective_labor_through_cooperation(others_labor, p.cooperation_gain);
+            * interaction::effective_labor_through_cooperation(others_labor, p.cooperation_gain);
         if !estimate {
             let dist = Normal::new(
                 my_relative_returns,
@@ -1307,7 +1369,7 @@ fn resources_from_patch(
             }
         }
     }
-    split_resources(
+    interaction::split_resources(
         my_relative_returns,
         others_relative_returns,
         patch.resources * p.accessible_resources,
@@ -1405,16 +1467,7 @@ fn run() -> Option<()> {
 
     loop {
         let families_by_location = step(&mut s.families, &mut s.patches, &p)?;
-        println!(
-            "{:?}",
-            families_by_location
-                .iter()
-                .map(|(k, v)| {
-                    let g = hexgrid::geo_coordinates(*k);
-                    (g.lon, g.lat, v.len())
-                })
-                .collect::<Vec<(f64, f64, usize)>>()
-        );
+        observation::print_families_by_location(&families_by_location);
         for (location, families) in families_by_location {
             for mut family in families {
                 family.location_history.push(family.location);
