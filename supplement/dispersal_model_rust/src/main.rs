@@ -184,6 +184,11 @@ struct State {
 ### quickly compared to the model’s time step and are highly dependent on
 ### execution order?
 
+The model progresses in discrete time steps, each corresponding to half a year
+of simulated time. The entire simulation consists of repeating the step to
+simulate 15000 years.
+
+
 ### What model processes or events are grouped into actions that are executed
 ### together? Do these actions produce synchronous or asynchronous updating of
 ### the model?
@@ -192,10 +197,8 @@ struct State {
 ### actions are on a fixed schedule, in what order? Are some actions executed in
 ### random order? What basis is provided for these scheduling decisions?
 
-The model progresses in discrete time steps, each corresponding to half a year
-of simulated time. The entire simulation consists of repeating the step to
-simulate 15000 years. The structure of a single time step consist of two parts,
-as follows.
+The structure of a single time step consist of two parts, as follows.
+
  */
 fn step(families: &mut Vec<Family>, patches: &mut HashMap<hexgrid::Index, Patch>, p: &Parameters) {
     let mut families_by_location = step_part_1(families, patches, p);
@@ -207,7 +210,8 @@ The first part focuses on the individual families, which shrink, grow, die,
 split, and move. It returns the list of families at the end of the season,
 grouped by their location after potential moves. Because the movement of a
 family depends on the distribution of othe families at he start of the season
-(which might be changed in the future), it can happen entirely in parallel.
+(TODO: which might be changed in the future if I figure out how), it can happen
+entirely in parallel.
 */
 fn step_part_1(
     families: &mut Vec<Family>,
@@ -237,8 +241,6 @@ fn step_part_1(
         if is_moribund(&family) {
             continue;
         }
-
-        maybe_grow(&mut family);
 
         let nearby = hexgrid::nearby_locations(family.location);
 
@@ -272,6 +274,9 @@ fn step_part_1(
             p.attention_probability,
         );
         let destination = decide_on_moving(&family, observed, false, p);
+
+        maybe_grow(&mut family);
+
         families_by_location
             .entry(destination.unwrap_or(family.location))
             .or_insert(vec![])
@@ -288,12 +293,15 @@ external interaction, so this can be done in parallel. After exploitation,
 patches recover advance to the next season according to Submodule 7.6. This
 concludes a time step.
  */
+use emergence::cooperate;
+
 fn step_part_2(
     families_by_location: &mut HashMap<hexgrid::Index, Vec<Family>>,
     patches: &mut HashMap<hexgrid::Index, Patch>,
     p: &Parameters,
 ) {
     for (patch_id, families) in families_by_location {
+        assert!(families.len() > 0);
         let mut patch = patches.entry(*patch_id).or_insert(Patch {
             // TODO Should we actually panic in this case? After all, some
             // family moved to a patch that doesn't exist, how did they even
@@ -305,6 +313,7 @@ fn step_part_2(
         let (cooperatives, sum_labor) = cooperate(families.iter_mut().collect());
 
         for cooperating_families in cooperatives {
+            println!("{:?}", cooperating_families);
             resource_reduction += extract_resources(&mut patch, cooperating_families, sum_labor, p);
         }
 
@@ -329,8 +338,8 @@ mod concepts {}
 /**
 ## 4.1 Basic priciples
 
-### Which general concepts, theories, hypotheses, or modeling approaches are
-### underlying the model’s design?
+> Which general concepts, theories, hypotheses, or modeling approaches are
+> underlying the model’s design?
 
 According to its purpose of providing a model for language dispersal and split,
 our model draws on existing publications looking at for cultures changing in
@@ -391,16 +400,16 @@ Our model is thus an agent-based model of the emergence of cultural areas from
 fission-fusion dynamics, where local cooperation is the main driver to prevent
 cultures from unconstrained evolutionary drift.
 
-### How were they taken into account?
+> How were they taken into account?
 
-### Are they used at the level of submodels, or is their scope the system level?
+> Are they used at the level of submodels, or is their scope the system level?
 
-### Will the model provide insights about the basic principles themselves, i.e.,
-### their scope, their usefulness in real-world scenarios, validation, or
-### modification?
+> Will the model provide insights about the basic principles themselves, i.e.,
+> their scope, their usefulness in real-world scenarios, validation, or
+> modification?
 
-### Does the model use new, or previously developed, theory for agent traits
-### from which system dynamics emerge?
+> Does the model use new, or previously developed, theory for agent traits from
+> which system dynamics emerge?
  */
 
 mod basic_principles {}
@@ -408,17 +417,13 @@ mod basic_principles {}
 /**
 ## 4.2 Emergence
 
-### Which processes in the IBM are modeled as emerging from a mechanistic
-### representation of adaptive traits of individuals?
-
-### Do the system-level phenomena the IBM is designed to explain emerge from
-### individual traits, or are they imposed by rules that force the model to
-### produce a certain result?
-
+> What key results or outputs of the model are modeled as emerging from the
+> adaptive traits, or behaviors, of individuals? In other words, what model
+> results are expected to vary in complex and perhaps unpredictable ways when
+> particular characteristics of individuals or their environment change?
 */
 mod emergence {
-    use crate::hexgrid;
-    use crate::cultural_distance;
+    use crate::*;
 
     /**
     The main emergent property will be culturally somewhat uniform territories. We
@@ -442,7 +447,8 @@ mod emergence {
                 }
                 gd_cd.push((
                     hexgrid::hex_distance(f1.location, f2.location),
-                    cultural_distance(&f1.culture, &f2.culture)));
+                    cultural_distance(&f1.culture, &f2.culture),
+                ));
             }
         }
     }
@@ -462,25 +468,70 @@ mod emergence {
     fn crema_fission_fusion_analysis() {
         // TODO: write this
     }
+
+    /**
+    > Are there other results that are more tightly imposed by model rules and
+    > hence less dependent on what individuals do, and hence ‘built in’ rather
+    > than emergent results?
+
+    Cooperation in this model is an entirely imposed feature. It is an important
+    question in theoretical biology and related fields under what circumstances
+    cooperation can prevail over defectors and other free-riders, and it may
+    even affect the dispersal of languages (though more likely on the level of
+    collectives, where the interactions between groups of different cultures
+    range from assimilation and language shift all the way to war and lethal
+    violence). But overall, human societies seem to be quite good at maintaining
+    large-scale cooperation, so we consider the question irrelevant for the
+    purpsoses of the present model. Cooperation is thus not a decision of the
+    agents, but entirely determined by their cultures.
+     */
+
+    pub fn cooperate<'a>(
+        families_in_this_location: Vec<&'a mut Family>,
+    ) -> (Vec<Vec<&'a mut Family>>, usize) {
+        let mut sum_labor: usize = 0;
+        let mut groups: Vec<Vec<&mut Family>> = vec![];
+        for family in families_in_this_location {
+            sum_labor += family.effective_size;
+            let mut joined_group: Option<&mut Vec<&mut Family>> = None;
+            for group in groups.iter_mut() {
+                let mut join = true;
+                for other_family in group.iter() {
+                    if !similar_culture(&family.culture, &other_family.culture) {
+                        join = false;
+                        break;
+                    }
+                }
+                if join {
+                    joined_group = Some(group);
+                    break;
+                }
+            }
+            match joined_group {
+                None => {
+                    groups.push(vec![family]);
+                }
+                Some(group) => {
+                    group.push(family);
+                }
+            }
+        }
+        (groups, sum_labor)
+    }
 }
 
 /**
 ## 4.3 Adaptation
 
-### What adaptive traits do the model individuals have to improve their
-### potential fitness, in response to changes in themselves or their
-### environment?
+>>> What adaptive traits do the individuals have? What rules do they have for
+>>> making decisions or changing behavior in response to changes in themselves
+>>> or their environment? Do these traits explicitly seek to increase some
+>>> measure of individual success regarding its objectives? Or do they instead
+>>> simply cause individuals to repro- duce observed behaviors that are
+>>> implicitly assumed to indirectly convey success or fitness?
 
-### Which adaptive traits are modeled as direct fitness-seeking, with
-### individuals making decisions explicitly to improve their expected success at
-### passing genes on to future generations?
-
-### Which adaptive traits are modeled as indirect fitness-seeking, in which
-### individuals make decisions to meet a specific objective that indirectly
-### contributes to future success at passing genes on?
-
-The only trait agents have control over is their location. Agents optimize (in
-the limits of their knowledge) their location to increase the amount of
+The only trait agents have control over is their location. Agents optimize
+(within the limits of their knowledge) their location to increase the amount of
 resources they gather. The resources gathered indirectly contribute to future
 success: A certain minimum of gathered resources is necessary to procreate, but
 extremely large amounts gathered soon do not increase the immediate rate of
@@ -496,7 +547,7 @@ mod adaptation {
 }
 
 /**
-## 4.4 Fitness
+## 4.4 Objectives
 
 ### For traits modeled as direct fitness-seeking, how complete is the fitness
 ### measure used to evaluate decision alternatives? The fitness measure is the
@@ -519,7 +570,7 @@ mod adaptation {
 ### Should the fitness measure change with life stage, season, or other
 ### conditions?
 */
-mod fitness {
+mod objectives {
     // This is hard. While accessible resources are not immediately fitness,
     // they have some fitness benefits, as described under Adaptation.
 
@@ -542,8 +593,30 @@ mod fitness {
 
 ### What tacit predictions are included in the IBM? What assumptions are
 ### implicitly embedded in the tacit predictions?
-*/
 
+Agents predict and hypothesize their payoff, in terms of extracted resources, at
+the end of the time step and decide accordingly. The actual estimation procedure
+is modeled on a very abstract level: The payoff an agent predicts for themselves
+in a location is internally computed using the same function that genererates
+the actual payoff at the exploitation step of the simulation, without random
+effects, thus giving the expectation instead of the actual value.
+
+The prediction is based on the current state of the model, with very little
+extrapolation whatsoever. An agent only adds their own effective size to the
+current distribution of individuals in the target location. Agents do not
+account for their own growth, split, or the following moves of other agents.
+ */
+fn expected_resources_from_patch(
+    my_effective_size: usize,
+    patch: &Patch,
+    cooperators: usize,
+    competitors: usize,
+    p: &Parameters,
+) -> KCal {
+    assert!(my_effective_size + cooperators > 0);
+    resources_from_patch(patch, my_effective_size + cooperators, competitors, true, p)
+        * (my_effective_size as f32 / (my_effective_size + cooperators) as f32)
+}
 
 /**
 ## 4.6 Interaction
@@ -556,7 +629,45 @@ mod fitness {
 
 ### What real interaction mechanisms, at what spatial and temporal scales, were
 ### the IBM’s interaction design based on?
+
+Agents compete for limited resources. There is a maximum of resources that can
+be extracted from a patch, and the extracted resources are distributed among all
+agents in that patch. This distribution is not completely even: Members of a
+bigger group of cooperators competing with a smaller cooperative gets an
+over-proportional part of the total extracted, measured by their effective size.
+ */
+fn split_resources(
+    my_relative_returns: KCal,
+    others_relative_returns: KCal,
+    total_resources_available: KCal,
+) -> KCal {
+    assert!(my_relative_returns + others_relative_returns > 0.);
+    my_relative_returns / (my_relative_returns + others_relative_returns)
+        * min(
+            my_relative_returns + others_relative_returns,
+            total_resources_available,
+        )
+}
+
+/**
+A single human can forage a certain amount, but by the assumptions of the model,
+two cooperating foragers gain more resources together than they would
+individually. The effective labor returned by this function is the factor by
+which 2 cooperating foragers are better than 2 separate foragers.
+
+This formula follows Crema (2014), with the caveat that Crema computes payoffs,
+whereas we compute a multiplicative factor (effective labor) which is multiplied
+with the standard resource gain to give the acutal resource payoffs. Given that
+Crema's payoffs have a mean of μ=10, we adjust our effective labor by the
+opposite factor.
+
+TODO: I actually dislike this weakly motivated k → k + m k ^ (α + 1) quite a
+bit, so it would be nice to take a different formula, and to cross-check how
+Crema's results change for that different formula.
 */
+fn effective_labor_through_cooperation(n_cooperators: usize, cooperation_gain: f32) -> f32 {
+    1. + (n_cooperators as f32 - 1.).powf(cooperation_gain) / 10.
+}
 
 /**
 ## 4.7 Sensing
@@ -573,8 +684,12 @@ mod fitness {
 ### individuals assumed able to sense each variable? Over what distances?
  */
 
+fn attention(attention_probability: f32) -> bool {
+    random::<f32>() < attention_probability
+}
+
 /**
-## 4.6 Stochasticity
+## 4.8 Stochasticity
 
 ### Are stochastic processes used to simulate variability in input or driving
 ### variables? Is stochasticity preferable to using observed values? Is it
@@ -589,7 +704,7 @@ mod fitness {
  */
 
 /**
-## 4.7 Collectives
+## 4.9 Collectives
 
 ### Are collectives represented in the IBM? Collectives are aggregations of
 ### individuals (flocks, social groups, stands of plants) included in an IBM
@@ -618,39 +733,6 @@ fn cultural_distance(c1: &Culture, c2: &Culture) -> u32 {
 fn similar_culture(c1: &Culture, c2: &Culture) -> bool {
     // FIXME wasn't there a parameter for this?
     cultural_distance(c1, c2) < 6
-}
-
-fn cooperate<'a>(
-    families_in_this_location: Vec<&'a mut Family>,
-) -> (Vec<Vec<&'a mut Family>>, usize) {
-    let mut sum_labor: usize = 0;
-    let mut groups: Vec<Vec<&mut Family>> = vec![];
-    for family in families_in_this_location {
-        sum_labor += family.effective_size;
-        let mut joined_group: Option<&mut Vec<&mut Family>> = None;
-        for group in groups.iter_mut() {
-            let mut join = true;
-            for other_family in group.iter() {
-                if !similar_culture(&family.culture, &other_family.culture) {
-                    join = false;
-                    break;
-                }
-            }
-            if join {
-                joined_group = Some(group);
-                break;
-            }
-        }
-        match joined_group {
-            None => {
-                groups.push(vec![family]);
-            }
-            Some(group) => {
-                group.push(family);
-            }
-        }
-    }
-    (groups, sum_labor)
 }
 
 struct Parameters {
@@ -688,11 +770,6 @@ fn known_location(
     }
     result
 }
-
-fn attention(attention_probability: f32) -> bool {
-    random::<f32>() < attention_probability
-}
-
 fn scout<'a>(
     location: hexgrid::Index,
     reference_culture: Culture,
@@ -1056,40 +1133,33 @@ fn decide_on_moving<'a>(
         usize,
         usize,
     );
-    match kd.next() {
-        None => return None,
-        Some((t, p, cooper, compet)) => {
-            target = *t;
-            patch = p;
-            cooperators = *cooper;
-            competitors = *compet;
-        }
-    };
-    if avoid_stay {
-        match kd.next() {
-            None => return None,
-            Some((t, p, cooper, compet)) => {
-                target = *t;
-                patch = p;
-                cooperators = *cooper;
-                competitors = *compet;
-            }
-        }
+    {
+        let (t, p, c, d) = kd.next()?;
+        target = *t;
+        patch = p;
+        // This is the patch that contains the family, correct fo that.
+        cooperators = *c - family.effective_size;
+        competitors = *d;
     }
-    let mut max_gain: KCal = resources_from_patch(patch, cooperators, competitors, true, p)
-        * family.effective_size as f32
-        / cooperators as f32;
+    if avoid_stay {
+        let (t, p, c, d) = kd.next()?;
+        target = *t;
+        patch = p;
+        cooperators = *c;
+        competitors = *d;
+    }
+    let mut max_gain: KCal =
+        expected_resources_from_patch(family.effective_size, patch, cooperators, competitors, p);
     let current_gain = if avoid_stay { 0. } else { max_gain };
     let mut c = 0.;
     for (coords, patch, cooperators, competitors) in kd {
-        let expected_gain = resources_from_patch(
+        let expected_gain = expected_resources_from_patch(
+            family.effective_size,
             patch,
-            family.effective_size + *cooperators,
+            *cooperators,
             *competitors,
-            true,
             p,
-        ) * (family.effective_size as f32
-            / (family.effective_size + *cooperators) as f32);
+        );
         if expected_gain >= max_gain {
             if expected_gain < current_gain + p.time_step_energy_use * p.evidence_needed {
                 continue;
@@ -1114,6 +1184,7 @@ fn extract_resources(
     p: &Parameters,
 ) -> KCal {
     let labor: usize = group.iter().map(|f| f.effective_size as usize).sum();
+    assert!(labor > 0);
     let resources_extracted =
         resources_from_patch(&patch, labor, total_labor_here - labor, false, &p);
     let mut group_copy: Vec<&mut Family> = vec![];
@@ -1188,16 +1259,19 @@ fn resources_from_patch(
                 my_relative_returns = max(0., my_relative_returns)
             }
         }
+        if my_relative_returns == 0. {
+            return 0.
+        }
     }
     let mut others_relative_returns: f32 = 0.;
     if others_labor > 0 {
         others_relative_returns = p.time_step_energy_use
             * others_labor as f32
-            * effective_labor_through_cooperation(labor, p.cooperation_gain);
+            * effective_labor_through_cooperation(others_labor, p.cooperation_gain);
         if !estimate {
             let dist = Normal::new(
                 my_relative_returns,
-                p.time_step_energy_use / (labor as f32).powf(0.5),
+                p.time_step_energy_use / (others_labor as f32).powf(0.5),
             );
             match dist {
                 Err(_) => {}
@@ -1208,15 +1282,11 @@ fn resources_from_patch(
             }
         }
     }
-    my_relative_returns / (my_relative_returns + others_relative_returns)
-        * min(
-            my_relative_returns + others_relative_returns,
-            patch.resources * p.accessible_resources,
-        )
-}
-
-fn effective_labor_through_cooperation(n_cooperators: usize, cooperation_gain: f32) -> f32 {
-    1. + (n_cooperators as f32 - 1.).powf(cooperation_gain) / 10.
+    split_resources(
+        my_relative_returns,
+        others_relative_returns,
+        patch.resources * p.accessible_resources,
+    )
 }
 
 fn adjust_culture(mut cooperating_families: Vec<&mut Family>, p: &Parameters) {
