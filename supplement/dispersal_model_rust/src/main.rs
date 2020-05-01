@@ -1260,7 +1260,7 @@ fn resources_from_patch(
             }
         }
         if my_relative_returns == 0. {
-            return 0.
+            return 0.;
         }
     }
     let mut others_relative_returns: f32 = 0.;
