@@ -59,6 +59,7 @@ Whereever possible, resources are measured in kcal (in SI units: 1 kcal = 4.184 
  */
 
 type KCal = f32;
+// Maybe KCal should be a finite f32? I bet there is a crate for that…
 
 /**
 ## 2.1 Families
@@ -179,30 +180,29 @@ struct State {
 /**
 # 3. Process overview and scheduling
 
-### How is time modeled in the IBM: using discrete time steps, continuous time,
-### or both? If both are used, is dynamic scheduling use for events that happen
-### quickly compared to the model’s time step and are highly dependent on
-### execution order?
+>>> Who (i.e., what entity) does what, and in what order? When are state
+>>> variables updated? How is time modeled, as discrete steps or as a continuum
+>>> over which both continuous processes and discrete events can occur? Except
+>>> for very simple schedules, one should use pseudo-code to describe the
+>>> schedule in every detail, so that the model can be re-implemented from this
+>>> code. Ideally, the pseudo-code corresponds fully to the actual code used in
+>>> the program implementing the ABM.
 
 The model progresses in discrete time steps, each corresponding to half a year
 of simulated time. The entire simulation consists of repeating the step to
 simulate 15000 years.
 
-
-### What model processes or events are grouped into actions that are executed
-### together? Do these actions produce synchronous or asynchronous updating of
-### the model?
-
-### How are actions modeled as happening concurrently actually executed? What
-### actions are on a fixed schedule, in what order? Are some actions executed in
-### random order? What basis is provided for these scheduling decisions?
-
 The structure of a single time step consist of two parts, as follows.
 
  */
-fn step(families: &mut Vec<Family>, patches: &mut HashMap<hexgrid::Index, Patch>, p: &Parameters) {
+fn step(
+    families: &mut Vec<Family>,
+    patches: &mut HashMap<hexgrid::Index, Patch>,
+    p: &Parameters,
+) -> HashMap<hexgrid::Index, Vec<Family>> {
     let mut families_by_location = step_part_1(families, patches, p);
     step_part_2(&mut families_by_location, patches, p);
+    families_by_location
 }
 
 /**
@@ -313,7 +313,6 @@ fn step_part_2(
         let (cooperatives, sum_labor) = cooperate(families.iter_mut().collect());
 
         for cooperating_families in cooperatives {
-            println!("{:?}", cooperating_families);
             resource_reduction += extract_resources(&mut patch, cooperating_families, sum_labor, p);
         }
 
