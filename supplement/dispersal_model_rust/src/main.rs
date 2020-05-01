@@ -222,7 +222,7 @@ fn step_part_1(
     let mut cultures_by_location: HashMap<hexgrid::Index, HashMap<Culture, usize>> = HashMap::new();
 
     for family in families.iter_mut() {
-        if use_resources_and_maybe_shrink(
+        if submodels::family_lifecycle::use_resources_and_maybe_shrink(
             &mut family.effective_size,
             &mut family.stored_resources,
             p,
@@ -330,7 +330,7 @@ fn step_part_2(
         let (cooperatives, sum_labor) = collectives::cooperatives(families.iter_mut().collect());
 
         for cooperating_families in cooperatives {
-            resource_reduction += extract_resources(&mut patch, cooperating_families, sum_labor, p);
+            resource_reduction += submodels::ecology::extract_resources(&mut patch, cooperating_families, sum_labor, p);
         }
 
         exploit(&mut patch, resource_reduction);
@@ -463,7 +463,7 @@ mod emergence {
                 }
                 gd_cd.push((
                     hexgrid::hex_distance(f1.location, f2.location),
-                    cultural_distance(&f1.culture, &f2.culture),
+                    submodels::culture::distance(f1.culture, f2.culture),
                 ));
             }
         }
@@ -502,9 +502,9 @@ mod emergence {
     agents, but entirely determined by their cultures.
      */
 
-    pub fn similar_culture(c1: &Culture, c2: &Culture) -> bool {
+    pub fn similar_culture(c1: Culture, c2: Culture) -> bool {
         // FIXME wasn't there a parameter for this?
-        cultural_distance(c1, c2) < 6
+        submodels::culture::distance(c1, c2) < 6
     }
 }
 
@@ -750,7 +750,7 @@ mod sensing {
         let mut cooper: usize = 0;
         let mut compet: usize = 0;
         for (culture, count) in cultures {
-            if emergence::similar_culture(&reference_culture, culture) {
+            if emergence::similar_culture(reference_culture, *culture) {
                 cooper += count;
             } else {
                 compet += count;
@@ -891,7 +891,7 @@ mod collectives {
             for group in groups.iter_mut() {
                 let mut join = true;
                 for other_family in group.iter() {
-                    if !emergence::similar_culture(&family.culture, &other_family.culture) {
+                    if !emergence::similar_culture(family.culture, other_family.culture) {
                         join = false;
                         break;
                     }
@@ -934,7 +934,7 @@ mod observation {
             .iter()
             .map(|(k, v)| {
                 let g = hexgrid::geo_coordinates(*k);
-                (g.lon, g.lat, v.len())
+                (g.lon, g.lat, v.iter().map(|f| f.effective_size).sum())
             })
             .collect::<Vec<(f64, f64, usize)>>()
     );
@@ -945,6 +945,17 @@ mod observation {
 /**
 5. Initialization
 
+> What is the initial state of the model world, i.e., at time $t = 0$ of a
+> simulation run?
+
+> In detail, how many entities of what type are there initially, and what are
+> the exact values of their state variables (or how were they set
+> stochastically)?
+
+> Is initialization always the same, or is it allowed to vary among simulations?
+
+> Are the initial values chosen arbitrarily or based on data? References to
+> those data should be provided.
 */
 fn initialization(precipitation: &Vec<u16>, width: usize, p: &Parameters) -> Option<State> {
     let start1: hexgrid::Index = hexgrid::closest_grid_point(-159.873, 65.613)?;
@@ -1039,47 +1050,131 @@ fn initialization(precipitation: &Vec<u16>, width: usize, p: &Parameters) -> Opt
     })
 }
 
+/**
+# 6. Input Data
 
-fn cultural_distance(c1: &Culture, c2: &Culture) -> u32 {
-    // FIXME wasn't there a parameter for this?
-    (c1 ^ c2).count_ones()
+> Does the model use input from external sources such as data files or other
+> models to represent processes that change over time?
+ */
+mod input {
+    // None at the moment. It might come, though, when we use paleoclimate data.
 }
 
+/**
+# 7. Submodels
 
-pub struct Parameters {
-    attention_probability: f32,
-    time_step_energy_use: KCal,
-    storage_loss: f32,
-    resource_recovery: f32,
-    culture_mutation_rate: f64,
-    culture_dimensionality: u8,
-    cooperation_gain: f32,
-    accessible_resources: f32,
-    evidence_needed: f32,
+> What, in detail, are the submodels that represent the processes listed in ‘Process overview and scheduling’? What are the model parameters, their dimensions, and reference values? How were submodels designed or chosen, and how were they parameterized and then tested?
+*/
+mod submodels {
+    pub mod culture {
+        use crate::{Culture, Family, Parameters};
+        use rand::prelude::*;
 
-    boundary_west: f64,
-    boundary_east: f64,
-    boundary_south: f64,
-    boundary_north: f64,
-}
+        pub fn distance(c1: Culture, c2: Culture) -> u32 {
+            // FIXME wasn't there a parameter for this?
+            (c1 ^ c2).count_ones()
+        }
 
-fn use_resources_and_maybe_shrink(size: &mut usize, resources: &mut KCal, p: &Parameters) -> bool {
-    let mut has_shrunk = false;
-    while resources_at_season_end(*resources, *size, p) < 0. && *size > 0 {
-        *size -= 1;
-        has_shrunk = true;
+        pub fn mutate_culture(family: &mut Family, p: &Parameters) {
+            if family.seasons_till_next_mutation > 0 {
+                family.seasons_till_next_mutation -= 1;
+            }
+            if family.seasons_till_next_mutation == 0 {
+                let i: u8 = rand::thread_rng().gen_range(0, p.culture_dimensionality);
+                family.culture ^= 1 << i;
+                family.seasons_till_next_mutation =
+                    random::<f64>().log(1. - p.culture_mutation_rate) as u32;
+            }
+        }
+
+        pub fn adjust(mut cooperating_families: Vec<&mut Family>, p: &Parameters) {
+            for f in &mut cooperating_families {
+                mutate_culture(f, p);
+            }
+            let family: Option<&&mut Family> = cooperating_families.choose(&mut rand::thread_rng());
+            match family {
+                None => {}
+                Some(f) => {
+                    let target: Culture = f.culture;
+                    for f2 in cooperating_families {
+                        f2.culture = target;
+                    }
+                }
+            }
+        }
     }
-    *resources = resources_at_season_end(*resources, *size, p);
-    has_shrunk
+
+    pub mod family_lifecycle {
+        use crate::{KCal, Parameters};
+
+        pub fn use_resources_and_maybe_shrink(size: &mut usize, resources: &mut KCal, p: &Parameters) -> bool {
+            let mut has_shrunk = false;
+            while resources_at_season_end(*resources, *size, p) < 0. && *size > 0 {
+                *size -= 1;
+                has_shrunk = true;
+            }
+            *resources = resources_at_season_end(*resources, *size, p);
+            has_shrunk
+        }
+
+        pub fn resources_at_season_end(resources: KCal, size: usize, p: &Parameters) -> KCal {
+            let mut resources_after: KCal = resources - (size as f32) * p.time_step_energy_use;
+            if resources_after > 0. {
+                resources_after *= 1. - p.storage_loss;
+            }
+            resources_after
+        }
+    }
+
+    pub mod ecology {
+        use crate::{Patch, Family, Parameters, KCal};
+
+        pub fn extract_resources(
+            patch: &mut Patch,
+            group: Vec<&mut Family>,
+            total_labor_here: usize,
+            p: &Parameters,
+        ) -> KCal {
+            let labor: usize = group.iter().map(|f| f.effective_size as usize).sum();
+            assert!(labor > 0);
+            let resources_extracted =
+                crate::resources_from_patch(&patch, labor, total_labor_here - labor, false, &p);
+            let mut group_copy: Vec<&mut Family> = vec![];
+            for family in group {
+                family.stored_resources +=
+                    resources_extracted * family.effective_size as f32 / labor as f32;
+                group_copy.push(family);
+            }
+            // This function really does not belong here
+            crate::submodels::culture::adjust(group_copy, p);
+            resources_extracted
+        }
+    }
+
+    pub mod parameters {
+        use crate::KCal;
+
+        pub struct Parameters {
+            pub attention_probability: f32,
+            pub time_step_energy_use: KCal,
+            pub storage_loss: f32,
+            pub resource_recovery: f32,
+            pub culture_mutation_rate: f64,
+            pub culture_dimensionality: u8,
+            pub cooperation_gain: f32,
+            pub accessible_resources: f32,
+            pub evidence_needed: f32,
+
+            pub boundary_west: f64,
+            pub boundary_east: f64,
+            pub boundary_south: f64,
+            pub boundary_north: f64,
+        }
+    }
 }
 
-fn resources_at_season_end(resources: KCal, size: usize, p: &Parameters) -> KCal {
-    let mut resources_after: KCal = resources - (size as f32) * p.time_step_energy_use;
-    if resources_after > 0. {
-        resources_after *= 1. - p.storage_loss;
-    }
-    resources_after
-}
+use submodels::parameters::Parameters;
+
 
 fn is_moribund(family: &Family) -> bool {
     family.effective_size < 2
@@ -1264,26 +1359,6 @@ fn test_decide_on_moving_is_uniform() {
     assert!((c[4] - 100i8).abs() < 15);
 }
 
-fn extract_resources(
-    patch: &mut Patch,
-    group: Vec<&mut Family>,
-    total_labor_here: usize,
-    p: &Parameters,
-) -> KCal {
-    let labor: usize = group.iter().map(|f| f.effective_size as usize).sum();
-    assert!(labor > 0);
-    let resources_extracted =
-        resources_from_patch(&patch, labor, total_labor_here - labor, false, &p);
-    let mut group_copy: Vec<&mut Family> = vec![];
-    for family in group {
-        family.stored_resources +=
-            resources_extracted * family.effective_size as f32 / labor as f32;
-        group_copy.push(family);
-    }
-    adjust_culture(group_copy, p);
-    resources_extracted
-}
-
 #[test]
 fn test_resources_from_patch() {
     let patch1 = Patch {
@@ -1376,34 +1451,6 @@ fn resources_from_patch(
     )
 }
 
-fn adjust_culture(mut cooperating_families: Vec<&mut Family>, p: &Parameters) {
-    for f in &mut cooperating_families {
-        mutate_culture(f, p);
-    }
-    let family: Option<&&mut Family> = cooperating_families.choose(&mut rand::thread_rng());
-    match family {
-        None => {}
-        Some(f) => {
-            let target: Culture = f.culture;
-            for f2 in cooperating_families {
-                f2.culture = target;
-            }
-        }
-    }
-}
-
-fn mutate_culture(family: &mut Family, p: &Parameters) {
-    if family.seasons_till_next_mutation > 0 {
-        family.seasons_till_next_mutation -= 1;
-    }
-    if family.seasons_till_next_mutation == 0 {
-        let i: u8 = rand::thread_rng().gen_range(0, p.culture_dimensionality);
-        family.culture ^= 1 << i;
-        family.seasons_till_next_mutation =
-            random::<f64>().log(1. - p.culture_mutation_rate) as u32;
-    }
-}
-
 fn exploit(patch: &mut Patch, resource_reduction: KCal) {
     patch.resources -= resource_reduction;
     //FIXME why does this keep happening?
@@ -1411,12 +1458,15 @@ fn exploit(patch: &mut Patch, resource_reduction: KCal) {
 }
 
 fn recover(patch: &mut Patch, resource_recovery: f32) {
+    if patch.resources <= 0. {
+        println!("Patch {:?} overexploitation", patch);
+        patch.resources = 1.;
+    }
     if patch.resources < patch.max_resources - 1. {
         patch.resources +=
             patch.resources * resource_recovery * (1. - patch.resources / patch.max_resources);
     }
     assert!(patch.resources.is_normal());
-    assert!(patch.resources > 0.);
 }
 
 fn min<T: PartialOrd>(a: T, b: T) -> T {
