@@ -15,6 +15,7 @@ impl std::fmt::Debug for crate::Family {
             .field("descendence", &self.descendence)
             .field("size", &self.effective_size)
             .field("seasons_till_next_child", &self.seasons_till_next_child)
+            .field("location", &self.location)
             .field("lat", &(geo.lat * 180. / crate::PI))
             .field("lon", &(geo.lon * 180. / crate::PI))
             .field("culture", &format_args!("{:020b}", &self.culture))

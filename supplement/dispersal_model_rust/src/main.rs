@@ -147,7 +147,7 @@ others to the scarcer half). By nature, the simulation invites the extension to
 include paleoclimate data, but that only becomes relevant once it shows
 fundamentally reasonable dynamics.
  */
-struct Patch {
+pub struct Patch {
     /// The resources currently available (not necessarily accessible, see XXX)
     /// in this patch, in kcal / season.
     resources: KCal,
@@ -199,15 +199,15 @@ fn step(
     families: &mut Vec<Family>,
     patches: &mut HashMap<hexgrid::Index, Patch>,
     p: &Parameters,
-) -> HashMap<hexgrid::Index, Vec<Family>> {
+) -> Option<HashMap<hexgrid::Index, Vec<Family>>> {
     let mut families_by_location = step_part_1(families, patches, p);
     step_part_2(&mut families_by_location, patches, p);
-    families_by_location
+    Some(families_by_location)
 }
 
 /**
 The first part focuses on the individual families, which shrink, grow, die,
-split, and move. It returns the list of families at the end of the season,
+split, and move. It constructs the mapping of families at the end of the season,
 grouped by their location after potential moves. Because the movement of a
 family depends on the distribution of othe families at he start of the season
 (TODO: which might be changed in the future if I figure out how), it can happen
@@ -219,14 +219,27 @@ fn step_part_1(
     p: &Parameters,
 ) -> HashMap<hexgrid::Index, Vec<Family>> {
     let mut families_by_location: HashMap<hexgrid::Index, Vec<Family>> = HashMap::new();
-    //TODO In python, I could follow the updates on the culture distribution
-    // live while updating the Families using `decide_on_moving`. This proved to
-    // be insanely difficult in Rust, so I gave it up. How could it be done? How
-    // big of a difference does it make, given that it leads to suboptimal
-    // choices of the agents? How could it be done in Rust?
-    let cultures_by_location = by_location(families);
+    let mut cultures_by_location: HashMap<hexgrid::Index, HashMap<Culture, usize>> = HashMap::new();
 
-    //TODO: With the current `cultures_by_location` version of the code, it
+    for family in families.iter_mut() {
+        if use_resources_and_maybe_shrink(
+            &mut family.effective_size,
+            &mut family.stored_resources,
+            p,
+        ) {
+            family.seasons_till_next_child = max(family.seasons_till_next_child, 2)
+        }
+
+        maybe_grow(family);
+
+        let cultures = cultures_by_location
+            .entry(family.location)
+            .or_insert_with(HashMap::new);
+        let counter = cultures.entry(family.culture).or_insert(0);
+        *counter += family.effective_size;
+    }
+
+    // TODO: With the current `cultures_by_location` version of the code, it
     // doesn't matter in which order these agents are updated, but either we
     // need to change that, or we need to find some way that a slightly nicer
     // neighboring patch does not attract a vast amount of people, much more
@@ -237,8 +250,9 @@ fn step_part_1(
     families.shuffle(&mut rng);
 
     for mut family in families.drain(..) {
-        use_resources_and_maybe_shrink(&mut family, p);
         if is_moribund(&family) {
+            family.effective_size = 0;
+            // Stop tracking this family, they are dead.
             continue;
         }
 
@@ -246,6 +260,10 @@ fn step_part_1(
 
         match maybe_procreate(&mut family) {
             None => {}
+            // In terms of scheduling a new family can (and if possible
+            // should) move immediately when created. This behaviour is
+            // taken from del Castillo (2013). Also, a descendant family
+            // will move directly before their progenitor.
             Some(descendant) => {
                 let observed = observe_neighbors(
                     &descendant,
@@ -254,16 +272,15 @@ fn step_part_1(
                     &nearby,
                     p.attention_probability,
                 );
-                // In terms of scheduling a new family can (and if possible
-                // should) move immediately when created. This behaviour is
-                // taken from del Castillo (2013). Also, a descendant family
-                // will move directly before their progenitor.
-
-                let destination = decide_on_moving(&descendant, observed, true, p);
+                let d = adaptation::decide_on_moving(&descendant, observed, true, p);
+                let destination = d.unwrap_or(family.location);
                 families_by_location
-                    .entry(destination.unwrap_or(family.location))
+                    .entry(destination)
                     .or_insert(vec![])
                     .push(descendant);
+
+                // TODO: If later moves should depend on earlier moves, update
+                // cultures_by_location here.
             }
         }
         let observed = observe_neighbors(
@@ -273,14 +290,15 @@ fn step_part_1(
             &nearby,
             p.attention_probability,
         );
-        let destination = decide_on_moving(&family, observed, false, p);
-
-        maybe_grow(&mut family);
-
+        let d = adaptation::decide_on_moving(&family, observed, true, p);
+        let destination = d.unwrap_or(family.location);
         families_by_location
-            .entry(destination.unwrap_or(family.location))
+            .entry(destination)
             .or_insert(vec![])
             .push(family);
+
+        // TODO: If later moves should depend on earlier moves, update
+        // cultures_by_location here.
     }
     families_by_location
 }
@@ -522,12 +540,12 @@ mod emergence {
 /**
 ## 4.3 Adaptation
 
->>> What adaptive traits do the individuals have? What rules do they have for
->>> making decisions or changing behavior in response to changes in themselves
->>> or their environment? Do these traits explicitly seek to increase some
->>> measure of individual success regarding its objectives? Or do they instead
->>> simply cause individuals to repro- duce observed behaviors that are
->>> implicitly assumed to indirectly convey success or fitness?
+> What adaptive traits do the individuals have? What rules do they have for
+> making decisions or changing behavior in response to changes in themselves or
+> their environment? Do these traits explicitly seek to increase some measure of
+> individual success regarding its objectives? Or do they instead simply cause
+> individuals to reproduce observed behaviors that are implicitly assumed to
+> indirectly convey success or fitness?
 
 The only trait agents have control over is their location. Agents optimize
 (within the limits of their knowledge) their location to increase the amount of
@@ -538,45 +556,111 @@ procreation and can in extreme cases (overexploitation of local resources) even
 be detrimental in the long run.
 */
 mod adaptation {
-    // TODO: construct some test cases for comparing adaptation using
-    // decide_on_moving with random and static cases, for low resources (where
-    // decision is useful), medium resources (where it matters, but little) and
-    // a constructed extreme case with over-exploitation, where it is actually
-    // detrimental.
+    use crate::*;
+
+    pub fn decide_on_moving<'a>(
+        family: &'a Family,
+        known_destinations: Vec<(hexgrid::Index, &Patch, usize, usize)>,
+        avoid_stay: bool,
+        p: &Parameters,
+    ) -> Option<hexgrid::Index> {
+        let mut kd = known_destinations.iter();
+        let (mut target, mut patch, mut cooperators, mut competitors): (
+            hexgrid::Index,
+            &Patch,
+            usize,
+            usize,
+        );
+        {
+            let (t, p, c, d) = kd.next()?;
+            target = *t;
+            patch = p;
+            // This is the patch that contains the family, correct fo that.
+            cooperators = *c - family.effective_size;
+            competitors = *d;
+        }
+        if avoid_stay {
+            let (t, p, c, d) = kd.next()?;
+            target = *t;
+            patch = p;
+            cooperators = *c;
+            competitors = *d;
+        }
+        let mut max_gain: KCal = expected_resources_from_patch(
+            family.effective_size,
+            patch,
+            cooperators,
+            competitors,
+            p,
+        );
+
+        let threshold = if avoid_stay {
+            0.
+        } else {
+            max_gain + p.time_step_energy_use * p.evidence_needed
+        };
+
+        objectives::best_location(family.effective_size, &mut max_gain, kd, p, threshold)
+            .or(Some(target))
+    }
 }
 
 /**
 ## 4.4 Objectives
 
-### For traits modeled as direct fitness-seeking, how complete is the fitness
-### measure used to evaluate decision alternatives? The fitness measure is the
-### individual’s internal model of how its expected fitness depends on which
-### alternative it chooses. Which elements of potential fitness – survival to
-### reproduction, attainment of reproductive size or life stage, gonad
-### production, etc. – are represented in the fitness measure? Is the
-### completeness of the fitness measure consistent with the IBM’s objectives?
+> If adaptive traits explicitly act to increase some measure of the individual’s
+> success at meeting some objective, what exactly is that objective and how is
+> it measured?
 
-### How direct is the fitness measure? What variables and mechanisms are used to
-### represent how an individual’s decision affects its future fitness? Is the
-### choice of variables and mechanisms consistent with the IBM’s objectives and
-### the biology of the system being modeled? Does the fitness measure have a
-### clear biological meaning? Does the fitness measure allow the individual to
-### make appropriate decisions even when none of the alternatives are good?
+> When individuals make decisions by ranking alternatives, what criteria do they
+> use?
 
-### How is the individual’s current state considered in modeling fitness
-### consequences of decisions?
-
-### Should the fitness measure change with life stage, season, or other
-### conditions?
 */
 mod objectives {
-    // This is hard. While accessible resources are not immediately fitness,
-    // they have some fitness benefits, as described under Adaptation.
+    use crate::*;
 
-    // Also, another Family attribute, `seasons_till_next_child`, is (ab)used to
-    // represent life stage, and in the first life stage of a family, there is
-    // no change in ‘reproductive size’, in the second stage, ‘reproductive
-    // size’ is attained, and then the families start to fission regularily.
+    /**
+    Agents choose a best location to move to, where ‘best’ means a maximum
+    expected resource gain. If multiple locations are equally good (up to
+    floating point accuracy), take one of those at random.
+    */
+    // That is, this function omputes the argmax of
+    // `expected_resources_from_patch`, drawing at random between equal options.
+    pub fn best_location(
+        size: usize,
+        max_gain: &mut KCal,
+        kd: std::slice::Iter<(hexgrid::Index, &Patch, usize, usize)>,
+        p: &Parameters,
+        threshold: KCal,
+    ) -> Option<hexgrid::Index> {
+        let mut rng = rand::thread_rng();
+
+        // This variable `c` is used to randomly draw between several
+        // equally-optimal options. It counts the number of best options
+        // encountered so far.
+        let mut c = 0;
+        let mut target: Option<hexgrid::Index> = None;
+        for (coords, patch, cooperators, competitors) in kd {
+            let expected_gain =
+                expected_resources_from_patch(size, patch, *cooperators, *competitors, p);
+            if expected_gain >= *max_gain {
+                if expected_gain < threshold {
+                    continue;
+                }
+                if (expected_gain - *max_gain).abs() < std::f32::EPSILON {
+                    c += 1;
+                    if rng.gen_range(0, c + 1) < c {
+                        continue;
+                    }
+                } else {
+                    c = 0
+                }
+                target = Some(*coords);
+                *max_gain = expected_gain;
+            }
+        }
+        target
+    }
 }
 
 /**
@@ -734,7 +818,7 @@ fn similar_culture(c1: &Culture, c2: &Culture) -> bool {
     cultural_distance(c1, c2) < 6
 }
 
-struct Parameters {
+pub struct Parameters {
     attention_probability: f32,
     time_step_energy_use: KCal,
     storage_loss: f32,
@@ -917,15 +1001,14 @@ fn initialization(precipitation: &Vec<u16>, width: usize, p: &Parameters) -> Opt
     })
 }
 
-fn use_resources_and_maybe_shrink(family: &mut Family, p: &Parameters) {
-    let resources = family.stored_resources;
-    let mut size = family.effective_size;
-    while resources_at_season_end(resources, size, p) < 0. && size > 0 {
-        size -= 1;
-        family.seasons_till_next_child = max(family.seasons_till_next_child, 2)
+fn use_resources_and_maybe_shrink(size: &mut usize, resources: &mut KCal, p: &Parameters) -> bool {
+    let mut has_shrunk = false;
+    while resources_at_season_end(*resources, *size, p) < 0. && *size > 0 {
+        *size -= 1;
+        has_shrunk = true;
     }
-    family.effective_size = size;
-    family.stored_resources = resources_at_season_end(family.stored_resources, size, p);
+    *resources = resources_at_season_end(*resources, *size, p);
+    has_shrunk
 }
 
 fn resources_at_season_end(resources: KCal, size: usize, p: &Parameters) -> KCal {
@@ -1014,7 +1097,7 @@ fn test_decide_on_moving() {
         stored_resources: 1.,
     };
     assert_eq!(
-        decide_on_moving(
+        adaptation::decide_on_moving(
             &mini_family,
             vec![(1, &patch1, mini_family.effective_size, 0)],
             false,
@@ -1024,7 +1107,7 @@ fn test_decide_on_moving() {
     );
 
     assert_eq!(
-        decide_on_moving(
+        adaptation::decide_on_moving(
             &mini_family,
             vec![
                 (1, &patch1, mini_family.effective_size, 0),
@@ -1037,7 +1120,7 @@ fn test_decide_on_moving() {
     );
 
     assert_eq!(
-        decide_on_moving(
+        adaptation::decide_on_moving(
             &mini_family,
             vec![
                 (1, &patch1, mini_family.effective_size, 0),
@@ -1096,7 +1179,7 @@ fn test_decide_on_moving_is_uniform() {
 
     let mut c = [0, 0, 0, 0, 0];
     for _ in 1..300 {
-        let k = decide_on_moving(
+        let k = adaptation::decide_on_moving(
             &mini_family,
             vec![
                 (1, &patch1, mini_family.effective_size, 0),
@@ -1117,63 +1200,6 @@ fn test_decide_on_moving_is_uniform() {
     assert!((c[2] - 100i8).abs() < 15);
     assert!((c[3] - 100i8).abs() < 15);
     assert!((c[4] - 100i8).abs() < 15);
-}
-
-fn decide_on_moving<'a>(
-    family: &'a Family,
-    known_destinations: Vec<(hexgrid::Index, &Patch, usize, usize)>,
-    avoid_stay: bool,
-    p: &Parameters,
-) -> Option<hexgrid::Index> {
-    let mut kd = known_destinations.iter();
-    let (mut target, mut patch, mut cooperators, mut competitors): (
-        hexgrid::Index,
-        &Patch,
-        usize,
-        usize,
-    );
-    {
-        let (t, p, c, d) = kd.next()?;
-        target = *t;
-        patch = p;
-        // This is the patch that contains the family, correct fo that.
-        cooperators = *c - family.effective_size;
-        competitors = *d;
-    }
-    if avoid_stay {
-        let (t, p, c, d) = kd.next()?;
-        target = *t;
-        patch = p;
-        cooperators = *c;
-        competitors = *d;
-    }
-    let mut max_gain: KCal =
-        expected_resources_from_patch(family.effective_size, patch, cooperators, competitors, p);
-    let current_gain = if avoid_stay { 0. } else { max_gain };
-    let mut c = 0.;
-    for (coords, patch, cooperators, competitors) in kd {
-        let expected_gain = expected_resources_from_patch(
-            family.effective_size,
-            patch,
-            *cooperators,
-            *competitors,
-            p,
-        );
-        if expected_gain >= max_gain {
-            if expected_gain < current_gain + p.time_step_energy_use * p.evidence_needed {
-                continue;
-            }
-            if (expected_gain - max_gain).abs() < std::f32::EPSILON {
-                c += 1.;
-                if random::<f32>() < c / (1. + c) {
-                    continue;
-                }
-            }
-            target = *coords;
-            max_gain = expected_gain;
-        }
-    }
-    Some(target)
 }
 
 fn extract_resources(
@@ -1327,6 +1353,8 @@ fn recover(patch: &mut Patch, resource_recovery: f32) {
         patch.resources +=
             patch.resources * resource_recovery * (1. - patch.resources / patch.max_resources);
     }
+    assert!(patch.resources.is_normal());
+    assert!(patch.resources > 0.);
 }
 
 fn min<T: PartialOrd>(a: T, b: T) -> T {
@@ -1376,7 +1404,7 @@ fn run() -> Option<()> {
     let mut s: State = initialization(&vec, width as usize, &p)?;
 
     loop {
-        let mut families_by_location = step_part_1(&mut s.families, &s.patches, &p);
+        let families_by_location = step(&mut s.families, &mut s.patches, &p)?;
         println!(
             "{:?}",
             families_by_location
@@ -1387,7 +1415,6 @@ fn run() -> Option<()> {
                 })
                 .collect::<Vec<(f64, f64, usize)>>()
         );
-        step_part_2(&mut families_by_location, &mut s.patches, &p);
         for (location, families) in families_by_location {
             for mut family in families {
                 family.location_history.push(family.location);
@@ -1403,16 +1430,4 @@ fn run() -> Option<()> {
         println!("t={:}", s.t);
     }
     Some(())
-}
-
-fn by_location(families: &Vec<Family>) -> HashMap<hexgrid::Index, HashMap<Culture, usize>> {
-    let mut cultures_by_location: HashMap<hexgrid::Index, HashMap<Culture, usize>> = HashMap::new();
-    for family in families.iter() {
-        let cultures = cultures_by_location
-            .entry(family.location)
-            .or_insert_with(HashMap::new);
-        let counter = cultures.entry(family.culture).or_insert(0);
-        *counter += family.effective_size;
-    }
-    cultures_by_location
 }
