@@ -32,16 +32,20 @@ results that can be compared to that history.
 // order, or attached to things that are only accidentally coming afterwards.
 
 // Load useful modules
+use std::f64::consts::PI;
+
 use rand::prelude::*;
-use rand_distr::Normal;
 use rayon::prelude::*;
 use std::collections::HashMap;
+
+mod util;
+use util::{greater_of_two, smaller_of_two};
 
 mod debug;
 mod ecology;
 mod hexgrid;
 
-use std::f64::consts::PI;
+use submodels::parameters::Parameters;
 
 /**
 
@@ -227,10 +231,10 @@ fn step_part_1(
             &mut family.stored_resources,
             p,
         ) {
-            family.seasons_till_next_child = max(family.seasons_till_next_child, 2)
+            family.seasons_till_next_child = greater_of_two(family.seasons_till_next_child, 2)
         }
 
-        maybe_grow(family);
+        submodels::family_lifecycle::maybe_grow(family);
 
         let cultures = cultures_by_location
             .entry(family.location)
@@ -250,7 +254,7 @@ fn step_part_1(
     families.shuffle(&mut rng);
 
     for mut family in families.drain(..) {
-        if is_moribund(&family) {
+        if submodels::family_lifecycle::is_moribund(&family) {
             family.effective_size = 0;
             // Stop tracking this family, they are dead.
             continue;
@@ -258,7 +262,7 @@ fn step_part_1(
 
         let nearby = hexgrid::nearby_locations(family.location);
 
-        match maybe_procreate(&mut family) {
+        match submodels::family_lifecycle::maybe_procreate(&mut family) {
             None => {}
             // In terms of scheduling a new family can (and if possible
             // should) move immediately when created. This behaviour is
@@ -311,7 +315,6 @@ external interaction, so this can be done in parallel. After exploitation,
 patches recover advance to the next season according to Submodule 7.6. This
 concludes a time step.
  */
-
 fn step_part_2(
     families_by_location: &mut HashMap<hexgrid::Index, Vec<Family>>,
     patches: &mut HashMap<hexgrid::Index, Patch>,
@@ -330,14 +333,19 @@ fn step_part_2(
         let (cooperatives, sum_labor) = collectives::cooperatives(families.iter_mut().collect());
 
         for cooperating_families in cooperatives {
-            resource_reduction += submodels::ecology::extract_resources(&mut patch, cooperating_families, sum_labor, p);
+            resource_reduction += submodels::ecology::extract_resources(
+                &mut patch,
+                cooperating_families,
+                sum_labor,
+                p,
+            );
         }
 
-        exploit(&mut patch, resource_reduction);
+        submodels::ecology::exploit(&mut patch, resource_reduction);
     }
 
     for mut patch in patches.values_mut() {
-        recover(&mut patch, p.resource_recovery);
+        submodels::ecology::recover(&mut patch, p.resource_recovery);
     }
 }
 
@@ -662,7 +670,7 @@ mod learning {
     ) -> Vec<hexgrid::Index> {
         let mut result = vec![];
         for location in nearby {
-            if history[0..min(8, history.len())].contains(&location) {
+            if history[0..smaller_of_two(8, history.len())].contains(&location) {
                 result.push(*location);
                 continue;
             }
@@ -710,8 +718,13 @@ mod prediction {
         p: &Parameters,
     ) -> KCal {
         assert!(my_effective_size + cooperators > 0);
-        resources_from_patch(patch, my_effective_size + cooperators, competitors, true, p)
-            * (my_effective_size as f32 / (my_effective_size + cooperators) as f32)
+        submodels::ecology::resources_from_patch(
+            patch,
+            my_effective_size + cooperators,
+            competitors,
+            true,
+            p,
+        ) * (my_effective_size as f32 / (my_effective_size + cooperators) as f32)
     }
 }
 
@@ -819,7 +832,7 @@ mod interaction {
     ) -> KCal {
         assert!(my_relative_returns + others_relative_returns > 0.);
         let my_part = my_relative_returns / (my_relative_returns + others_relative_returns)
-            * min(
+            * smaller_of_two(
                 my_relative_returns + others_relative_returns,
                 total_resources_available,
             );
@@ -928,19 +941,18 @@ mod observation {
     use crate::*;
 
     pub fn print_families_by_location(families_by_location: &HashMap<hexgrid::Index, Vec<Family>>) {
-    println!(
-        "{:?}",
-        families_by_location
-            .iter()
-            .map(|(k, v)| {
-                let g = hexgrid::geo_coordinates(*k);
-                (g.lon, g.lat, v.iter().map(|f| f.effective_size).sum())
-            })
-            .collect::<Vec<(f64, f64, usize)>>()
-    );
+        println!(
+            "{:?}",
+            families_by_location
+                .iter()
+                .map(|(k, v)| {
+                    let g = hexgrid::geo_coordinates(*k);
+                    (g.lon, g.lat, v.iter().map(|f| f.effective_size).sum())
+                })
+                .collect::<Vec<(f64, f64, usize)>>()
+        );
     }
 }
-
 
 /**
 5. Initialization
@@ -1063,7 +1075,10 @@ mod input {
 /**
 # 7. Submodels
 
-> What, in detail, are the submodels that represent the processes listed in ‘Process overview and scheduling’? What are the model parameters, their dimensions, and reference values? How were submodels designed or chosen, and how were they parameterized and then tested?
+> What, in detail, are the submodels that represent the processes listed in
+> ‘Process overview and scheduling’? What are the model parameters, their
+> dimensions, and reference values? How were submodels designed or chosen, and
+> how were they parameterized and then tested?
 */
 mod submodels {
     pub mod culture {
@@ -1105,9 +1120,50 @@ mod submodels {
     }
 
     pub mod family_lifecycle {
-        use crate::{KCal, Parameters};
+        use crate::{Family, KCal, Parameters};
 
-        pub fn use_resources_and_maybe_shrink(size: &mut usize, resources: &mut KCal, p: &Parameters) -> bool {
+        pub fn resources_at_season_end(resources: KCal, size: usize, p: &Parameters) -> KCal {
+            let mut resources_after: KCal = resources - (size as f32) * p.time_step_energy_use;
+            if resources_after > 0. {
+                resources_after *= 1. - p.storage_loss;
+            }
+            resources_after
+        }
+
+        pub fn maybe_procreate(family: &mut Family) -> Option<Family> {
+            if family.effective_size < 10 {
+                None
+            } else {
+                family.number_offspring += 1;
+                family.effective_size -= 2;
+                Some(Family {
+                    descendence: format!("{}:{:}", family.descendence, family.number_offspring),
+                    location: family.location,
+                    location_history: vec![],
+                    seasons_till_next_child: 12 * 2,
+                    culture: family.culture,
+
+                    effective_size: 2,
+                    number_offspring: 0,
+                    seasons_till_next_mutation: 0, // FIXME: Don't mutate immediately
+                    stored_resources: 0.,
+                })
+            }
+        }
+
+        pub fn maybe_grow(family: &mut Family) {
+            if family.seasons_till_next_child == 0 {
+                family.effective_size += 1;
+                family.seasons_till_next_child = 2;
+            } else {
+                family.seasons_till_next_child -= 1;
+            }
+        }
+        pub fn use_resources_and_maybe_shrink(
+            size: &mut usize,
+            resources: &mut KCal,
+            p: &Parameters,
+        ) -> bool {
             let mut has_shrunk = false;
             while resources_at_season_end(*resources, *size, p) < 0. && *size > 0 {
                 *size -= 1;
@@ -1117,17 +1173,88 @@ mod submodels {
             has_shrunk
         }
 
-        pub fn resources_at_season_end(resources: KCal, size: usize, p: &Parameters) -> KCal {
-            let mut resources_after: KCal = resources - (size as f32) * p.time_step_energy_use;
-            if resources_after > 0. {
-                resources_after *= 1. - p.storage_loss;
-            }
-            resources_after
+        pub fn is_moribund(family: &Family) -> bool {
+            family.effective_size < 2
         }
     }
 
     pub mod ecology {
-        use crate::{Patch, Family, Parameters, KCal};
+        use crate::{greater_of_two, interaction, Family, KCal, Parameters, Patch};
+        use rand::prelude::*;
+        use rand_distr::Normal;
+
+        pub fn resources_from_patch(
+            patch: &Patch,
+            labor: usize,
+            others_labor: usize,
+            estimate: bool,
+            p: &Parameters,
+        ) -> KCal {
+            let mut my_relative_returns: f32 = p.time_step_energy_use
+                * labor as f32
+                * interaction::effective_labor_through_cooperation(labor, p.cooperation_gain);
+            let mut rng = rand::thread_rng();
+            if !estimate {
+                let dist = Normal::new(
+                    my_relative_returns,
+                    p.time_step_energy_use / (labor as f32).powf(0.5),
+                );
+                match dist {
+                    Err(_) => {}
+                    Ok(d) => {
+                        my_relative_returns = d.sample(&mut rng);
+                        my_relative_returns = greater_of_two(0., my_relative_returns)
+                    }
+                }
+                if my_relative_returns == 0. {
+                    return 0.;
+                }
+            }
+            let mut others_relative_returns: f32 = 0.;
+            if others_labor > 0 {
+                others_relative_returns = p.time_step_energy_use
+                    * others_labor as f32
+                    * interaction::effective_labor_through_cooperation(
+                        others_labor,
+                        p.cooperation_gain,
+                    );
+                if !estimate {
+                    let dist = Normal::new(
+                        my_relative_returns,
+                        p.time_step_energy_use / (others_labor as f32).powf(0.5),
+                    );
+                    match dist {
+                        Err(_) => {}
+                        Ok(d) => {
+                            others_relative_returns = d.sample(&mut rng);
+                            others_relative_returns = greater_of_two(0., others_relative_returns)
+                        }
+                    }
+                }
+            }
+            interaction::split_resources(
+                my_relative_returns,
+                others_relative_returns,
+                patch.resources * p.accessible_resources,
+            )
+        }
+
+        pub fn exploit(patch: &mut Patch, resource_reduction: KCal) {
+            patch.resources -= resource_reduction;
+        }
+
+        pub fn recover(patch: &mut Patch, resource_recovery: f32) {
+            if patch.resources <= 0. {
+                println!("Patch {:?} overexploitation", patch);
+                patch.resources = 1.;
+            }
+            if patch.resources < patch.max_resources - 1. {
+                patch.resources += patch.resources
+                    * resource_recovery
+                    * (1. - patch.resources / patch.max_resources);
+            }
+            assert!(patch.resources.is_normal());
+        }
 
         pub fn extract_resources(
             patch: &mut Patch,
@@ -1138,7 +1265,7 @@ mod submodels {
             let labor: usize = group.iter().map(|f| f.effective_size as usize).sum();
             assert!(labor > 0);
             let resources_extracted =
-                crate::resources_from_patch(&patch, labor, total_labor_here - labor, false, &p);
+                resources_from_patch(&patch, labor, total_labor_here - labor, false, &p);
             let mut group_copy: Vec<&mut Family> = vec![];
             for family in group {
                 family.stored_resources +=
@@ -1173,316 +1300,7 @@ mod submodels {
     }
 }
 
-use submodels::parameters::Parameters;
-
-
-fn is_moribund(family: &Family) -> bool {
-    family.effective_size < 2
-}
-
-fn maybe_grow(family: &mut Family) {
-    if family.seasons_till_next_child == 0 {
-        family.effective_size += 1;
-        family.seasons_till_next_child = 2;
-    } else {
-        family.seasons_till_next_child -= 1;
-    }
-}
-
-fn maybe_procreate(family: &mut Family) -> Option<Family> {
-    if family.effective_size < 10 {
-        None
-    } else {
-        family.number_offspring += 1;
-        family.effective_size -= 2;
-        Some(Family {
-            descendence: format!("{}:{:}", family.descendence, family.number_offspring),
-            location: family.location,
-            location_history: vec![],
-            seasons_till_next_child: 12 * 2,
-            culture: family.culture,
-
-            effective_size: 2,
-            number_offspring: 0,
-            seasons_till_next_mutation: 0, // FIXME: Don't mutate immediately
-            stored_resources: 0.,
-        })
-    }
-}
-
-#[test]
-fn test_decide_on_moving() {
-    let patch1 = Patch {
-        resources: 10.,
-        max_resources: 10.,
-    };
-    let patch2 = Patch {
-        resources: 100.,
-        max_resources: 100.,
-    };
-    let _patch3 = Patch {
-        resources: 100000.,
-        max_resources: 100000.,
-    };
-    let mini_param = Parameters {
-        attention_probability: 0.1,
-        time_step_energy_use: 10.,
-        storage_loss: 0.25,
-        resource_recovery: 0.20,
-        culture_mutation_rate: 6e-3,
-        culture_dimensionality: 20,
-        cooperation_gain: 0.0,
-        accessible_resources: 1.0,
-        evidence_needed: 0.3,
-
-        // Some part of Western Alaska
-        boundary_west: -168.571541,
-        boundary_east: -148.571541,
-        boundary_south: 56.028198,
-        boundary_north: 74.52671,
-    };
-
-    let mini_family = Family {
-        culture: 0,
-        descendence: String::from(""),
-        effective_size: 2,
-        location: 0,
-        location_history: vec![1],
-        number_offspring: 0,
-        seasons_till_next_child: 0,
-        seasons_till_next_mutation: 0,
-        stored_resources: 1.,
-    };
-    assert_eq!(
-        adaptation::decide_on_moving(
-            &mini_family,
-            vec![(1, &patch1, mini_family.effective_size, 0)],
-            false,
-            &mini_param
-        ),
-        Some(1)
-    );
-
-    assert_eq!(
-        adaptation::decide_on_moving(
-            &mini_family,
-            vec![
-                (1, &patch1, mini_family.effective_size, 0),
-                (2, &patch2, mini_family.effective_size, 0)
-            ],
-            true,
-            &mini_param
-        ),
-        Some(2)
-    );
-
-    assert_eq!(
-        adaptation::decide_on_moving(
-            &mini_family,
-            vec![
-                (1, &patch1, mini_family.effective_size, 0),
-                (2, &patch2, mini_family.effective_size, 0)
-            ],
-            false,
-            &mini_param
-        ),
-        Some(2)
-    );
-}
-
-#[test]
-fn test_decide_on_moving_is_uniform() {
-    let patch1 = Patch {
-        resources: 10.,
-        max_resources: 10.,
-    };
-    let patch2 = Patch {
-        resources: 100.,
-        max_resources: 100.,
-    };
-    let patch3 = Patch {
-        resources: 100000.,
-        max_resources: 100000.,
-    };
-    let mini_param = Parameters {
-        attention_probability: 0.1,
-        time_step_energy_use: 10.,
-        storage_loss: 0.25,
-        resource_recovery: 0.20,
-        culture_mutation_rate: 6e-3,
-        culture_dimensionality: 20,
-        cooperation_gain: 0.0,
-        accessible_resources: 1.0,
-        evidence_needed: 0.3,
-
-        // Some part of Western Alaska
-        boundary_west: -168.571541,
-        boundary_east: -148.571541,
-        boundary_south: 56.028198,
-        boundary_north: 74.52671,
-    };
-
-    let mini_family = Family {
-        culture: 0,
-        descendence: String::from(""),
-        effective_size: 2,
-        location: 0,
-        location_history: vec![1],
-        number_offspring: 0,
-        seasons_till_next_child: 0,
-        seasons_till_next_mutation: 0,
-        stored_resources: 1.,
-    };
-
-    let mut c = [0, 0, 0, 0, 0];
-    for _ in 1..300 {
-        let k = adaptation::decide_on_moving(
-            &mini_family,
-            vec![
-                (1, &patch1, mini_family.effective_size, 0),
-                (2, &patch3, mini_family.effective_size, 0),
-                (3, &patch2, mini_family.effective_size, 0),
-                (4, &patch2, mini_family.effective_size, 0),
-            ],
-            false,
-            &mini_param,
-        );
-        c[match k {
-            None => 0,
-            Some(k) => k as usize,
-        }] += 1;
-    }
-    assert_eq!(c[0], 0);
-    assert_eq!(c[1], 0);
-    assert!((c[2] - 100i8).abs() < 15);
-    assert!((c[3] - 100i8).abs() < 15);
-    assert!((c[4] - 100i8).abs() < 15);
-}
-
-#[test]
-fn test_resources_from_patch() {
-    let patch1 = Patch {
-        resources: 10.,
-        max_resources: 10.,
-    };
-    let patch2 = Patch {
-        resources: 100.,
-        max_resources: 100.,
-    };
-    let patch3 = Patch {
-        resources: 100000.,
-        max_resources: 100000.,
-    };
-    let mut mini_param = Parameters {
-        attention_probability: 0.1,
-        time_step_energy_use: 10.,
-        storage_loss: 0.25,
-        resource_recovery: 0.20,
-        culture_mutation_rate: 6e-3,
-        culture_dimensionality: 20,
-        cooperation_gain: 0.0,
-        accessible_resources: 1.0,
-        evidence_needed: 0.3,
-
-        // Some part of Western Alaska
-        boundary_west: -168.571541,
-        boundary_east: -148.571541,
-        boundary_south: 56.028198,
-        boundary_north: 74.52671,
-    };
-    assert_eq!(resources_from_patch(&patch1, 2, 0, true, &mini_param), 10.);
-    assert_eq!(resources_from_patch(&patch2, 2, 0, true, &mini_param), 22.);
-    assert_eq!(resources_from_patch(&patch3, 2, 0, true, &mini_param), 22.);
-    assert!((resources_from_patch(&patch2, 3, 7, true, &mini_param) - 30.).abs() < 0.001);
-    mini_param.cooperation_gain = 0.5;
-    assert!((resources_from_patch(&patch3, 25, 0, true, &mini_param) - 1.5 * 25. * 10.).abs() < 5.);
-}
-
-fn resources_from_patch(
-    patch: &Patch,
-    labor: usize,
-    others_labor: usize,
-    estimate: bool,
-    p: &Parameters,
-) -> KCal {
-    let mut my_relative_returns: f32 = p.time_step_energy_use
-        * labor as f32
-        * interaction::effective_labor_through_cooperation(labor, p.cooperation_gain);
-    let mut rng = rand::thread_rng();
-    if !estimate {
-        let dist = Normal::new(
-            my_relative_returns,
-            p.time_step_energy_use / (labor as f32).powf(0.5),
-        );
-        match dist {
-            Err(_) => {}
-            Ok(d) => {
-                my_relative_returns = d.sample(&mut rng);
-                my_relative_returns = max(0., my_relative_returns)
-            }
-        }
-        if my_relative_returns == 0. {
-            return 0.;
-        }
-    }
-    let mut others_relative_returns: f32 = 0.;
-    if others_labor > 0 {
-        others_relative_returns = p.time_step_energy_use
-            * others_labor as f32
-            * interaction::effective_labor_through_cooperation(others_labor, p.cooperation_gain);
-        if !estimate {
-            let dist = Normal::new(
-                my_relative_returns,
-                p.time_step_energy_use / (others_labor as f32).powf(0.5),
-            );
-            match dist {
-                Err(_) => {}
-                Ok(d) => {
-                    others_relative_returns = d.sample(&mut rng);
-                    others_relative_returns = max(0., others_relative_returns)
-                }
-            }
-        }
-    }
-    interaction::split_resources(
-        my_relative_returns,
-        others_relative_returns,
-        patch.resources * p.accessible_resources,
-    )
-}
-
-fn exploit(patch: &mut Patch, resource_reduction: KCal) {
-    patch.resources -= resource_reduction;
-    //FIXME why does this keep happening?
-    // assert!(patch.resources > 0.);
-}
-
-fn recover(patch: &mut Patch, resource_recovery: f32) {
-    if patch.resources <= 0. {
-        println!("Patch {:?} overexploitation", patch);
-        patch.resources = 1.;
-    }
-    if patch.resources < patch.max_resources - 1. {
-        patch.resources +=
-            patch.resources * resource_recovery * (1. - patch.resources / patch.max_resources);
-    }
-    assert!(patch.resources.is_normal());
-}
-
-fn min<T: PartialOrd>(a: T, b: T) -> T {
-    if a < b {
-        a
-    } else {
-        b
-    }
-}
-fn max<T: PartialOrd>(a: T, b: T) -> T {
-    if b < a {
-        a
-    } else {
-        b
-    }
-}
+mod tests;
 
 fn main() {
     run();
@@ -1491,6 +1309,7 @@ fn main() {
 fn run() -> Option<()> {
     let mut parser = argparse::ArgumentParser::new();
     parser.set_description("Run a dispersal simulation");
+    // TODO: Attach an ArgumentParser to the marameters object, so parameters can be set from the CLI.
     let p = Parameters {
         attention_probability: 0.1,
         time_step_energy_use: 2263. as KCal * 365.242_2 / 2.,
@@ -1510,8 +1329,8 @@ fn run() -> Option<()> {
 
     println!("# Initialization ...");
     // FIXME: There is something messed up in lat/long -> image pixels. It works
-    // currently, but the names point towards a deep issue with the layout of
-    // the tiff in memory or similar.
+    // currently, but the names point out that I misunderstood something, eg.
+    // with the layout of the tiff in memory or similar.
     let (vec, width) = ecology::load_precipitation_tif()?;
     let mut s: State = initialization(&vec, width as usize, &p)?;
 
