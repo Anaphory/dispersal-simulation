@@ -294,7 +294,7 @@ fn step_part_1(
             &nearby,
             p.attention_probability,
         );
-        let d = adaptation::decide_on_moving(&family, observed, true, p);
+        let d = adaptation::decide_on_moving(&family, observed, false, p);
         let destination = d.unwrap_or(family.location);
         families_by_location
             .entry(destination)
