@@ -21,9 +21,11 @@ pub fn test_decide_on_moving() {
         resource_recovery: 0.20,
         culture_mutation_rate: 6e-3,
         culture_dimensionality: 20,
+        cooperation_threshold: 6,
         cooperation_gain: 0.0,
         accessible_resources: 1.0,
         evidence_needed: 0.3,
+        payoff_std: 0.1,
 
         // Some part of Western Alaska
         boundary_west: -168.571541,
@@ -40,7 +42,7 @@ pub fn test_decide_on_moving() {
         location_history: vec![1],
         number_offspring: 0,
         seasons_till_next_child: 0,
-        seasons_till_next_mutation: 0,
+        seasons_till_next_mutation: None,
         stored_resources: 1.,
     };
     assert_eq!(
@@ -101,9 +103,11 @@ pub fn test_decide_on_moving_is_uniform() {
         resource_recovery: 0.20,
         culture_mutation_rate: 6e-3,
         culture_dimensionality: 20,
+        cooperation_threshold: 6,
         cooperation_gain: 0.0,
         accessible_resources: 1.0,
         evidence_needed: 0.3,
+        payoff_std: 0.1,
 
         // Some part of Western Alaska
         boundary_west: -168.571541,
@@ -120,7 +124,7 @@ pub fn test_decide_on_moving_is_uniform() {
         location_history: vec![1],
         number_offspring: 0,
         seasons_till_next_child: 0,
-        seasons_till_next_mutation: 0,
+        seasons_till_next_mutation: None,
         stored_resources: 1.,
     };
 
@@ -170,9 +174,11 @@ pub fn test_resources_from_patch() {
         resource_recovery: 0.20,
         culture_mutation_rate: 6e-3,
         culture_dimensionality: 20,
+        cooperation_threshold: 6,
         cooperation_gain: 0.0,
         accessible_resources: 1.0,
         evidence_needed: 0.3,
+        payoff_std: 0.1,
 
         // Some part of Western Alaska
         boundary_west: -168.571541,
@@ -181,26 +187,35 @@ pub fn test_resources_from_patch() {
         boundary_north: 74.52671,
     };
     assert_eq!(
-        submodels::ecology::resources_from_patch(&patch1, 2, 0, true, &mini_param),
+        submodels::ecology::resources_from_patch(&patch1, 2., 0., true, &mini_param),
         10.
     );
     assert_eq!(
-        submodels::ecology::resources_from_patch(&patch2, 2, 0, true, &mini_param),
+        submodels::ecology::resources_from_patch(&patch2, 2., 0., true, &mini_param),
         22.
     );
     assert_eq!(
-        submodels::ecology::resources_from_patch(&patch3, 2, 0, true, &mini_param),
+        submodels::ecology::resources_from_patch(&patch3, 2., 0., true, &mini_param),
         22.
     );
     assert!(
-        (submodels::ecology::resources_from_patch(&patch2, 3, 7, true, &mini_param) - 30.).abs()
+        (submodels::ecology::resources_from_patch(&patch2, 3., 7., true, &mini_param) - 30.).abs()
             < 0.001
     );
     mini_param.cooperation_gain = 0.5;
     assert!(
-        (submodels::ecology::resources_from_patch(&patch3, 25, 0, true, &mini_param)
+        (submodels::ecology::resources_from_patch(&patch3, 25., 0., true, &mini_param)
             - 1.5 * 25. * 10.)
             .abs()
             < 5.
     );
+
+    assert!(
+        submodels::ecology::resources_from_patch(&patch3, 5., 20., false, &mini_param)
+            + submodels::ecology::resources_from_patch(&patch3, 5., 20., false, &mini_param)
+            + submodels::ecology::resources_from_patch(&patch3, 5., 20., false, &mini_param)
+            + submodels::ecology::resources_from_patch(&patch3, 5., 20., false, &mini_param)
+            + submodels::ecology::resources_from_patch(&patch3, 5., 20., false, &mini_param)
+            < submodels::ecology::resources_from_patch(&patch3, 25., 0., false, &mini_param)
+    )
 }
