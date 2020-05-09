@@ -1,15 +1,35 @@
 \documentclass[a4paper,12pt]{scrartcl}
 
+% General style
+\usepackage{fontspec}
+\setmainfont[BoldFont = GenBasB.ttf]{Gentium Plus}
+\setsansfont{DejaVu Sans}
+\usepackage{newunicodechar}
+\newunicodechar{→}{\fontspec{Gentium Plus}→}
+
+% Internal references
+\usepackage[titletoc,title]{appendix}
+\usepackage{hyperref}
+\usepackage[capitalize]{cleveref}
+\Crefname{appsec}{Appendix}{Appendices}
+\crefname{appsec}{appendix}{appendices}
+
 \usepackage{authblk}
 
 % Draft style
-% \usepackage{setspace}
-% \setstretch{1.5}
-% \usepackage[top=2.5cm, bottom=2.5cm, left=2.2cm, right=3.5cm]{geometry}
-% \usepackage{lineno} 
+\usepackage{setspace}
+\setstretch{1.5}
+\usepackage[top=2.5cm, bottom=2.5cm, left=2.2cm, right=3.5cm]{geometry}
+\usepackage{lineno} 
 
-\usepackage{hyperref}
-\usepackage[capitalize]{cleveref}
+% Figures
+\usepackage{subcaption}
+\usepackage[font=small,labelfont=it]{caption}
+\usepackage{graphicx}
+
+% Code inclusion with syntax highlighting
+\usepackage{minted}
+\setminted{fontsize=\footnotesize}
 
 % Bibliography
 \usepackage[backend=biber,
@@ -17,108 +37,99 @@
             citestyle=sp-authoryear-comp,
             maxcitenames=2,url=false,
             maxbibnames=99]{biblatex}
-\addbibresource[location=remote]{/home/gereon/Downloads/MyLibrary.bib}
-\addbibresource[location=remote]{/home/gereon/Downloads/VICI.bib}
 \renewcommand*{\bibfont}{\small}
+\addbibresource{everything.bib}
 
 \renewbibmacro*{doi+eprint+url}{%
-    \printfield{doi}%
-    \newunit\newblock%
-    \iftoggle{bbx:eprint}{%
-        \usebibmacro{eprint}%
-    }{}%
-    \newunit\newblock%
-    \iffieldundef{doi}{%
-        \usebibmacro{url+urldate}}%
-        {}%
-      }
+  \printfield{doi}%
+  \newunit\newblock%
+  \iftoggle{bbx:eprint}{%
+    \usebibmacro{eprint}%
+  }{}%
+  \newunit\newblock%
+  \iffieldundef{doi}{%
+    \usebibmacro{url+urldate}}%
+  {}%
+}
 
+
+\title{An Agent-Based Simulation for emergent culture areas}
+\date{\today}
+\author[1]{Gereon A. Kaiping}
+\author[1]{Peter Ranacher}
+\author[2]{David Inman}
+\affil[1]{Geographic Information Science Center, Universität Zürich, CH}
+\affil[1]{Institut für vergleichende Sprachwissenschaft, Universität Zürich, CH}
 
 \begin{document}
-The basic shape of the model is remotely inspired by
-\textcite{gavin2017processbased}.
+\maketitle
+\section{Introduction}
+Agent-Based Models (ABM) \parencite{} can be a useful tool for the investigation
+of complex systems not otherwise accessible to the researcher \parencite{}. One
+area of application for agent-based simulations is in theoretical biology and
+adjacent fielnds, where experiments cannot be conducted due to the scales
+involved. ABMs have been fruitfully applied to study the evolution of
+cooperation \parencite{}, culture \parencite{}. In the wider historical
+sciences, ABMs can help archeologists interpret scarce data
+\parencite{cegielski2016rethinking}.
 
-A hexagonal grid is put over the Americas, with target area 450\,000\,000~m$^2$.
-The largest connected component of the Americas is covered by XXX cells under
-this assumption.
-This puts the radius of each cell at about 12~km, which is commensurate with
-both the purposes of describing language diversity, as described by
-\textcite{gavin2017processbased}, and with modeling hunter-gatherer migration
-patterns, where movement it expected to be in the order of magnitude of two
-foraging radii \parencite{grove2009hunter}, for which \textcite[Table
-7.13]{binford2001constructing} gives a mean of 15.94~km.
+In historical linguistics, simulation and other highly computational methods
+have only become part of the toolbox, starting with the availability of big
+cross-linguistic databases and methods taken over from bioinformatics
+\parencite{}. In this field, Agent-Based Models have been applied to study very
+specific linguistic changes
+\cite{bloem2015agentbased,feltgen2017modeling,grim2011simulating,radulescu2016modelling,vantrijp2016evolution}
+or extremely abstract, focussing on evolutionary dynamics
+\cite{arita1998evolution,castello2013agentbased,javarone2014competitive}.
+However, the statistical methodology applied eg. by studies of language
+phylogeny largely fall into two camps: Many models are taken over from
+biological evolution and insufficiently grounded in linguistic reality. Others
+are justified by mathematical simplicity, but have not been tested for
+linguistic realism either. ABMs, as bottom-up simulations which other more
+abstract statistical methods can be validated against, will help bridge the gap
+between small-scale linguistic processes and large-scale statistical analyses.
 
-We take the expected population density TERMD2 \parencite[Formula
-6.15]{binford2001constructing} as carrying capacity for each cell.
-\Author{binford2001constructing} derives the formula for carrying capacity
-from first principles (duration of the growth season, food conversion rates,
-etc.) and validates it against his data of 390 worldwide hunter-gatherer
-socities with sufficient ethnographic description to be comparable. A coarser
-estimate using similar principles is given by \textcite{tallavaara2015human}.
+In this article, we present an Agent-Based Model in which areas of coherent
+culture or language arise from low-level demographic and migratory processes.
+The model provides a first step towards understanding the patterns of language
+diversification, spread, and extinction. These processes are important factors
+in the large-scale dynamics of language evolution. They directly inform the
+shape of tree priors in Bayesian phylogenetics, which are currently heavily
+relying on theoretical biology (for coalescent and birth/death priors) or
+reduced to maximum mathematical simplicity (in the case of uniform tree priors)
+and have some influence on inferred tree topologies and dates
+\cite{rama2018three}.
 
-At a later stage, we will use paleoclimate data to compute those carrying
-capacities. \Author{binford2001constructing} focuses on making data useful for
-archeologists and as such derives the carrying capacity from quantities that can
-likely be estimated at deep time scales far before the begin of meteorology and
-quantitative science.
+The structure of this article is as follows. In \cref{s:earlier}, we provide an
+overview over existing models that were considered in the construction of the
+present model, and which of their elements were included into our model.
+\Cref{s:odd} provides the model description according to the revised ODD
+protocol \parencite{grimm2006standard,grimm2010odd}, generated using literate
+programming techniques \parencite{knuth1984literate} from the Rust \parencite{}
+source code of the simulation. We summarize our parameter choices in
+\cref{s:parameters}. In \cref{s:results} we present the results from the various
+runs of the simulation with the aforementioned parameter settings. We discuss
+our results in \cref{s:discussion}. The paper finishes with conclusions in
+\cref{s:conclusions}.
 
+\section{Earlier Models}
+\label{s:earlier}
+\section{Overview, Design concepts, and Details}
+\label{s:odd}
 
-We assume that migration might be influenced by seasonality in parts of the world. We will calibrate
-the model for time steps of 1/2 year, so we can at a later stage add two
-different, seasonal, carrying capacity computations for each cell.
-This choice is likely not necessary for tropical regions, but it should make a
-significant difference for non-tropical climates.
-
-A challenge for this approach is that the TERMD2 data is limited to
-hunter-gatherer populations, and does not even include a specific consideration
-of food storage differences yet. While some extension to food storage will be
-useful for the present analysis, horticulture and agriculture are outside the
-scope for now. For the time being, we hope that regions where agriculture plays a
-role will show up as discrepancies between expected and observed language
-diversity. A follow-up study can then investigate whether the model can be
-extended to include the invention and spread of agriculture.
-
-For the migration and spread of the populations, we adapt the model of
-\textcite[scenario 4]{crema2015modelling}, which is an expansion of his earlier
-\citeyear{crema2014simulation} model, adding resource depletion.
-(\textcite{gargano2017largescale} construct an extremely abstract model looking at a
-similar phenomenon. While they claim that the model shows effect of ‘conflict in
-pre-agricultural groups’, they say “This produces a reduction of the total human
-populations in $\alpha$ and $\beta$, which we interpret as the outcome of increased mortality
-due to competition and/or conflict over local resources.”, so the effects of
-conflict cannot be lifted from there model separately.)
-
-While it is generally
-assumed that populations form a hierarchical structure of individuals forming
-family groups inside of bands as part of aggregated groups in larger populations
-(see \textcite{hamilton2007complex} for a quantitative study),
-\textcite{bird2019variability} argue that bands are much more flexible,
-composing themselves out of unrelated people from different dialect groups.
-
-Following \textcite{delcastillo2013modeling}, we take the former stance and
-expand the model so far as to even assume that the household or family is the
-fundamental agent that makes decisions, forages, and moves. We consider their
-model as reference for including cultural traits and divergence in this
-population dynamics model.
-
-We adapt that model to the hexagonal grid and differential carrying capacity,
-and attempt to choose parameters to reflect real human migration, birth and
-death patterns following eg. \textcite{hamilton2007complex} – We do not assume a
-maximum group size, because we will add a social structure that will give rise
-to emerging language populations in the next steps.
-
-Following \textcite{hamilton2018stochastic}, we assume that populations need a
-minimum size to viable and that they immediately die out if they are below that
-threshold. We also incorporate their notion of catastrophic events occurring at
-a constant rate killing a uniformly distributed fraction of the population.
-Using the social network structure, we will in a later stage be able to import
-models from epidemiology to give these catastrophic events a more realistic
-impact on the population than a random selection would.
-
-If the model is realistic, it should tend towards minimizing the ‘tension’ of
-language boundaries as observed eg. by \textcite{burridge2017spatial}, and
-towards realistic rates of language diversification as inferred in Bayesian
-phylogenetic studies.
+\inputminted{rust}{supplement/dispersal_model_rust/src/main.rs}
+\section{Parameter choices}
+\label{s:parameters}
+\section{Results}
+\label{s:results}
+\section{Discussion}
+\label{s:discussion}
+\section{Conclusions}
+\label{s:conclusions}
 
 \printbibliography
 \end{document}
+
+% Local Variables:
+% TeX-engine: luatex
+% End:
