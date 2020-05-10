@@ -70,8 +70,8 @@ area of application for agent-based simulations is in theoretical biology and
 adjacent fielnds, where experiments cannot be conducted due to the scales
 involved. ABMs have been fruitfully applied to study the evolution of
 cooperation \parencite{}, culture \parencite{}. In the wider historical
-sciences, ABMs can help archeologists interpret scarce data
-\parencite{cegielski2016rethinking}.
+sciences, ABMs can help archeologists and paleontolgists interpret scarce data
+\parencite{cegielski2016rethinking,barcelo2016simulating}.
 
 In historical linguistics, simulation and other highly computational methods
 have only become part of the toolbox, starting with the availability of big
@@ -154,12 +154,119 @@ separately.
 
 \subsection{Modeling culture}
 \label{s:culture}
+In order to display evolutionary dynamics, a complex system must at its minimum
+have properties that can be passed on from ancestors to descendants, which
+undergo variation throughout time. For evolution in the classical non-neutral
+sense, it is furthermore necessary for the properties to be adaptive, i.\,e.
+have an influence on survival and number of descendants. The discussion to what
+extent culture in general is adaptive vs. largely neutral is ongoing
+\parencite{}. There certainly are cultural domains that show adaptation and have
+effects on survivability, such as climate-appropriate clothing and shelter
+\parencite{} or methods of subsistence from gathering to agriculture
+\parencite{}. 
+
+Of these, agriculture is explicitly outside the scope of the
+current model, because it introduces a feedback loop between culture and
+carrying capacity which would mask other effects. A vast part of the
+history of humanity went about without agriculture \parencite{}. But once it
+arose, around 5000 to 10000 years ago independently in different parts of the
+world \parencite{}, it presumably became a major driver of cultural spreads
+\parencite{farming/language dispersal hypothesis} and as such it will be useful
+to add such effects to a later iteration of this model.
+
+For other adaptive traits, results, hypotheses and data are limited. There is
+significant literature on the interaction of some very specific cultural traits
+(eg. \textcite{rusch2014evolutionary} on altruism and inter-group conflict,
+\textcite{watts2016ritual} on stratified societies and human sacrifice), but
+very few models that consider specific meaniningful cultural traits in
+agent-based, broad, and geographically expansive models. The closest to our
+goals here may be \textcite{hofstede2012cultural}. They locate their agents on
+\textcite{hofstede2001culture}'s cultural dimensions (which are themselves not
+beyond harsh criticism
+\parencite{mcsweeney2002hofstede,baskerville2003hofstede}) in order to model
+negotiations between agents of different cultural backgrounds.
+
+Some adaptive cultural traits are obviously important for migration processes.
+It has been shown that language families spread easier east-west than
+north-south, due to climate varying much more with latitude than with longitude
+\parencite{}. Local biome can also play a role in the dispersal of a language
+family, as argued eg. by \textcite{grollemund2015bantu,ehret2015bantu}.
+\emph{So, how could I add these effects to my model, or why do I not need to?}
+
+However, diverging
+% I should not use the word ‘crackpot’ here.
+hypotheses notwithstanding \parencite{tone-humidity,elevation-ejectives,etc}, it
+seems that a vast number of cultural traits are not adaptive for human survival
+\parencite{}. This does not exclude individual traits exhibiting non-neutral
+evolutionary dynamics, as shown eg. by \textcite{kandler2013non}. But a (largely, with exceptions as mentioned above) neutral model for
+cultural change appears appropriate nonetheless.
+
+Neutral abstract models for culture have in the past been considered for various
+purposes \parencite{komarova2001evolutionary}. In such models, culture tends to
+be modeled as a binary vector
+\parencite{fogarty2017driving,pascual2020epistasis}. The number of dimension $M$
+of this culture vector range between $M=6$ \parencite{pascual2020epistasis} and
+$M=10$ \parencite{delcastillo2013modeling}, with empirical reasons cited for $ $
+\parencite{} and theoretical reasons or $ $ \parencite{} or $M>N$ for the
+(effective) population size $N$ \parencite{fogarty2017driving}. Vectors are
+compared using the Hamming distance (after \textcite{}, measuring the number of
+mismatches between the two vectors) in most cases
+\parencite{fogarty2017driving,pascual2020epistasis}.
+
+Other options exist. For instance,
+\textcite{barcelo2014social,barcelo2015simulating} use integer vectors with
+values between 1 and 6 reflecting importance, and ‘a multidimensional weighted
+Euclidean distance based on the extension of the cosine similarity measure for
+vectors’ (2014), with weights that ‘roughly imitate[] the results of a factorial
+analysis of individual beliefs’ (2014).
+
+TO BE READ:
+(Fogarty et al. 2015a; Mesoudi
+2011).
+Strimling et al. (2009) and Fogarty et al. (2015b),
+which assume M = ∞
+(Milke 1949; Murdock 1957; Smith and
+Crano 1977; Cook and Szumal 1993; Mace and Pagel 1994). In general, cultural traits
+have been defined as the minimal unit of cultural transmission (Naroll 1964;
+Pocklington and Best 1997; Borgerhoff-Mulder et al. 2006; Lyman and O’Brien
+2003; O’Brien et al. 2010). In that sense, they represent any measurable unit that we
+can delineate within the observed social variation and that can be argued have inher-
+itance continuity (Eerkens and Lipo 2005). Among certain scholars, there is a tendency
+to call memes to such minimal units of ideas, symbols, values, or practices transmitted
+from agent to agent on occasion of an interaction act (Dawkins 1976).
 
 \subsection{Hunter-gatherer geography}
 \label{s:agents}
+Cultural traits can be attached on various levels – to individuals, bands,
+territorial groups, or nation states, depending on the desired level of
+abstraction. For our model, we want to see whether the components we consider
+are sufficient to let culturally similar regions, with sharp boundaries, arise
+from smaller scale interactions. For hunter-gatherer societies, the family has
+been suggested as the decision-making agent driving migration and demographics
+\textcite{}, so it makes sense to consider families the agents of our model and
+attach cultural traits on the family level. Families tend to be socially and
+geographically coheherent \textcite{}, but share their range with other
+families, which makes co-locality a reasonable factor for social interactions
+between agents.
 
 \subsection{Hunter-gatherer demographics}
 \label{s:demographics}
+
+\textcite{hamilton2018stochastic}: Very simple model. Interesting extinction
+mechanics, which I would love to include, but don't know how yet.
+
+\textcite{crema2014simulation}: Fission-fusion dynamics, because that drives
+migration and cooperation. We use a slightly reduced model of their decision
+process.
+
+\subsection{Interaction between culture and demographics}
+\label{s:interaction}
+
+Culture drives cooperation, cooperation pushes cultural assimilation. Following
+\parencite{barcelo2014social,barcelo2015simulating}, but deviating from their
+implementation (see \cref{s:agents} for some reasons why we can), we take this
+as the core interation feedback loop.
+
 \section{Overview, Design concepts, and Details}
 \label{s:odd}
 
