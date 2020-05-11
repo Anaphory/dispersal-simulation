@@ -190,16 +190,33 @@ Some adaptive cultural traits are obviously important for migration processes.
 It has been shown that language families spread easier east-west than
 north-south, due to climate varying much more with latitude than with longitude
 \parencite{}. Local biome can also play a role in the dispersal of a language
-family, as argued eg. by \textcite{grollemund2015bantu,ehret2015bantu}.
-\emph{So, how could I add these effects to my model, or why do I not need to?}
+family, as argued eg. by \textcite{grollemund2015bantu,ehret2015bantu}. There is
+not much literature on explicit models of cultural traits interacting with
+ecological niche in the context of migration. However, Eco-Cultural Niche
+Modeling \parencite[ECNM]{anks2006ecocultural} has been a useful tool for a
+variety of archaeological questions
+\cite{banks2008human,banks2013ecological,dalpoimguedes2014modeling,kondo2018ecological,walker2019persistence}.
+A well-established tool for ECNM is the maximum entropy approach implemented in
+the MaxEnt software package
+\cite{phillips2006maximum,phillips2008modeling,maxenttutorial}. MaxEnt
+generates, based on a set of points and environmental parameters, a maximum
+entropy probabilistic model for predicting the locations of these points. The
+resulting probability surface can for example be used to construct likely
+migration pathways of prehistoric populations \cite{kondo2018ecological}. We use
+sensitivities of reported for different archeological applications of MaxEnt
+\cite{burke2017risky,gillespie2016predictive,jones2019mapping,kondo2012developing,kondo2018ecological,mcmichael2014bamboodominated,muttaqin2019maxent,oyarzun2016predicting,souza2020archaeological,walker2019persistence}
+to generate a universally applicable probability mask for moving from one patch
+to another.
 
 However, diverging
 % I should not use the word ‘crackpot’ here.
 hypotheses notwithstanding \parencite{tone-humidity,elevation-ejectives,etc}, it
-seems that a vast number of cultural traits are not adaptive for human survival
-\parencite{}. This does not exclude individual traits exhibiting non-neutral
-evolutionary dynamics, as shown eg. by \textcite{kandler2013non}. But a (largely, with exceptions as mentioned above) neutral model for
-cultural change appears appropriate nonetheless.
+seems that a vast number of cultural traits are not directly involved in niche
+adaptation. This does not mean individual traits do not exhibit non-neutral
+evolutionary dynamics, as shown eg. by \textcite{kandler2013non}. But a neutral
+model for cultural change appears appropriate nonetheless, with the adaptive
+effects of culture instead influencing the migration process to stay within the
+same niche, as indicated above.
 
 Neutral abstract models for culture have in the past been considered for various
 purposes \parencite{komarova2001evolutionary}. In such models, culture tends to
@@ -219,21 +236,6 @@ values between 1 and 6 reflecting importance, and ‘a multidimensional weighted
 Euclidean distance based on the extension of the cosine similarity measure for
 vectors’ (2014), with weights that ‘roughly imitate[] the results of a factorial
 analysis of individual beliefs’ (2014).
-
-TO BE READ:
-(Fogarty et al. 2015a; Mesoudi
-2011).
-Strimling et al. (2009) and Fogarty et al. (2015b),
-which assume M = ∞
-(Milke 1949; Murdock 1957; Smith and
-Crano 1977; Cook and Szumal 1993; Mace and Pagel 1994). In general, cultural traits
-have been defined as the minimal unit of cultural transmission (Naroll 1964;
-Pocklington and Best 1997; Borgerhoff-Mulder et al. 2006; Lyman and O’Brien
-2003; O’Brien et al. 2010). In that sense, they represent any measurable unit that we
-can delineate within the observed social variation and that can be argued have inher-
-itance continuity (Eerkens and Lipo 2005). Among certain scholars, there is a tendency
-to call memes to such minimal units of ideas, symbols, values, or practices transmitted
-from agent to agent on occasion of an interaction act (Dawkins 1976).
 
 \subsection{Hunter-gatherer geography}
 \label{s:agents}
