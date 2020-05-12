@@ -142,7 +142,8 @@ project we set out here, we need the following ingedients.
   evolution (showing heritability and random variation, not necessarily
   fitness) and which in addition allows horizontal transfer of cultural traits
   other than from a parent to a child population.
-\item Agents that carry cultural traits and are located in a geographical space
+\item Agents that carry cultural traits and are located in geographical space,
+  which has differing ecological features
 \item A system that drives the demographics of the agents in time and space
 \item A way for culture and population dynamics to interact in a way that can
   create create distinct cultural areas instead of a vast cultural cline or
@@ -206,7 +207,8 @@ migration pathways of prehistoric populations \cite{kondo2018ecological}. We use
 sensitivities of reported for different archeological applications of MaxEnt
 \cite{burke2017risky,gillespie2016predictive,jones2019mapping,kondo2012developing,kondo2018ecological,mcmichael2014bamboodominated,muttaqin2019maxent,oyarzun2016predicting,souza2020archaeological,walker2019persistence}
 to generate a universally applicable probability mask for moving from one patch
-to another.
+to another. The details of this within-niche migration model will be discussed
+below in \cref{s:geography}
 
 However, diverging
 % I should not use the word ‘crackpot’ here.
@@ -238,7 +240,7 @@ vectors’ (2014), with weights that ‘roughly imitate[] the results of a facto
 analysis of individual beliefs’ (2014).
 
 \subsection{Hunter-gatherer geography}
-\label{s:agents}
+\label{s:geography}
 Cultural traits can be attached on various levels – to individuals, bands,
 territorial groups, or nation states, depending on the desired level of
 abstraction. For our model, we want to see whether the components we consider
@@ -251,6 +253,243 @@ geographically coheherent \textcite{}, but share their range with other
 families, which makes co-locality a reasonable factor for social interactions
 between agents.
 
+\cite{kondo2012developing}
+Europe
+
+Environmental variables Percentage of contribution [%] Permutation importance [%]
+
+Biome
+Annual precipitation
+Annual temperature
+February temperature
+Slope
+Elevation [DEM]
+August temperature
+
+32.4
+31.1
+10.5
+9.0
+7.6
+7.3
+2.0
+
+20.1
+15.1
+20.4
+9.8
+2.4
+10.5
+21.7
+
+Environmental variables Percentage of contribution [%] Permutation importance [%]
+
+Annual precipitation
+February temperature
+Elevation [DEM]
+[Mean] Annual temperature
+Slope
+August temperature
+
+36.4
+17.1
+16.6
+12.9
+11.1
+5.9
+
+13.4
+6.0
+8.4
+51.5
+3.6
+17.1
+
+\cite{mcmichael2014bamboodominated}
+Amazonas
+
+Permutation importance
+Variable name Geoglyphs (without bamboo proximity as predictor variable)
+BIO3 = Isothermality (BIO2/BIO7) (9100)
+BIO4 a = Temperature seasonality (standard deviation 3 100)
+BIO6 a = Min temperature of the coldest month
+BIO9 a = Mean temperature of the driest quarter
+BIO13 a = Precipitation of the wettest month
+BIO14 a = Precipitation of the driest month
+BIO15 a = Precipitation seasonality (coefficient of variation)
+BIO17 a = Precipitation of the driest quarter
+BIO18 a = Precipitation of the warmest quarter
+Roughness d
+Distance to roughness > 25 m d
+Distance to roughness > 50 m d
+Elevation b
+Geological province (polygon) b
+Subsoil CEC (cation exchange content) c
+Subsoil gravel c
+Subsoil organic carbon c
+Subsoil pH c
+Subsoil reference bulk density c
+Subsoil silt c
+Topsoil organic carbon c
+
+3.9
+26.6
+2.2
+5.5
+2.3
+2.5
+1.0
+5.2
+0.3
+1.5
+20.2
+4.6
+1.1
+9.4
+8.4
+1.3
+0.0
+0.1
+0.0
+3.3
+0.5
+
+\parencite{gillespie2016predictive}
+India
+
+Factor Percent Contribution Permutation importance
+Geology 32.7 16.2
+Population AD 200 20.7 18.2
+Slope 13.1 20.2
+Elevation 9.1 23.8
+Annual precipitation 8.2 7.8
+Annual temperature 7.2 5.3
+Population AD 0 5.6 6
+Population BC 1000 3.4 2.4
+
+\cite{oyarzun2016predicting}
+California
+
+Geologic Unit
+Distance from watercourses and water bodies
+Distance from large game corridors
+Distance from tool stone sources
+Slope
+Distance from springs
+Aspect
+
+39%
+23%
+16%
+9%
+8%
+3%
+2%
+
+12.8
+15.1
+31.0
+15.6
+14.6
+8.5
+2.2
+
+\cite{kondo2018ecological}
+Europe
+
+Environmental variable
+
+January temperature
+Annual temperature
+Elevation
+Slope
+Annual precipitation
+Aspect
+July temperature
+AUC = 0.912
+% Contribution
+30.5
+20.5
+16.1
+15.6
+12.8
+2.9
+1.7
+Permutation importance
+30.0
+12.8
+9.3
+13.2
+29.9
+3.4
+1.5
+Environmental variable
+January temperature
+Slope
+Elevation
+Annual temperature
+Annual precipitation
+Aspect
+July temperature
+AUC = 0.943
+% Contribution
+40.6
+16.9
+13.6
+13.4
+11.1
+2.7
+1.8
+Permutation importance
+49.3
+8.8
+9.2
+7.6
+21.6
+2.8
+0.6
+\cite{jones2019mapping}
+Tasmania
+
+D to major road
+D to coast
+D to inland water
+Elevation
+Soil clay content
+Roughness within 1000m
+D to any river
+Slope
+D to heathland
+Soil organic content
+D to rainforest
+D to tall wet euc forest
+Topographic Position Index
+
+10.700
+22.000
+24.100
+24.100
+5.200
+8.300
+0.400
+3.100
+6.100
+2.500
+2.900
+0.800
+1.800
+
+\cite{muttaqin2019maxent}
+Indonesia
+
+Lineament Density 28.5 18.4
+Slope 19.7 19.9 
+Aspect 13.1 20.4
+Distance from Water Source 11.7 15.5 
+OBIA classifications 9.4 5.3
+Distance from the valley 7.5 1
+Elevation 7 5.5
+Distance from Lineament 3 14
 \subsection{Hunter-gatherer demographics}
 \label{s:demographics}
 
@@ -266,7 +505,7 @@ process.
 
 Culture drives cooperation, cooperation pushes cultural assimilation. Following
 \parencite{barcelo2014social,barcelo2015simulating}, but deviating from their
-implementation (see \cref{s:agents} for some reasons why we can), we take this
+implementation (see \cref{s:geography} for some reasons why we can), we take this
 as the core interation feedback loop.
 
 \section{Overview, Design concepts, and Details}
