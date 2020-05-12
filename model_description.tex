@@ -1,5 +1,8 @@
 \documentclass[a4paper,12pt]{scrartcl}
 
+% Title page
+\usepackage{authblk}
+
 % General style
 \usepackage{fontspec}
 \setmainfont[BoldFont = GenBasB.ttf]{Gentium Plus}
@@ -7,14 +10,15 @@
 \usepackage{newunicodechar}
 \newunicodechar{→}{\fontspec{Gentium Plus}→}
 
+% Formulas
+\usepackage{amsmath}
+
 % Internal references
 \usepackage[titletoc,title]{appendix}
 \usepackage{hyperref}
 \usepackage[capitalize]{cleveref}
 \Crefname{appsec}{Appendix}{Appendices}
 \crefname{appsec}{appendix}{appendices}
-
-\usepackage{authblk}
 
 % Draft style
 \usepackage{setspace}
@@ -30,6 +34,7 @@
 % Code inclusion with syntax highlighting
 \usepackage{minted}
 \setminted{fontsize=\footnotesize}
+\usepackage{markdown}
 
 % Bibliography
 \usepackage[backend=biber,
@@ -175,50 +180,31 @@ world \parencite{}, it presumably became a major driver of cultural spreads
 \parencite{farming/language dispersal hypothesis} and as such it will be useful
 to add such effects to a later iteration of this model.
 
-For other adaptive traits, results, hypotheses and data are limited. There is
-significant literature on the interaction of some very specific cultural traits
-(eg. \textcite{rusch2014evolutionary} on altruism and inter-group conflict,
-\textcite{watts2016ritual} on stratified societies and human sacrifice), but
-very few models that consider specific meaniningful cultural traits in
-agent-based, broad, and geographically expansive models. The closest to our
-goals here may be \textcite{hofstede2012cultural}. They locate their agents on
-\textcite{hofstede2001culture}'s cultural dimensions (which are themselves not
-beyond harsh criticism
+Certain cultural traits are obviously important for migration processes. Due to
+lack of comparable data on such processes on the family level, we will take an
+ecology-driven probability density to govern knowledge of neighboring patches,
+and assume this captures the direct interactions between the cultural process
+and the demographic process. We describe the motivation of this approximation
+below in \cref{s:geography}.
+
+Beyond traits directly interacting with the ecological niche of a society, there
+is significant literature on the interaction of some very specific cultural
+traits (eg. \textcite{rusch2014evolutionary} on altruism and inter-group
+conflict, \textcite{watts2016ritual} on stratified societies and human
+sacrifice), but very few models that consider specific meaniningful cultural
+traits in agent-based, broad, and geographically expansive models. The closest
+to our goals here may be \textcite{hofstede2012cultural}. They locate their
+agents on \textcite{hofstede2001culture}'s cultural dimensions (which are
+themselves not beyond harsh criticism
 \parencite{mcsweeney2002hofstede,baskerville2003hofstede}) in order to model
 negotiations between agents of different cultural backgrounds.
-
-Some adaptive cultural traits are obviously important for migration processes.
-It has been shown that language families spread easier east-west than
-north-south, due to climate varying much more with latitude than with longitude
-\parencite{}. Local biome can also play a role in the dispersal of a language
-family, as argued eg. by \textcite{grollemund2015bantu,ehret2015bantu}. There is
-not much literature on explicit models of cultural traits interacting with
-ecological niche in the context of migration. However, Eco-Cultural Niche
-Modeling \parencite[ECNM]{anks2006ecocultural} has been a useful tool for a
-variety of archaeological questions
-\cite{banks2008human,banks2013ecological,dalpoimguedes2014modeling,kondo2018ecological,walker2019persistence}.
-A well-established tool for ECNM is the maximum entropy approach implemented in
-the MaxEnt software package
-\cite{phillips2006maximum,phillips2008modeling,maxenttutorial}. MaxEnt
-generates, based on a set of points and environmental parameters, a maximum
-entropy probabilistic model for predicting the locations of these points. The
-resulting probability surface can for example be used to construct likely
-migration pathways of prehistoric populations \cite{kondo2018ecological}. We use
-sensitivities of reported for different archeological applications of MaxEnt
-\cite{burke2017risky,gillespie2016predictive,jones2019mapping,kondo2012developing,kondo2018ecological,mcmichael2014bamboodominated,muttaqin2019maxent,oyarzun2016predicting,souza2020archaeological,walker2019persistence}
-to generate a universally applicable probability mask for moving from one patch
-to another. The details of this within-niche migration model will be discussed
-below in \cref{s:geography}
-
-However, diverging
+Diverging
 % I should not use the word ‘crackpot’ here.
 hypotheses notwithstanding \parencite{tone-humidity,elevation-ejectives,etc}, it
 seems that a vast number of cultural traits are not directly involved in niche
 adaptation. This does not mean individual traits do not exhibit non-neutral
 evolutionary dynamics, as shown eg. by \textcite{kandler2013non}. But a neutral
-model for cultural change appears appropriate nonetheless, with the adaptive
-effects of culture instead influencing the migration process to stay within the
-same niche, as indicated above.
+model for cultural change appears appropriate nonetheless.
 
 Neutral abstract models for culture have in the past been considered for various
 purposes \parencite{komarova2001evolutionary}. In such models, culture tends to
@@ -237,7 +223,9 @@ Other options exist. For instance,
 values between 1 and 6 reflecting importance, and ‘a multidimensional weighted
 Euclidean distance based on the extension of the cosine similarity measure for
 vectors’ (2014), with weights that ‘roughly imitate[] the results of a factorial
-analysis of individual beliefs’ (2014).
+analysis of individual beliefs’ (2014). It has not been shown that this approach
+to modeling culture improves realism or interpretability, so we take a neutral
+evolution model with binary vectors and an unweighted Hamming distance.
 
 \subsection{Hunter-gatherer geography}
 \label{s:geography}
@@ -253,243 +241,50 @@ geographically coheherent \textcite{}, but share their range with other
 families, which makes co-locality a reasonable factor for social interactions
 between agents.
 
-\cite{kondo2012developing}
-Europe
+It has been shown that language families spread easier east-west than
+north-south, due to climate varying much more with latitude than with longitude
+\parencite{}. Local biome can also play a role in the dispersal of a language
+family, as argued eg. by \textcite{grollemund2015bantu,ehret2015bantu}. There is
+not much literature on explicit models of cultural traits interacting with
+ecological niche in the context of migration. Eco-Cultural Niche Modeling
+\parencite[ECNM]{anks2006ecocultural} has been a useful tool for a variety of
+archaeological questions
+\cite{banks2008human,banks2013ecological,dalpoimguedes2014modeling,kondo2018ecological,walker2019persistence}.
+A well-established tool for ECNM is the maximum entropy approach implemented in
+the MaxEnt software package
+\cite{phillips2006maximum,phillips2008modeling,maxenttutorial}. MaxEnt
+generates, based on a set of points and environmental parameters, a maximum
+entropy probabilistic model for predicting the locations of these points. The
+resulting probability surface has been used to construct likely migration
+pathways of prehistoric populations \cite{kondo2018ecological}.
 
-Environmental variables Percentage of contribution [%] Permutation importance [%]
+This suggests in converse that well-constructed cost-surface paths can be a tool
+to generate an approximation of a probability distribution representing niche.
+We construct a cost function that describes the effort moving from one
+settlement location to another, in terms of raw energy expenditure and missed
+foraging opportunities due to time spent on the trail. For land-based travel, we
+follow \textcite{wood2006energetically}, which provides a metabolics-based cost
+that improve upon earlier heuristics such as \textcite{tobler1993three}'s. For
+waterways, these costs are supplemented by \textcite{livingood2012no}, and land
+cover that might increase the effort of movement is taken from
+\cite{white2012geospatial}. The cost is used in two ways: It serves as a penalty
+when a family considers moving to a better patch, which means that a neighboring
+patch needs to be better than the current patch by a margin. (It thus fulfills a
+similar role to the threshold of evidence $c$ by
+\textcite{crema2014simulation}.) In addition, a family will only move to a place
+they know about, and such knowledge can only be acquired by a human traversing
+the distance. This exploration is not modeled explicitly, but it gives an
+intuitive mapping from the cost surface to a probability surface: Instead of
+visiting $q$ patches with some arbitrary travel cost, an explorer can visit one
+patch with the $q$-fold effort to reach it and will still cross through at least
+one patch at the original cost. So we take anything that can be reached with an
+expenditure $E$ of one day's worth of resources (2263 kcal, according to
+\textcite{pontzer2012huntergatherer}---\textcite{smith2003assessment} cites a
+similar number of 2390 kcal) to be known ($p=1$), and for other locations with a
+cost-to-reach of $E$ accordingly we take $p(E) = \frac{1}{2 + E / {2263
+    \text{ kcal}}}$ for all patches that can be reached within XXX days
+\parencite{}, and $p(E) = 0$ otherwise.
 
-Biome
-Annual precipitation
-Annual temperature
-February temperature
-Slope
-Elevation [DEM]
-August temperature
-
-32.4
-31.1
-10.5
-9.0
-7.6
-7.3
-2.0
-
-20.1
-15.1
-20.4
-9.8
-2.4
-10.5
-21.7
-
-Environmental variables Percentage of contribution [%] Permutation importance [%]
-
-Annual precipitation
-February temperature
-Elevation [DEM]
-[Mean] Annual temperature
-Slope
-August temperature
-
-36.4
-17.1
-16.6
-12.9
-11.1
-5.9
-
-13.4
-6.0
-8.4
-51.5
-3.6
-17.1
-
-\cite{mcmichael2014bamboodominated}
-Amazonas
-
-Permutation importance
-Variable name Geoglyphs (without bamboo proximity as predictor variable)
-BIO3 = Isothermality (BIO2/BIO7) (9100)
-BIO4 a = Temperature seasonality (standard deviation 3 100)
-BIO6 a = Min temperature of the coldest month
-BIO9 a = Mean temperature of the driest quarter
-BIO13 a = Precipitation of the wettest month
-BIO14 a = Precipitation of the driest month
-BIO15 a = Precipitation seasonality (coefficient of variation)
-BIO17 a = Precipitation of the driest quarter
-BIO18 a = Precipitation of the warmest quarter
-Roughness d
-Distance to roughness > 25 m d
-Distance to roughness > 50 m d
-Elevation b
-Geological province (polygon) b
-Subsoil CEC (cation exchange content) c
-Subsoil gravel c
-Subsoil organic carbon c
-Subsoil pH c
-Subsoil reference bulk density c
-Subsoil silt c
-Topsoil organic carbon c
-
-3.9
-26.6
-2.2
-5.5
-2.3
-2.5
-1.0
-5.2
-0.3
-1.5
-20.2
-4.6
-1.1
-9.4
-8.4
-1.3
-0.0
-0.1
-0.0
-3.3
-0.5
-
-\parencite{gillespie2016predictive}
-India
-
-Factor Percent Contribution Permutation importance
-Geology 32.7 16.2
-Population AD 200 20.7 18.2
-Slope 13.1 20.2
-Elevation 9.1 23.8
-Annual precipitation 8.2 7.8
-Annual temperature 7.2 5.3
-Population AD 0 5.6 6
-Population BC 1000 3.4 2.4
-
-\cite{oyarzun2016predicting}
-California
-
-Geologic Unit
-Distance from watercourses and water bodies
-Distance from large game corridors
-Distance from tool stone sources
-Slope
-Distance from springs
-Aspect
-
-39%
-23%
-16%
-9%
-8%
-3%
-2%
-
-12.8
-15.1
-31.0
-15.6
-14.6
-8.5
-2.2
-
-\cite{kondo2018ecological}
-Europe
-
-Environmental variable
-
-January temperature
-Annual temperature
-Elevation
-Slope
-Annual precipitation
-Aspect
-July temperature
-AUC = 0.912
-% Contribution
-30.5
-20.5
-16.1
-15.6
-12.8
-2.9
-1.7
-Permutation importance
-30.0
-12.8
-9.3
-13.2
-29.9
-3.4
-1.5
-Environmental variable
-January temperature
-Slope
-Elevation
-Annual temperature
-Annual precipitation
-Aspect
-July temperature
-AUC = 0.943
-% Contribution
-40.6
-16.9
-13.6
-13.4
-11.1
-2.7
-1.8
-Permutation importance
-49.3
-8.8
-9.2
-7.6
-21.6
-2.8
-0.6
-\cite{jones2019mapping}
-Tasmania
-
-D to major road
-D to coast
-D to inland water
-Elevation
-Soil clay content
-Roughness within 1000m
-D to any river
-Slope
-D to heathland
-Soil organic content
-D to rainforest
-D to tall wet euc forest
-Topographic Position Index
-
-10.700
-22.000
-24.100
-24.100
-5.200
-8.300
-0.400
-3.100
-6.100
-2.500
-2.900
-0.800
-1.800
-
-\cite{muttaqin2019maxent}
-Indonesia
-
-Lineament Density 28.5 18.4
-Slope 19.7 19.9 
-Aspect 13.1 20.4
-Distance from Water Source 11.7 15.5 
-OBIA classifications 9.4 5.3
-Distance from the valley 7.5 1
-Elevation 7 5.5
-Distance from Lineament 3 14
 \subsection{Hunter-gatherer demographics}
 \label{s:demographics}
 
@@ -508,10 +303,11 @@ Culture drives cooperation, cooperation pushes cultural assimilation. Following
 implementation (see \cref{s:geography} for some reasons why we can), we take this
 as the core interation feedback loop.
 
-\section{Overview, Design concepts, and Details}
+\section{ODD model description}
 \label{s:odd}
 
 \inputminted{rust}{supplement/dispersal_model_rust/src/main.rs}
+
 \section{Parameter choices}
 \label{s:parameters}
 \section{Results}
