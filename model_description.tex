@@ -267,23 +267,27 @@ follow \textcite{wood2006energetically}, which provides a metabolics-based cost
 that improve upon earlier heuristics such as \textcite{tobler1993three}'s. For
 waterways, these costs are supplemented by \textcite{livingood2012no}, and land
 cover that might increase the effort of movement is taken from
-\cite{white2012geospatial}. The cost is used in two ways: It serves as a penalty
-when a family considers moving to a better patch, which means that a neighboring
-patch needs to be better than the current patch by a margin. (It thus fulfills a
-similar role to the threshold of evidence $c$ by
-\textcite{crema2014simulation}.) In addition, a family will only move to a place
-they know about, and such knowledge can only be acquired by a human traversing
-the distance. This exploration is not modeled explicitly, but it gives an
-intuitive mapping from the cost surface to a probability surface: Instead of
-visiting $q$ patches with some arbitrary travel cost, an explorer can visit one
-patch with the $q$-fold effort to reach it and will still cross through at least
-one patch at the original cost. So we take anything that can be reached with an
-expenditure $E$ of one day's worth of resources (2263 kcal, according to
+\cite{white2012geospatial}. \textbf{There may be a cost to moving from one biome
+to another. What is a principled way to generate that cost matrix?}
+
+The cost is used in two ways: It serves as a penalty when a family considers
+moving to a better patch, which means that a neighboring patch needs to be
+better than the current patch by a margin. (It thus fulfills a similar role to
+the threshold of evidence $c$ by \textcite{crema2014simulation}.)
+
+In addition, a family will only move to a place they know about, and such
+knowledge can only be acquired by a human traversing the distance. This
+exploration is not modeled explicitly, but it gives an intuitive mapping from
+the cost surface to a probability surface: Instead of visiting $q$ patches with
+some arbitrary travel cost, an explorer can visit one patch with the $q$-fold
+effort to reach it and will still cross through at least one patch at the
+original cost. So we take anything that can be reached with an expenditure $E$
+of one day's worth of resources (2263 kcal, according to
 \textcite{pontzer2012huntergatherer}---\textcite{smith2003assessment} cites a
 similar number of 2390 kcal) to be known ($p=1$), and for other locations with a
-cost-to-reach of $E$ accordingly we take $p(E) = \frac{1}{2 + E / {2263
-    \text{ kcal}}}$ for all patches that can be reached within XXX days
-\parencite{}, and $p(E) = 0$ otherwise.
+cost-to-reach of $E$ accordingly we take $p(E) = \frac{1}{2 + E / {2263 \text{
+      kcal}}}$ for all patches that can be reached within XXX days \parencite{},
+and $p(E) = 0$ otherwise.
 
 \subsection{Hunter-gatherer demographics}
 \label{s:demographics}
