@@ -303,7 +303,7 @@ years to gain familiarity and full efficiency. A graph by \Textcite[Fig.
 within a single environment can flip by a factor of roughly 2 due to a bistable
 stability landscape for foraging. Due to the unavailability of any other
 comparable data, we combine these two very rough estimates into a coarse process
-and check their robustness as follows.
+(and later check robustness) as follows.
 
 We assume that moving into a completely new biome will reduce the efficiency of
 a family to $0.5$. This has the side-effect to make moving across biome
@@ -342,6 +342,7 @@ as the core interation feedback loop.
 \section{ODD model description}
 \label{s:odd}
 
+\markdownInput[fencedCode]{supplement/dispersal_model_rust/src/main.rs}
 \inputminted{rust}{supplement/dispersal_model_rust/src/main.rs}
 
 \section{Parameter choices}

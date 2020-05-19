@@ -10,7 +10,7 @@ model, but the source code is largely commented using natural-language
 descriptions, not generated from them (as would be the case in a literal
 program).
 
-# 1. Purpose
+## 1. Purpose
 
 The dispersal model generates a deep phylogeny of hunter-gatherer cultures based
 on culture-mediated cooperation and resource-driven migration. It is a
@@ -25,8 +25,9 @@ rates) are to be compared to values known from language evolution. The model
 is structured to be easily applied to study the history of the settlement of
 the Americas at a later time. It would requires paleoclimate data to produce
 results that can be compared to that history.
-*/
 
+
+*/
 // TODO: Dear Rustacean, I know that my use of documentation comments is
 // hazardous, because they land in the generated documentation in a different
 // order, or attached to things that are only accidentally coming afterwards.
@@ -50,29 +51,30 @@ use submodels::parameters::Parameters;
 
 /**
 
-# 2. Entities, state variables, and scales
+## 2. Entities, state variables, and scales
 
 The model consists of agents interacting on a hexagonal discrete global grid in
 discrete time. One time step is supposed to model a season with a duration of
 half a year.
- */
-
+ 
+*/
 type HalfYears = u32;
 
 /**
 Whereever possible, resources are measured in kcal (in SI units: 1 kcal = 4.184 kJ)
- */
-
+ 
+*/
 type KCal = f32;
 // Maybe KCal should be a finite f32? I bet there is a crate for that…
 
 /**
-## 2.1 Families
+### 2.1 Families
 
 The main decision-making agents of the simulation are families. Families can
 migrate between cells and form links to other families in the context of
 cooperation to extract resources.
- */
+ 
+*/
 pub struct Family {
     /// The agent's history of decendence, also serving as unique ID.
     descendence: String,
@@ -122,10 +124,10 @@ cooperating families are higher-level agents created ad-hoc in each time step.
 They do not persist or have effect beyond a single time step. Resource
 exploitation happens at the level of the cooperative group and is distributed
 to the individual families after the fact.
- */
-
+ 
+*/
 /**
-## 2.2 Cultures
+### 2.2 Cultures
 
 Every family has a culture. These are very abstract and vastly simplified, due
 to the lack of quantitative data on cultural evolution in a framework comparable
@@ -135,11 +137,12 @@ number of equally similar cultures, we describe culture using a binary vector.
 Computers make natural use of the binary representation integer numbers, so a
 binary vector is equivalent to an unsigned integer of sufficient size, which is
 faster to use in computations and more efficient to store.
- */
+ 
+*/
 type Culture = u64;
 
 /**
-## 2.3 Grid and Patches
+### 2.3 Grid and Patches
 
 The geography of the simulation is described by a hexagonal equal-area discrete
 global grid. The grid logic is implemented in Uber's H3 library (XXX) and
@@ -152,7 +155,8 @@ other time step corresponding to the more plentiful half of the year and the
 others to the scarcer half). By nature, the simulation invites the extension to
 include paleoclimate data, but that only becomes relevant once it shows
 fundamentally reasonable dynamics.
- */
+ 
+*/
 pub struct Patch {
     /// The resources currently available (not necessarily accessible, see XXX)
     /// in this patch, in kcal / season.
@@ -163,14 +167,15 @@ pub struct Patch {
 }
 
 /**
-## 2.4 State
+### 2.4 State
 
 The associations between gridcells and patches and between gridcells and the
 families located there (stored in the Family's `location`) are the core of the
 model state. The state also tracks the time, measured in time steps
 corresponding to half a year each, since the start of the simulation, and stores
 a copy of the model parameters.
- */
+ 
+*/
 struct State {
     /// The patches of the model, indexed by their address according to the H3
     /// discrete global grid system. This set is fixed, although the properties
@@ -184,7 +189,7 @@ struct State {
 }
 
 /**
-# 3. Process overview and scheduling
+## 3. Process overview and scheduling
 
 >>> Who (i.e., what entity) does what, and in what order? When are state
 >>> variables updated? How is time modeled, as discrete steps or as a continuum
@@ -200,7 +205,8 @@ simulate 15000 years.
 
 The structure of a single time step consist of two parts, as follows.
 
- */
+ 
+*/
 fn step(
     families: &mut Vec<Family>,
     patches: &mut HashMap<hexgrid::Index, Patch>,
@@ -218,7 +224,8 @@ split, and move. It constructs the mapping of families at the end of the season,
 grouped by their location after potential moves. Because the movement of a
 family depends on the distribution of othe families at he start of the season,
 it can happen entirely in parallel.
- */
+ 
+*/
 use std::thread;
 fn step_part_1(
     families: &mut Vec<Family>,
@@ -338,7 +345,8 @@ detail in Submodule 7.5. Everything here happens locally to a patch, with no
 external interaction, so this can be done in parallel. After exploitation,
 patches recover advance to the next season according to Submodule 7.6. This
 concludes a time step.
- */
+ 
+*/
 fn step_part_2(
     families_by_location: &mut HashMap<hexgrid::Index, Vec<Family>>,
     patches: &mut HashMap<hexgrid::Index, Patch>,
@@ -379,17 +387,18 @@ fn step_part_2(
 }
 
 /**
-# 4. Design concepts
+## 4. Design concepts
 
 Under the ODD protocol, the design principles largely fall into questions. Where
 my answer indicates an invariant property of the simulation, I provide a test
 function that checks that invariance if possible.
 
- */
+ 
+*/
 mod concepts {}
 
 /**
-## 4.1 Basic priciples
+### 4.1 Basic priciples
 
 > Which general concepts, theories, hypotheses, or modeling approaches are
 > underlying the model’s design?
@@ -430,8 +439,8 @@ FIXME: Given that statement, I should really construct an implementation of
 Crema's model compatible with my setup, where the differences are explicitly
 visible as model parameters that I use differently from them. My patch topology
 is different, what else?
- */
-
+ 
+*/
 mod crema2014simulaton {}
 
 /**
@@ -463,34 +472,36 @@ cultures from unconstrained evolutionary drift.
 
 > Does the model use new, or previously developed, theory for agent traits from
 > which system dynamics emerge?
- */
-
+ 
+*/
 mod basic_principles {}
 
 /**
-## 4.2 Emergence
+### 4.2 Emergence
 
 > What key results or outputs of the model are modeled as emerging from the
 > adaptive traits, or behaviors, of individuals? In other words, what model
 > results are expected to vary in complex and perhaps unpredictable ways when
 > particular characteristics of individuals or their environment change?
+
 */
 mod emergence {
     use crate::*;
 
-    /**
-    The main emergent property will be culturally somewhat uniform territories. We
-    expect that the interplay of migration, cooperation and cultural similarity
-    leads to regions sharing similar cultures, with noticeable boundaries. This
-    means that the plot of cultural distances vs. geographical distances should
-    therefore show small cultural distances for small geographical distances. There
-    should be a critical geographical distance of cohesion where the distribution of
-    cultural distances becomes bimodal, with one mode being lower than the
-    cooperation threshold and one mode above the cooperation threshold. For large
-    geographical distances, the cultural distances should be high, but with a big
-    variance. The critical geographical distance is likely to depend on the region,
-    being larger in more marginal environments where migration is more frequent.
-    */
+/**
+The main emergent property will be culturally somewhat uniform territories. We
+expect that the interplay of migration, cooperation and cultural similarity
+leads to regions sharing similar cultures, with noticeable boundaries. This
+means that the plot of cultural distances vs. geographical distances should
+therefore show small cultural distances for small geographical distances. There
+should be a critical geographical distance of cohesion where the distribution of
+cultural distances becomes bimodal, with one mode being lower than the
+cooperation threshold and one mode above the cooperation threshold. For large
+geographical distances, the cultural distances should be high, but with a big
+variance. The critical geographical distance is likely to depend on the region,
+being larger in more marginal environments where migration is more frequent.
+
+*/
     pub fn cultural_distance_by_geographical_distance(
         cultures_by_location: &HashMap<hexgrid::Index, HashMap<Culture, usize>>,
         max_geo_distance: i32,
@@ -530,39 +541,40 @@ mod emergence {
         gd_cd
     }
 
-    /**
-    Underlying the model is a fission-fusiom model of group dynamics
-    (crema2014simulation), so we expect a similar analysis to apply to our
-    model. Crema observes actual fission-fusion cycles only for a small part of
-    the parameter space (“Primate systems emerge only temporarily, either as
-    part of a limit-cycle equilibrium, or as a short-term transition from a
-    convex equilibrium. In either case, they require some level of system
-    connectivity, defined here by the spatial range of interaction (h), the
-    frequency of decision-making (z), and the sample proportion of observed
-    neighbour agents (k)”), so it is not clear whether we should expect them for
-    our model.
-     */
+/**
+Underlying the model is a fission-fusiom model of group dynamics
+(crema2014simulation), so we expect a similar analysis to apply to our
+model. Crema observes actual fission-fusion cycles only for a small part of
+the parameter space (“Primate systems emerge only temporarily, either as
+part of a limit-cycle equilibrium, or as a short-term transition from a
+convex equilibrium. In either case, they require some level of system
+connectivity, defined here by the spatial range of interaction (h), the
+frequency of decision-making (z), and the sample proportion of observed
+neighbour agents (k)”), so it is not clear whether we should expect them for
+our model.
+
+*/
     fn crema_fission_fusion_analysis() {
         // TODO: write this
     }
 
-    /**
-    > Are there other results that are more tightly imposed by model rules and
-    > hence less dependent on what individuals do, and hence ‘built in’ rather
-    > than emergent results?
+/**
+> Are there other results that are more tightly imposed by model rules and
+> hence less dependent on what individuals do, and hence ‘built in’ rather
+> than emergent results?
 
-    Cooperation in this model is an entirely imposed feature. It is an important
-    question in theoretical biology and related fields under what circumstances
-    cooperation can prevail over defectors and other free-riders, and it may
-    even affect the dispersal of languages (though more likely on the level of
-    collectives, where the interactions between groups of different cultures
-    range from assimilation and language shift all the way to war and lethal
-    violence). But overall, human societies seem to be quite good at maintaining
-    large-scale cooperation, so we consider the question irrelevant for the
-    purpsoses of the present model. Cooperation is thus not a decision of the
-    agents, but entirely determined by their cultures.
-     */
+Cooperation in this model is an entirely imposed feature. It is an important
+question in theoretical biology and related fields under what circumstances
+cooperation can prevail over defectors and other free-riders, and it may
+even affect the dispersal of languages (though more likely on the level of
+collectives, where the interactions between groups of different cultures
+range from assimilation and language shift all the way to war and lethal
+violence). But overall, human societies seem to be quite good at maintaining
+large-scale cooperation, so we consider the question irrelevant for the
+purpsoses of the present model. Cooperation is thus not a decision of the
+agents, but entirely determined by their cultures.
 
+*/
     
     pub fn similar_culture(c1: Culture, c2: Culture, p: &Parameters) -> bool {
         submodels::culture::distance(c1, c2) < p.cooperation_threshold
@@ -570,7 +582,7 @@ mod emergence {
 }
 
 /**
-## 4.3 Adaptation
+### 4.3 Adaptation
 
 > What adaptive traits do the individuals have? What rules do they have for
 > making decisions or changing behavior in response to changes in themselves or
@@ -586,6 +598,7 @@ success: A certain minimum of gathered resources is necessary to procreate, but
 extremely large amounts gathered soon do not increase the immediate rate of
 procreation and can in extreme cases (overexploitation of local resources) even
 be detrimental in the long run.
+
 */
 mod adaptation {
     use crate::*;
@@ -638,7 +651,7 @@ mod adaptation {
 }
 
 /**
-## 4.4 Objectives
+### 4.4 Objectives
 
 > If adaptive traits explicitly act to increase some measure of the individual’s
 > success at meeting some objective, what exactly is that objective and how is
@@ -647,15 +660,17 @@ mod adaptation {
 > When individuals make decisions by ranking alternatives, what criteria do they
 > use?
 
+
 */
 mod objectives {
     use crate::*;
 
-    /**
-    Agents choose a best location to move to, where ‘best’ means a maximum
-    expected resource gain. If multiple locations are equally good (up to
-    floating point accuracy), take one of those at random.
-    */
+/**
+Agents choose a best location to move to, where ‘best’ means a maximum
+expected resource gain. If multiple locations are equally good (up to
+floating point accuracy), take one of those at random.
+
+*/
     // That is, this function omputes the argmax of
     // `expected_resources_from_patch`, drawing at random between equal options.
     pub fn best_location(
@@ -700,7 +715,7 @@ mod objectives {
     }
 }
 /**
-## 4.5 Learning
+### 4.5 Learning
 
 > Many individuals or agents (but also organizations and institutions) change
 > their adaptive traits over time as a consequence of their experience? If so,
@@ -711,8 +726,8 @@ nearby locations only with a small random chance, but they always have knowledge
 about the locations they were at in the last 4 years (8 time steps).
 
 TODO: Put that 4 in a static variable and put a doctest here that confirms it.
- */
-
+ 
+*/
 mod learning {
     use crate::*;
 
@@ -737,7 +752,7 @@ mod learning {
 }
 
 /**
-## 4.6 Prediction
+### 4.6 Prediction
 
 > Prediction is fundamental to successful decision-making; if an agent’s
 > adaptive traits or learning procedures are based on estimating future
@@ -759,7 +774,8 @@ extrapolation whatsoever. An agent only adds their own effective size to the
 current distribution of individuals in the target location. Agents do not
 account for the following moves of other agents, and even less so for growth,
 split, or other effects to themselves or others in future time steps.
- */
+ 
+*/
 mod prediction {
     use crate::*;
 
@@ -782,7 +798,7 @@ mod prediction {
 }
 
 /**
-## 4.7 Sensing
+### 4.7 Sensing
 
 > What internal and environmental state variables are individuals assumed to
 > sense and consider in their decisions? What state variables of which other
@@ -795,8 +811,8 @@ mod prediction {
 > mechanisms by which agents obtain information modeled explicitly, or are
 > individuals simply assumed to know these variables?
 
- */
-
+ 
+*/
 mod sensing {
     use crate::*;
 
@@ -865,7 +881,7 @@ mod sensing {
 }
 
 /**
-## 4.8 Interaction
+### 4.8 Interaction
 
 > What kinds of interactions among agents are assumed? Are there direct
 > interactions in which individuals encounter and affect others, or are
@@ -878,7 +894,8 @@ be extracted from a patch, and the extracted resources are distributed among all
 agents in that patch. This distribution is not completely even: Members of a
 bigger group of cooperators competing with a smaller cooperative gets an
 over-proportional part of the total extracted, measured by their effective size.
- */
+ 
+*/
 mod interaction {
     use crate::*;
     pub fn split_resources(
@@ -895,23 +912,23 @@ mod interaction {
         assert!(my_part.is_finite());
         my_part
     }
-    /**
-    A single human can forage a certain amount, but by the assumptions of the model,
-    two cooperating foragers gain more resources together than they would
-    individually. The effective labor returned by this function is the factor by
-    which 2 cooperating foragers are better than 2 separate foragers.
+/**
+A single human can forage a certain amount, but by the assumptions of the model,
+two cooperating foragers gain more resources together than they would
+individually. The effective labor returned by this function is the factor by
+which 2 cooperating foragers are better than 2 separate foragers.
 
-    This formula follows Crema (2014), with the caveat that Crema computes payoffs,
-    whereas we compute a multiplicative factor (effective labor) which is multiplied
-    with the standard resource gain to give the acutal resource payoffs. Given that
-    Crema's payoffs have a mean of μ=10, we adjust our effective labor by the
-    opposite factor.
+This formula follows Crema (2014), with the caveat that Crema computes payoffs,
+whereas we compute a multiplicative factor (effective labor) which is multiplied
+with the standard resource gain to give the acutal resource payoffs. Given that
+Crema's payoffs have a mean of μ=10, we adjust our effective labor by the
+opposite factor.
 
-    TODO: I actually dislike this weakly motivated k → k + m k ^ (α + 1) quite a
-    bit, so it would be nice to take a different formula, and to cross-check how
-    Crema's results change for that different formula.
-    */
+TODO: I actually dislike this weakly motivated k → k + m k ^ (α + 1) quite a
+bit, so it would be nice to take a different formula, and to cross-check how
+Crema's results change for that different formula.
 
+*/
     pub fn effective_labor_through_cooperation(n_cooperators: f32, cooperation_gain: f32) -> f32 {
         1. + (n_cooperators - 1.).powf(cooperation_gain) / 10.
     }
@@ -919,10 +936,10 @@ mod interaction {
 
 /**
 
-*/
 
+*/
 /**
-## 4.9 Stochasticity
+### 4.9 Stochasticity
 
 > What processes are modeled by assuming they are random or partly random? Is
 > stochasticity used, for example, to reproduce variability in processes for
@@ -932,10 +949,10 @@ mod interaction {
 TODO: Is there a way to get rust to aggregate all functions that use it? Can I
 maybe somehow abuse the trait system to all those locations show up here, with
 comments?
- */
-
+ 
+*/
 /**
-## 4.10 Collectives
+### 4.10 Collectives
 
 > Do the individuals form or belong to aggregations that affect, and are
 > affected by, the individuals? How are collectives represented? Is a particular
@@ -944,7 +961,8 @@ comments?
 > simply a definition by the modeler, such as the set of individuals with
 > certain properties, defined as a separate kind of entity with its own state
 > variables and traits?
- */
+ 
+*/
 mod collectives {
     use crate::*;
     pub struct Cooperative<'a> {
@@ -1002,22 +1020,24 @@ mod collectives {
 }
 
 /*
-# 4.11 Observation
+## 4.11 Observation
 
 > What data are collected from the ABM for testing, understanding, and analyzing
 > it, and how and when are they collected? Are all output data freely used, or
 > are only certain data sampled and used, to imitate what can be observed in an
 > empirical study (‘virtual ecologist’)?
 
- */
+ 
+*/
 mod observation {
     use crate::*;
 
-    /**
-    Do get an overview over the flow of human migration captured by the model,
-    we collect the population count, i.e. the sum of all families' effective
-    sizes, for each spot in each time step.
-    */
+/**
+Do get an overview over the flow of human migration captured by the model,
+we collect the population count, i.e. the sum of all families' effective
+sizes, for each spot in each time step.
+
+*/
     pub fn print_population_by_location(
         cultures_by_location: HashMap<hexgrid::Index, HashMap<Culture, usize>>,
     ) {
@@ -1033,13 +1053,14 @@ mod observation {
         );
     }
 
-    /**
-    The major focus of the model, however, is on the cultural areas and
-    networks. To asses the main outcome of the model, we collect the geographic
-    vs. cultural distances for every pair of individuals within 5 years of each other. Due to the
-    computational effort and high autocorrelation of the outcomes, we collect
-    this data only about once per generation, i.e. every 60 time steps.
-    */
+/**
+The major focus of the model, however, is on the cultural areas and
+networks. To asses the main outcome of the model, we collect the geographic
+vs. cultural distances for every pair of individuals within 5 years of each other. Due to the
+computational effort and high autocorrelation of the outcomes, we collect
+this data only about once per generation, i.e. every 60 time steps.
+
+*/
     pub fn print_gd_cd(cultures_by_location: HashMap<hexgrid::Index, HashMap<Culture, usize>>) {
         let gd_cd: HashMap<i32, HashMap<u32, usize>> =
             emergence::cultural_distance_by_geographical_distance(&cultures_by_location, 5 * 5 * 2);
@@ -1061,6 +1082,7 @@ mod observation {
 
 > Are the initial values chosen arbitrarily or based on data? References to
 > those data should be provided.
+
 */
 fn initialization(precipitation: &Vec<u16>, width: usize, p: &Parameters) -> Option<State> {
     let start1: hexgrid::Index = hexgrid::closest_grid_point(-159.873, 65.613)?;
@@ -1159,22 +1181,24 @@ fn initialization(precipitation: &Vec<u16>, width: usize, p: &Parameters) -> Opt
 }
 
 /**
-# 6. Input Data
+## 6. Input Data
 
 > Does the model use input from external sources such as data files or other
 > models to represent processes that change over time?
- */
+ 
+*/
 mod input {
     // None at the moment. It might come, though, when we use paleoclimate data.
 }
 
 /**
-# 7. Submodels
+## 7. Submodels
 
 > What, in detail, are the submodels that represent the processes listed in
 > ‘Process overview and scheduling’? What are the model parameters, their
 > dimensions, and reference values? How were submodels designed or chosen, and
 > how were they parameterized and then tested?
+
 */
 mod submodels {
     pub mod culture {
