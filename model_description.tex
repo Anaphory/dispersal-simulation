@@ -235,7 +235,7 @@ abstraction. For our model, we want to see whether the components we consider
 are sufficient to let culturally similar regions, with sharp boundaries, arise
 from smaller scale interactions. For hunter-gatherer societies, the family has
 been suggested as the decision-making agent driving migration and demographics
-\textcite{}, so it makes sense to consider families the agents of our model and
+\parencite{}, so it makes sense to consider families the agents of our model and
 attach cultural traits on the family level. Families tend to be socially and
 geographically coheherent \textcite{}, but share their range with other
 families, which makes co-locality a reasonable factor for social interactions
@@ -258,17 +258,18 @@ entropy probabilistic model for predicting the locations of these points. The
 resulting probability surface has been used to construct likely migration
 pathways of prehistoric populations \cite{kondo2018ecological}.
 
-This suggests in converse that well-constructed cost-surface paths can be a tool
-to generate an approximation of a probability distribution representing niche.
-We construct a cost function that describes the effort moving from one
-settlement location to another, in terms of raw energy expenditure and missed
-foraging opportunities due to time spent on the trail. For land-based travel, we
-follow \textcite{wood2006energetically}, which provides a metabolics-based cost
-that improve upon earlier heuristics such as \textcite{tobler1993three}'s. For
-waterways, these costs are supplemented by \textcite{livingood2012no}, and land
-cover that might increase the effort of movement is taken from
-\cite{white2012geospatial}. \textbf{There may be a cost to moving from one biome
-to another. What is a principled way to generate that cost matrix?}
+\Textcite{steele2003where} argue for models that take into account not only the
+quality (eg. in terms of caloric content) of resources, but also the
+accessibility. This suggests in converse that well-constructed cost-surface
+paths can be a tool to generate an approximation of a probability distribution
+representing niche. We construct a cost function that describes the effort
+moving from one settlement location to another, in terms of raw energy
+expenditure and missed foraging opportunities due to time spent on the trail.
+For land-based travel, we follow \textcite{wood2006energetically}, which
+provides a metabolics-based cost that improve upon earlier heuristics such as
+\textcite{tobler1993three}'s. For waterways, these costs are supplemented by
+\textcite{livingood2012no}, and land cover that might increase the effort of
+movement is taken from \cite{white2012geospatial}.
 
 The cost is used in two ways: It serves as a penalty when a family considers
 moving to a better patch, which means that a neighboring patch needs to be
@@ -288,6 +289,37 @@ similar number of 2390 kcal) to be known ($p=1$), and for other locations with a
 cost-to-reach of $E$ accordingly we take $p(E) = \frac{1}{2 + E / {2263 \text{
       kcal}}}$ for all patches that can be reached within XXX days \parencite{},
 and $p(E) = 0$ otherwise.
+
+There may be a cost to moving from one biome to another in the mid-term due to
+unfamiliarity not just with the details of the new landscape (“landscape
+learning”), but also with the general strategies for dealing with gathering food
+in a different habitat or ‘megapatch’ \parencite{kelly2003colonization}.
+\Textcite{kelly2003colonization} describes the time to learn a specific
+landscape. The the numbers he quotes are imprecise and differ, but ‘a couple of
+years’ and the time from a 12-year olds first accompanying their father until,
+presumably adulthood seem to be the common denominator, so we assume that it
+might take around 8 years to gain familiarity and full efficiency. A graph by
+\Textcite[Fig. 4]{freeman2017theory} suggests that under certain circumstances,
+foraging effort within a single environment can flip by a factor of roughly 2
+due to a bistable stability landscape for foraging. Due to the unavailability of
+any other comparable data, we combine these two very rough estimates into a
+coarse process and check their robustness as follows.
+
+We assume that moving into a completely new biome will reduce the efficiency of
+a family to $0.5$. This has the side-effect to make moving across biome
+boundaries more likely for larger groups, who can compensate for the loss in
+efficiency by their cooperation. This ties into one of the possible strategies
+\textcite{kelly2003colonization} suggests for colonizing new land. Then, in each
+year, the efficiency in all biomes decreases by a factor of $\sqrt[30]{0.5}$ to
+a minimum of $50\%$, so that after a generation of living entirely outside the
+old biome, all specific knowledge is lost, and the family's efficiency in their
+current biome increases by $6.25\%$ to a maximum of $100\%$\footnote{An even
+  more elegant way would be a yearly loss by $p$ and an increase by $\frac{1}{p}
+  -1$, which would naturally balance each other at maximum efficiency $100\%$}, so
+that a family reaches full familiarity within 8 years. If a single patch
+displays a mix of biomes, a family will adapt randomly in proportion to the
+biomes present, thus balancing the adaptation and permitting a gradual
+transition between biomes.
 
 \subsection{Hunter-gatherer demographics}
 \label{s:demographics}
