@@ -1,6 +1,6 @@
 /*!
-Model Description
-=================
+Model Description {#odd}
+========================
 
 This model description follows the ODD (Overview, Design concept, Details)
 protocol [@grimm2006standard; @grimm2010odd]. The model is written in the Rust
@@ -8,7 +8,7 @@ protocol [@grimm2006standard; @grimm2010odd]. The model is written in the Rust
 constructs, and type safety that prevents many types of programming errors. An
 initial attempt to implement the model in Python [@python] suffered from very
 slow execution even after using Cython [@cython] for some of the more
-time-critical functions. Using literate programming [@knuth1992literate] to the
+time-critical functions. Using literate programming [@knuth1984literate] to the
 extent practical in Rust, the same file that can be compiled using the Rust
 compiler also directly generates this model description.
 
@@ -76,14 +76,15 @@ type KCal = f32;
 /**
 ### Families
 
-The main decision-making agents of the simulation are families \parencite{}.
+The main decision-making agents of the simulation are families [@crema2014simulation, I think?].
 Families can migrate between grid cells and form links to other families in the
 context of cooperation to extract resources.
 
-1. survival of a family and its culture depends on the available resources
-2. migration is resource-driven
-3. families interact with each other to improve their chances of survival,
-   possibly leading to an assimilation of cultural traits
+1. Survival (and generation of off-splits) of a family and its culture depends
+   on the available resources
+2. Migration is resource-driven, and families migrate in their entirety
+3. Families interact with each other to improve their chances of survival, which
+   leads to an assimilation of cultural traits
 
 
 */
@@ -131,12 +132,12 @@ impl PartialEq for Family {
 Families in the same location with compatible cultures can cooperate to improve
 their chances at extracting resources. (Following XXX, cooperation could also
 mean sharing resources between different families. To simplify the model, this
-implementation does not contain that effect.) The cooperative # groups formed by
+implementation does not contain that effect.) The cooperative groups formed by
 cooperating families are higher-level agents created ad-hoc in each time step.
 They do not persist or have effect beyond a single time step. Resource
 exploitation happens at the level of the cooperative group and is distributed
 to the individual families after the fact.
- 
+
 */
 /**
 ### Cultures

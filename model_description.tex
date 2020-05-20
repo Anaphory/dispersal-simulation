@@ -55,7 +55,7 @@
 
 % Code inclusion with syntax highlighting
 \usepackage{minted}
-\setminted{fontsize=\footnotesize}
+\setminted{fontsize=\tiny,baselinestretch=0.9}
 \usepackage{markdown}
 
 \title{An Agent-Based Simulation for emergent culture areas}
@@ -160,14 +160,14 @@ The model is designed with extension to more concrete research questions in
 mind. In the current, first stage, the purpose of the model is to investigate
 how languages disperse and split.
 
-The structure of this article is as follows.
-\Cref{s:odd} provides the model description according to the revised ODD
-protocol \parencite{grimm2006standard,grimm2010odd}, generated using literate
-programming techniques \parencite{knuth1984literate} from the Rust \parencite{}
-source code of the simulation. We summarize our parameter choices in
-\cref{s:parameters}. In \cref{s:results} we present the results from the various
-runs of the simulation with the aforementioned parameter settings. We discuss
-our results in \cref{s:discussion}. The paper finishes with conclusions in
+The structure of this article is as follows. \Cref{odd} provides the model
+description according to the revised ODD protocol
+\parencite{grimm2006standard,grimm2010odd}, a top-down description protocol for
+agent-based models starting with an overview and ending with the details of
+individual submodels. We summarize our parameter choices in \cref{s:parameters}.
+In \cref{s:results} we present the results from the various runs of the
+simulation with the aforementioned parameter settings. We discuss our results in
+\cref{s:discussion}. The paper finishes with conclusions in
 \cref{s:conclusions}.
 
 \emph{In \cref{s:earlier}, we provide an overview over existing models that were
@@ -175,10 +175,8 @@ our results in \cref{s:discussion}. The paper finishes with conclusions in
   elements were included into our model. This section well be re-worked into the
   various sections, in particular the ‘submodels’ section, of the ODD, and is
   only a separate section because it was circulated independently for review.}
-\section{ODD model description}
-\label{s:odd}
 
-\markdownInput[citations,fencedCode]{supplement/dispersal_model_rust/src/main.rs}
+\markdownInput[citations,fencedCode,headerAttributes]{supplement/dispersal_model_rust/src/main.rs}
 
 \section{Justifications of model choices}
 \label{s:earlier}
