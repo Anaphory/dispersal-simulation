@@ -2825,12 +2825,12 @@ end
 parsers.anticommenthead = function()
   return               C(parsers.nonindentspace) / function(s) fenceindent = #s end
                      * Cg(parsers.optionalspace * parsers.asterisk * parsers.slash, "fencelength")
-                     * parsers.optionalspace * C(parsers.infostring)
+                     * parsers.optionalspace * parsers.infostring
                      * parsers.optionalspace * (parsers.newline + parsers.eof)
 end
 
 parsers.anticommenttail = function()
-  return             parsers.slash * parsers.doubleasterisks
+  return               parsers.slash * parsers.doubleasterisks
                      * parsers.optionalspace * (parsers.newline + parsers.eof)
                      + parsers.eof
 end
@@ -3254,7 +3254,7 @@ parsers.LocalFilePath
                      * parsers.localfilepath
                      * parsers.optionaltitle
 
-parsers.AntiCommentFencedCode
+parsers.AnticommentFencedCode
                      = parsers.anticommenthead()
                      * Cs(parsers.anticommentline^0)
                      * parsers.anticommenttail()
@@ -3713,10 +3713,16 @@ larsers.PipeTable = Ct(larsers.table_row * parsers.newline
                            ) / expandtabs / writer.verbatim
 
   larsers.FencedCode   = (parsers.TildeFencedCode
-                         + parsers.AntiCommentFencedCode
                          + parsers.BacktickFencedCode)
                        / function(infostring, code)
                            return writer.fencedCode(writer.string(infostring),
+                                                    expandtabs(code))
+                         end
+
+  larsers.AnticommentCode =
+                         parsers.AnticommentFencedCode
+                       / function(code)
+                           return writer.fencedCode(writer.string("rust"),
                                                     expandtabs(code))
                          end
 
@@ -3909,6 +3915,7 @@ larsers.PipeTable = Ct(larsers.table_row * parsers.newline
                             + V("PipeTable")
                             + V("Verbatim")
                             + V("FencedCode")
+                            + V("AnticommentCode")
                             + V("HorizontalRule")
                             + V("BulletList")
                             + V("OrderedList")
@@ -3922,6 +3929,7 @@ larsers.PipeTable = Ct(larsers.table_row * parsers.newline
       Blockquote            = larsers.Blockquote,
       Verbatim              = larsers.Verbatim,
       FencedCode            = larsers.FencedCode,
+      AnticommentCode       = larsers.AnticommentCode,
       HorizontalRule        = larsers.HorizontalRule,
       BulletList            = larsers.BulletList,
       OrderedList           = larsers.OrderedList,

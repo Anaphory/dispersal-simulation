@@ -3,34 +3,39 @@ Model Description
 =================
 
 This model description follows the ODD (Overview, Design concept, Details)
-protocol (Grimm et al., 2006; Grimm et al., 2010). The model description follows
-the idea of literate programming (Knuth 1992) to the extent useful in Rust
-source code – the actual model is generated from this file that documents the
-model, but the source code is largely commented using natural-language
-descriptions, not generated from them (as would be the case in a literal
-program).
+protocol [@grimm2006standard; @grimm2010odd]. The model is written in the Rust
+[@rust] language, which easily provides fast and parallel execution, high-level
+constructs, and type safety that prevents many types of programming errors. An
+initial attempt to implement the model in Python [@python] suffered from very
+slow execution even after using Cython [@cython] for some of the more
+time-critical functions. Using literate programming [@knuth1992literate] to the
+extent practical in Rust, the same file that can be compiled using the Rust
+compiler also directly generates this model description.
 
-## 1. Purpose
+## Purpose
 
-The dispersal model generates a deep phylogeny of hunter-gatherer cultures based
-on culture-mediated cooperation and resource-driven migration. It is a
-demographic migration model in which the areal distribution of languages is an
-emergent property, not an imposed structure. The model is designed with
-extension to more concrete research questions in mind. In the current, first
-stage, the purpose of the model is to investigate how languages disperse and
-split, driven only by the necessary interactions between humans.
+The dispersal model generates the spatial distribution of cultures (together
+with the history of these cultures) arising as emergent property from low-level
+demographic and migratory processes. The demographic and migratory processes are
+driven by the availability of resources, which is higher where culture-mediated
+cooperation occurs. As such, there is a feedback loop between resource
+availability, cultural proximity, and cooperation, which drives the population
+dynamics of hunter-gatherers in the model.
 
-The summary statistics of this phylogeny (in particular diversification
-rates) are to be compared to values known from language evolution. The model
-is structured to be easily applied to study the history of the settlement of
-the Americas at a later time. It would requires paleoclimate data to produce
-results that can be compared to that history.
-
+In the current, first stage, the purpose of the model is to investigate patterns
+languages disperse and split, driven only by the necessary interactions between
+humans. The model is designed with extension to more concrete research questions
+in mind. It is structured to be easily applied to study the history of the
+settlement of the Americas at a later time, but in its current iteration assumes
+constant climate and as such cannot be expected to produce directly comparable
+results.
 
 */
 // TODO: Dear Rustacean, I know that my use of documentation comments is
 // hazardous, because they land in the generated documentation in a different
 // order, or attached to things that are only accidentally coming afterwards.
+// The structure is warranted by direct inclusion of the source in the paper
+// text.
 
 // Load useful modules
 use std::f64::consts::PI;
@@ -51,29 +56,36 @@ use submodels::parameters::Parameters;
 
 /**
 
-## 2. Entities, state variables, and scales
+## Entities, state variables, and scales
 
 The model consists of agents interacting on a hexagonal discrete global grid in
 discrete time. One time step is supposed to model a season with a duration of
 half a year.
- 
+
 */
 type HalfYears = u32;
 
 /**
 Whereever possible, resources are measured in kcal (in SI units: 1 kcal = 4.184 kJ)
- 
+
 */
 type KCal = f32;
-// Maybe KCal should be a finite f32? I bet there is a crate for that…
+// TODO: Maybe KCal should be a finite f32? If resources become infinite,
+// something has gone wrong. I bet there is a Rust crate for that…
 
 /**
-### 2.1 Families
+### Families
 
-The main decision-making agents of the simulation are families. Families can
-migrate between cells and form links to other families in the context of
-cooperation to extract resources.
- 
+The main decision-making agents of the simulation are families \parencite{}.
+Families can migrate between grid cells and form links to other families in the
+context of cooperation to extract resources.
+
+1. survival of a family and its culture depends on the available resources
+2. migration is resource-driven
+3. families interact with each other to improve their chances of survival,
+   possibly leading to an assimilation of cultural traits
+
+
 */
 pub struct Family {
     /// The agent's history of decendence, also serving as unique ID.
@@ -127,7 +139,7 @@ to the individual families after the fact.
  
 */
 /**
-### 2.2 Cultures
+### Cultures
 
 Every family has a culture. These are very abstract and vastly simplified, due
 to the lack of quantitative data on cultural evolution in a framework comparable
@@ -142,7 +154,7 @@ faster to use in computations and more efficient to store.
 type Culture = u64;
 
 /**
-### 2.3 Grid and Patches
+### Grid and Patches
 
 The geography of the simulation is described by a hexagonal equal-area discrete
 global grid. The grid logic is implemented in Uber's H3 library (XXX) and
@@ -167,7 +179,7 @@ pub struct Patch {
 }
 
 /**
-### 2.4 State
+### State
 
 The associations between gridcells and patches and between gridcells and the
 families located there (stored in the Family's `location`) are the core of the
@@ -189,7 +201,7 @@ struct State {
 }
 
 /**
-## 3. Process overview and scheduling
+## Process overview and scheduling
 
 >>> Who (i.e., what entity) does what, and in what order? When are state
 >>> variables updated? How is time modeled, as discrete steps or as a continuum
@@ -387,7 +399,7 @@ fn step_part_2(
 }
 
 /**
-## 4. Design concepts
+## Design concepts
 
 Under the ODD protocol, the design principles largely fall into questions. Where
 my answer indicates an invariant property of the simulation, I provide a test
@@ -398,7 +410,7 @@ function that checks that invariance if possible.
 mod concepts {}
 
 /**
-### 4.1 Basic priciples
+### Basic priciples
 
 > Which general concepts, theories, hypotheses, or modeling approaches are
 > underlying the model’s design?
@@ -477,7 +489,7 @@ cultures from unconstrained evolutionary drift.
 mod basic_principles {}
 
 /**
-### 4.2 Emergence
+### Emergence
 
 > What key results or outputs of the model are modeled as emerging from the
 > adaptive traits, or behaviors, of individuals? In other words, what model
@@ -582,7 +594,7 @@ agents, but entirely determined by their cultures.
 }
 
 /**
-### 4.3 Adaptation
+### Adaptation
 
 > What adaptive traits do the individuals have? What rules do they have for
 > making decisions or changing behavior in response to changes in themselves or
@@ -651,7 +663,7 @@ mod adaptation {
 }
 
 /**
-### 4.4 Objectives
+### Objectives
 
 > If adaptive traits explicitly act to increase some measure of the individual’s
 > success at meeting some objective, what exactly is that objective and how is
@@ -715,7 +727,7 @@ floating point accuracy), take one of those at random.
     }
 }
 /**
-### 4.5 Learning
+### Learning
 
 > Many individuals or agents (but also organizations and institutions) change
 > their adaptive traits over time as a consequence of their experience? If so,
@@ -752,7 +764,7 @@ mod learning {
 }
 
 /**
-### 4.6 Prediction
+### Prediction
 
 > Prediction is fundamental to successful decision-making; if an agent’s
 > adaptive traits or learning procedures are based on estimating future
@@ -798,7 +810,7 @@ mod prediction {
 }
 
 /**
-### 4.7 Sensing
+### Sensing
 
 > What internal and environmental state variables are individuals assumed to
 > sense and consider in their decisions? What state variables of which other
@@ -881,7 +893,7 @@ mod sensing {
 }
 
 /**
-### 4.8 Interaction
+### Interaction
 
 > What kinds of interactions among agents are assumed? Are there direct
 > interactions in which individuals encounter and affect others, or are
@@ -935,11 +947,7 @@ Crema's results change for that different formula.
 }
 
 /**
-
-
-*/
-/**
-### 4.9 Stochasticity
+### Stochasticity
 
 > What processes are modeled by assuming they are random or partly random? Is
 > stochasticity used, for example, to reproduce variability in processes for
@@ -952,7 +960,7 @@ comments?
  
 */
 /**
-### 4.10 Collectives
+### Collectives
 
 > Do the individuals form or belong to aggregations that affect, and are
 > affected by, the individuals? How are collectives represented? Is a particular
@@ -1020,7 +1028,7 @@ mod collectives {
 }
 
 /*
-## 4.11 Observation
+## Observation
 
 > What data are collected from the ABM for testing, understanding, and analyzing
 > it, and how and when are they collected? Are all output data freely used, or
@@ -1181,7 +1189,7 @@ fn initialization(precipitation: &Vec<u16>, width: usize, p: &Parameters) -> Opt
 }
 
 /**
-## 6. Input Data
+## Input Data
 
 > Does the model use input from external sources such as data files or other
 > models to represent processes that change over time?
@@ -1192,7 +1200,7 @@ mod input {
 }
 
 /**
-## 7. Submodels
+## Submodels
 
 > What, in detail, are the submodels that represent the processes listed in
 > ‘Process overview and scheduling’? What are the model parameters, their
