@@ -40,6 +40,7 @@ results.
 // Load useful modules
 use std::f64::consts::PI;
 
+use std::thread;
 use rand::prelude::*;
 use rayon::prelude::*;
 use std::collections::HashMap;
@@ -49,7 +50,6 @@ use util::{greater_of_two, smaller_of_two};
 
 mod debug;
 mod ecology;
-mod hexgrid;
 mod tests;
 
 use submodels::parameters::Parameters;
@@ -58,34 +58,43 @@ use submodels::parameters::Parameters;
 
 ## Entities, state variables, and scales
 
+To construct a demographic migration model with culture, for the purpose of the
+project we set out here, we need the following ingedients.
+
+ - A representation of culture, which is at the least able to undergo neutral
+   evolution (showing heritability and random variation, not necessarily
+   fitness) and which in addition allows horizontal transfer of cultural traits
+   other than from a parent to a child population.
+ - Agents that carry cultural traits and are located in geographical space,
+   which has differing ecological features
+ - A system that drives the demographics of the agents in time and space
+ - A way for culture and population dynamics to interact in a way that can
+   create create distinct cultural areas instead of a vast cultural cline or
+   dialect continuum.
+
+Here we define those agents, cultures, and the underlying
+ecology. The processes that drive the simulation will be explained in the
+subsequent steps.
+
 The model consists of agents interacting on a hexagonal discrete global grid in
 discrete time. One time step is supposed to model a season with a duration of
 half a year.
 
 */
 type HalfYears = u32;
-
 /**
-Whereever possible, resources are measured in kcal (in SI units: 1 kcal = 4.184 kJ)
 
-*/
-type KCal = f32;
-// TODO: Maybe KCal should be a finite f32? If resources become infinite,
-// something has gone wrong. I bet there is a Rust crate for that…
-
-/**
 ### Families
 
-The main decision-making agents of the simulation are families [@crema2014simulation, I think?].
-Families can migrate between grid cells and form links to other families in the
-context of cooperation to extract resources.
+The main decision-making agents of the simulation are families
+[@crema2014simulation, I think?]. Families can migrate between grid cells and
+form links to other families in the context of cooperation to extract resources.
 
 1. Survival (and generation of off-splits) of a family and its culture depends
    on the available resources
 2. Migration is resource-driven, and families migrate in their entirety
 3. Families interact with each other to improve their chances of survival, which
    leads to an assimilation of cultural traits
-
 
 */
 pub struct Family {
@@ -127,8 +136,8 @@ impl PartialEq for Family {
         self.descendence == other.descendence
     }
 }
-
 /**
+
 Families in the same location with compatible cultures can cooperate to improve
 their chances at extracting resources. (Following XXX, cooperation could also
 mean sharing resources between different families. To simplify the model, this
@@ -138,35 +147,50 @@ They do not persist or have effect beyond a single time step. Resource
 exploitation happens at the level of the cooperative group and is distributed
 to the individual families after the fact.
 
-*/
-/**
+
 ### Cultures
 
 Every family has a culture. These are very abstract and vastly simplified, due
 to the lack of quantitative data on cultural evolution in a framework comparable
 to the one used for this study. Based on the need to have a data structure that
 supports random drift, a low but positive chance of back-mutation, and a large
-number of equally similar cultures, we describe culture using a binary vector.
-Computers make natural use of the binary representation integer numbers, so a
-binary vector is equivalent to an unsigned integer of sufficient size, which is
-faster to use in computations and more efficient to store.
+number of equally similar cultures, we describe culture using a binary vector. A
+detailed discussion of this choices and the alternatives can be found in
+[#submodel:culture]. Computers make natural use of the binary representation to
+store integer numbers, so a binary vector is equivalent to an unsigned integer
+of sufficient size, which is faster to use in computations and more efficient to
+store.
  
 */
 type Culture = u64;
-
 /**
+
 ### Grid and Patches
 
 The geography of the simulation is described by a hexagonal equal-area discrete
-global grid. The grid logic is implemented in Uber's H3 library (XXX) and
-exposed to the simulation by the `hexgrid` module. Each individual grid cell
-contains exactly one patch. Each of these patches has a maximum and current
-availability of resources, measured in kcal available over the course of half a
-year. In the current state of the model, the resource maximum is constant
-throughout the simulation, but future work might add seasonality (with every
-other time step corresponding to the more plentiful half of the year and the
-others to the scarcer half). By nature, the simulation invites the extension to
-include paleoclimate data, but that only becomes relevant once it shows
+global grid. The grid logic is implemented in Uber's H3 library [@uber-h3] and
+exposed to the simulation by the `hexgrid` module.
+
+*/
+mod hexgrid;
+/**
+
+Each individual grid cell contains exactly one patch. Each of these patches has
+a maximum and current availability of resources, measured in kcal available over
+the course of half a year. In general, whereever possible, resources are
+measured in kcal (in SI units: 1 kcal = 4.184 kJ)
+
+*/
+type KCal = f32;
+// TODO: Maybe KCal should be a finite f32? If resources become infinite,
+// something has gone wrong. I bet there is a Rust crate for that…
+/**
+
+In the current first iteration of the model, the resource maximum is constant
+throughout the simulation. This is a natural point of extension in the future:
+Future work might add seasonality (with every other time step corresponding to
+the more plentiful half of the year and the others to the scarcer half) or
+include paleoclimate data, but that only becomes relevant once the model shows
 fundamentally reasonable dynamics.
  
 */
@@ -178,15 +202,14 @@ pub struct Patch {
     /// season.
     max_resources: KCal,
 }
-
 /**
+
 ### State
 
 The associations between gridcells and patches and between gridcells and the
 families located there (stored in the Family's `location`) are the core of the
 model state. The state also tracks the time, measured in time steps
-corresponding to half a year each, since the start of the simulation, and stores
-a copy of the model parameters.
+corresponding to half a year each, since the start of the simulation.
  
 */
 struct State {
@@ -200,17 +223,18 @@ struct State {
     /// The current time step, in half years since start of the simulation.
     t: HalfYears,
 }
-
+// TODO: At some point, we thought about storing the model parameters in the state, such that serializing and deserializing the state is exactly what is necessary to store/resume the simulation. Do it, or why not?
 /**
+
 ## Process overview and scheduling
 
->>> Who (i.e., what entity) does what, and in what order? When are state
->>> variables updated? How is time modeled, as discrete steps or as a continuum
->>> over which both continuous processes and discrete events can occur? Except
->>> for very simple schedules, one should use pseudo-code to describe the
->>> schedule in every detail, so that the model can be re-implemented from this
->>> code. Ideally, the pseudo-code corresponds fully to the actual code used in
->>> the program implementing the ABM.
+> Who (i.e., what entity) does what, and in what order? When are state variables
+> updated? How is time modeled, as discrete steps or as a continuum over which
+> both continuous processes and discrete events can occur? Except for very
+> simple schedules, one should use pseudo-code to describe the schedule in every
+> detail, so that the model can be re-implemented from this code. Ideally, the
+> pseudo-code corresponds fully to the actual code used in the program
+> implementing the ABM.
 
 The model progresses in discrete time steps, each corresponding to half a year
 of simulated time. The entire simulation consists of repeating the step to
@@ -230,16 +254,17 @@ fn step(
     step_part_2(&mut families_by_location, patches, p);
     Some(families_by_location)
 }
-
 /**
+
 The first part focuses on the individual families, which shrink, grow, die,
 split, and move. It constructs the mapping of families at the end of the season,
 grouped by their location after potential moves. Because the movement of a
 family depends on the distribution of othe families at he start of the season,
 it can happen entirely in parallel.
- 
+
+TODO: This is supposed to be readable pseudocode. Make it really really readable, and bigger.
 */
-use std::thread;
+
 fn step_part_1(
     families: &mut Vec<Family>,
     patches: &HashMap<hexgrid::Index, Patch>,
