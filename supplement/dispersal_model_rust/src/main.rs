@@ -262,9 +262,9 @@ grouped by their location after potential moves. Because the movement of a
 family depends on the distribution of othe families at he start of the season,
 it can happen entirely in parallel.
 
-TODO: This is supposed to be readable pseudocode. Make it really really readable, and bigger.
-*/
+TODO: This is supposed to be readable [pseudo]code. Make it really really readable, and bigger.
 
+*/
 fn step_part_1(
     families: &mut Vec<Family>,
     patches: &HashMap<hexgrid::Index, Patch>,
@@ -427,15 +427,6 @@ fn step_part_2(
 /**
 ## Design concepts
 
-Under the ODD protocol, the design principles largely fall into questions. Where
-my answer indicates an invariant property of the simulation, I provide a test
-function that checks that invariance if possible.
-
- 
-*/
-mod concepts {}
-
-/**
 ### Basic priciples
 
 > Which general concepts, theories, hypotheses, or modeling approaches are
@@ -444,8 +435,7 @@ mod concepts {}
 According to its purpose of providing a model for language dispersal and split,
 our model draws on existing publications looking at for cultures changing in
 time and space, focussing on taking a bottom-up approach on languages splitting.
-A major useful reference is the PSMED model (delcastillo2013modeling,
-barcelo2013psmed, barcelo2015simulating), which includes two drivers of cultural
+A major useful reference is the PSMED model [@delcastillo2013modeling; @barcelo2013psmed; @barcelo2015simulating], which includes two drivers of cultural
 change in the agents: Drift and assimilation. In isolation, agents' cultures
 undergo drift. Where social interactions happen, drift is counterbalanced by
 cultural assimilation for agents that cooperate with each other. In the case of
@@ -477,11 +467,11 @@ FIXME: Given that statement, I should really construct an implementation of
 Crema's model compatible with my setup, where the differences are explicitly
 visible as model parameters that I use differently from them. My patch topology
 is different, what else?
- 
+
 */
 mod crema2014simulaton {}
-
 /**
+
 One of the deviations from Crema's model, and also from PSMED, is the geography
 underlying the simulation. Crema and Barceló use a quadratic grid with arbitrary
 fixed or randomly generated resources. A long-term goal for our model it
