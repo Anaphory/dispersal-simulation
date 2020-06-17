@@ -34,7 +34,7 @@ from h3.h3 import H3Index as Index
 try:
     __file__
 except NameError:
-    __file__ = '../t/t'
+    __file__ = 'this'
 
 # Define some constants
 GEODESIC: geodesic.Geodesic = geodesic.Geodesic()
@@ -352,31 +352,62 @@ def geo_dist(lon0, lat0, lon1, lat1, cache={}):
               abs(int((lon1-lon0) * 3600))]= d
         return d
 
-def distances(i: h3.H3Index) -> t.Tuple[t.Dict[h3.H3Index, float], t.Counter[int]]:
-    ecologies: t.Counter[int] = t.Counter()
-
-    tiles = set()
-    neighbors: t.List[h3.H3Index] = h3.k_ring(i, 2)
-    points = numpy.zeros((len(neighbors), 2))
-    for n, neighbor in enumerate(neighbors):
-        if neighbor == i:
-            origin = n
-        lat, lon = h3.h3_to_geo(neighbor)
-        points[n] = lon, lat
-        tiles.add(gmted_tile_from_geocoordinates(lon, lat))
-
-    if len(tiles) > 1:
-        raise NotImplementedError
-
-    tile, file = tiles.pop()
+def run_on_one_tile(p):
+    lat, lon = h3.h3_to_geo(p)
+    tile, file = gmted_tile_from_geocoordinates(lon, lat)
     gdal_path = f"/vsizip/../elevation/GMTED2010/{tile:}_150.zip/{file:}_20101117_gmted_med150.tif"
     with rasterio.open(gdal_path) as src:
+        ecology = eco_cache[gdal_path] = Ecoregions(sgeom.box(*src.bounds))
+
+        return areas(src, ecology)
+
+
+
+def areas(
+        raster: rasterio.DatasetReader,
+        ecoregions: Ecoregions,
+) -> t.Tuple[t.Dict[h3.H3Index, t.Dict[h3.H3Index, float]],
+             t.Dict[h3.H3Index, t.Counter[int]]]:
+    d = {}
+    e = {}
+    i, j = raster.shape
+    lon, lat = raster.transform * (i/2, j/2)
+    starts = {h3.geo_to_h3(lat, lon, RESOLUTION)}
+    failed = set()
+    data = raster.read(1)
+    while starts:
+        start = starts.pop()
+        print(start)
         try:
-            ecology = eco_cache[gdal_path]
-        except KeyError:
-            ecology = eco_cache[gdal_path] = Ecoregions(sgeom.box(*src.bounds))
-        print(ecology)
-        indices = numpy.round(~src.transform * points.T).astype(int).T
+            neighbors, metadata = distances_from_focus(
+                start,
+                data,
+                raster,
+                ecoregions)
+            d[start] = neighbors
+            e[start] = metadata
+            for n in neighbors:
+                if n in d:
+                    continue
+                starts.add(n)
+
+        except (IndexError, NotImplementedError):
+            print("failed")
+            failed.add(start)
+    return d, e
+
+
+def distances_from_focus(
+        i: h3.H3Index,
+        data: numpy.array,
+        raster: rasterio.DatasetReader,
+        ecoregions: Ecoregions,
+) -> t.Tuple[t.Dict[h3.H3Index, float],
+             t.Counter[int]]:
+        neighbors: t.List[h3.H3Index] = list(h3.k_ring(i, 2))
+        origin = neighbors.index(i)
+        points = numpy.array([h3.h3_to_geo(n)[::-1] for n in neighbors])
+        indices = numpy.round(~raster.transform * points.T).astype(int).T
         source = tuple(indices[origin])
         destinations = {tuple(j) for j in indices}
 
@@ -388,16 +419,16 @@ def distances(i: h3.H3Index) -> t.Tuple[t.Dict[h3.H3Index, float], t.Counter[int
         fringe: t.List[t.Tuple[float, int, t.Tuple[int, int]]] = []  # use heapq with (distance, label) tuples
         push(fringe, (0, next(c), source))
 
-        data = src.read(1)
 
+        e = t.Counter()
         def moore_neighbors(x0, y0, biome):
-            lon0, lat0 = src.transform * (x0, y0)
+            lon0, lat0 = raster.transform * (x0, y0)
             elevation = data[y0, x0]
             for i, j in [(-1, -1), (-1, 0), (-1, 1),
                          (0, -1), (0, 1),
                          (1, -1), (1, 0), (1, 1)]:
                 x1, y1 = x0 + i, y0 + j
-                lon1, lat1 = src.transform * (x1, y1)
+                lon1, lat1 = raster.transform * (x1, y1)
                 horizontal = geo_dist(lon0, lat0, lon1, lat1)
                 ed = data[y1, x1] - elevation
                 yield (x1, y1), horizontal / navigation_speed(ed / horizontal * 100) * terrain_coefficients[biome]
@@ -412,17 +443,17 @@ def distances(i: h3.H3Index) -> t.Tuple[t.Dict[h3.H3Index, float], t.Counter[int
                 if not destinations:
                     break
 
-            lon0, lat0 = src.transform * (x0, y0)
+            lon0, lat0 = raster.transform * (x0, y0)
             j = h3.geo_to_h3(lat0, lon0, RESOLUTION)
-            eco = ecology.at_point(sgeom.Point(lon0, lat0))
+            eco = ecoregions.at_point(sgeom.Point(lon0, lat0))
             if j == i:
-                ecologies[eco] += 1
+                e[eco] += 1
 
             if eco is None:
                 print("No biome found at", lon0, lat0)
                 continue
 
-            biome = ecology.record_getter(eco)[3]
+            biome = ecoregions.record_getter(eco)[3]
 
 
             for u, cost in moore_neighbors(x0, y0, biome):
@@ -436,26 +467,9 @@ def distances(i: h3.H3Index) -> t.Tuple[t.Dict[h3.H3Index, float], t.Counter[int
                     push(fringe, (vu_dist, next(c), u))
                 elif vu_dist == seen[u]:
                     pass
-        return {n: dist[x, y] for n, (x, y) in zip(neighbors, indices)}, ecologies
+        return {n: dist[x, y] for n, (x, y) in zip(neighbors, indices)}, e
 
-def pairwise_distances(i: h3.H3Index) -> t.Dict[h3.H3Index, t.Dict[h3.H3Index, int]]:
-    d = {}
-    starts = {i}
-    while starts:
-        start = starts.pop()
-        print(start)
-        try:
-            neighbors, metadata = distances(start)
-            d[start] = neighbors
-            for n in neighbors:
-                if n in d:
-                    continue
-                starts.add(n)
-        except (IndexError, NotImplementedError):
-            print("failed")
-    return d
-
-pairwise_distances('8581a90ffffffff')
+run_on_one_tile('8581a90ffffffff')
 
 def plot_distances(dist):
     r = min(dist, key=dist.get)
@@ -466,9 +480,9 @@ def plot_distances(dist):
 
 def hexbin_data(start):
         ins = rectangular_grid_data.insert()
-        for _, window in src.block_windows(1):
-            r = src.read(1, window=window)
-            trafo = rasterio.windows.transform(window, src.transform)
+        for _, window in raster.block_windows(1):
+            r = raster.read(1, window=window)
+            trafo = rasterio.windows.transform(window, raster.transform)
             indices = numpy.unravel_index(numpy.arange(len(r.flat)), r.shape)
             lons, lats = trafo * (indices[1], indices[0])
             data = []
