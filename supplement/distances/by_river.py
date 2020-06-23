@@ -2,6 +2,7 @@ import zipfile
 import typing as t
 from pathlib import Path
 
+import sqlalchemy
 from more_itertools import windowed
 
 import shapefile
@@ -10,6 +11,7 @@ from shapely.prepared import prep
 
 from h3 import h3
 
+from database import db
 
 class RiverNetwork:
     cache = None
@@ -17,10 +19,10 @@ class RiverNetwork:
     def reaches(cls):
         """
         >>> rivers = RiverNetwork.reaches()
-        >>> eco.numRecords
+        >>> rivers.numRecords
         847
-        >>> eco.fields
-        [('DeletionFlag', 'C', 1, 0), ['OBJECTID', 'N', 32, 10], ['ECO_NAME', 'C', 150, 0], ['BIOME_NUM', 'N', 32, 10], ['BIOME_NAME', 'C', 254, 0], ['REALM', 'C', 254, 0], ['ECO_BIOME_', 'C', 254, 0], ['NNH', 'N', 11, 0], ['ECO_ID', 'N', 11, 0], ['SHAPE_LENG', 'N', 32, 10], ['SHAPE_AREA', 'N', 32, 10], ['NNH_NAME', 'C', 64, 0], ['COLOR', 'C', 7, 0], ['COLOR_BIO', 'C', 7, 0], ['COLOR_NNH', 'C', 7, 0], ['LICENSE', 'C', 64, 0]]
+        >>> rivers.fields
+        [('DeletionFlag', 'C', 1, 0), ['Reach_ID', 'N', 10, 0], ['Next_down', 'N', 10, 0], ['Length_km', 'F', 13, 11], ['Log_Q_avg', 'F', 13, 11], ['Log_Q_var', 'F', 13, 11], ['Class_hydr', 'N', 10, 0], ['Temp_min', 'F', 13, 11], ['CMI_indx', 'F', 13, 11], ['Log_elev', 'F', 13, 11], ['Class_phys', 'N', 10, 0], ['Lake_wet', 'N', 10, 0], ['Stream_pow', 'F', 13, 11], ['Class_geom', 'N', 10, 0], ['Reach_type', 'N', 10, 0], ['Kmeans_30', 'N', 10, 0]]
 
         """
         if cls.cache is not None:
@@ -46,6 +48,7 @@ class RiverNetwork:
 
         """
         self.shp = self.reaches()
+
 
 RIVERS = RiverNetwork()
 
@@ -105,10 +108,49 @@ def find_hexes_crossed(
                 xmid, ymid, x1, y1)
 
 
-for reach in RIVERS.shp.iterShapeRecords():
+
+engine, tables = db('sqlite:///rivers.sqlite')
+t_hex = tables["hex"]
+t_reach = tables["reach"]
+t_flows = tables["flows"]
+
+downstream_from_navigable = set()
+
+for r, reach in enumerate(RIVERS.shp.iterShapeRecords()):
     points: t.List[t.Tuple[float, float]] = reach.shape.points
     data = reach.record
+    reach_id = int(data[0])
 
+    # Is this reach navigable by Kayak? From
+    # [@rood2006instream,@zinke2018comparing] it seems that reaches with a flow
+    # lower than 5m³/s are not navigable even by professional extreme sport
+    # athletes, and generally even that number seems to be an outlier with
+    # options starting at 8m³/s, so we take that as the cutoff.
+    #
+    # [@zinke2018comparing] further plots wild water kayaking run slopes vs.
+    # difficulty. All of these are below 10%, so we assume that reaches above
+    # 10% are not navigable. Gradient is not directly available in the data,
+    # but the stream power is directly proportional to the product of discharge
+    # and gradient, so we can reverse-engineer it:
+    # Stream Power [kg m/s³]
+    # = Water Density [kg/m³] * gravity [m/s²] * discharge [m³/s] * slope [m/m]
+    # so
+    # slope = stream power / discharge / (1000 * 9.81) > 10% = 0.1
+    if reach_id not in downstream_from_navigable or (
+            data[3] < 0.9030899869919434 or data[11] / 10 ** data[3] > 981.0):
+        continue
+    if data[1] < reach_id:
+        print(data[1])
+    downstream_from_navigable.add(data[1])
+    downstream_from_navigable.discard(reach_id)
+    print(data)
+    try:
+        engine.execute(t_reach.insert({"id": reach_id, "index": r}))
+    except sqlalchemy.exc.IntegrityError:
+        engine.execute(
+            t_reach.update().where(
+                t_reach.c.id == reach_id).values(
+                    {"index": r}))
     hexes: t.Set[h3.H3Index] = set()
     for start, end in windowed(points, 2):
         if start is None:
@@ -120,4 +162,9 @@ for reach in RIVERS.shp.iterShapeRecords():
         else:
             x1, y1 = end
         hexes.update(find_hexes_crossed(x0, y0, x1, y1))
-
+    for hex in hexes:
+        try:
+            engine.execute(t_hex.insert({"hexbin": hex}))
+        except sqlalchemy.exc.IntegrityError:
+            pass
+        engine.execute(t_flows.insert({"reach": reach_id, "hexbin": hex}))

@@ -53,7 +53,20 @@ def db(file: str = "sqlite:///hexbins.sqlite") -> t.Tuple[sqlalchemy.engine.Conn
         sqlalchemy.Column('ecoregion', sqlalchemy.Integer(), primary_key=True),
         sqlalchemy.Column('frequency', sqlalchemy.Float),
     )
-
+    reach = sqlalchemy.Table(
+        'reach', metadata,
+        sqlalchemy.Column('id', sqlalchemy.Integer(), primary_key=True),
+        sqlalchemy.Column('index', sqlalchemy.Integer())
+    )
+    flows = sqlalchemy.Table(
+        'flows', metadata,
+        sqlalchemy.Column(
+            'hexbin', H3Index,
+            sqlalchemy.ForeignKey(hex.c.hexbin)),
+        sqlalchemy.Column(
+            'reach', sqlalchemy.Integer(),
+            sqlalchemy.ForeignKey(reach.c.id)),
+    )
     metadata.create_all(engine)
     return engine, {
-        "hex": hex, "dist": dist, "eco": eco}
+        "hex": hex, "dist": dist, "eco": eco, "reach": reach, "flows": flows}
