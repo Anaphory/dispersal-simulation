@@ -27,3 +27,6 @@ __pycache__
 
 # Rust
 target/
+
+*.tif
+*.zip
