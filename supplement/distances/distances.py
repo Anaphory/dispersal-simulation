@@ -38,7 +38,6 @@ from h3.h3 import H3Index as Index
 from database import db
 from ecoregions import ECOREGIONS
 
-
 try:
     __file__
 except NameError:
@@ -168,46 +167,51 @@ def navigation_speed(slope: float) -> float:
 
 biomes = {eco: record[3] for eco, record in ECOREGIONS.records.items()}
 
+# [@pozzi2008accessibility]: Walking speeds
+# Open or sparse grasslands, croplands (> 50%, or with open woody vegetation, or irrigated), mosaic of forest/croplands or forest/savannah, urban areas: 3 km/h
+# Deciduous shrubland or woodland, closed grasslands, tree crops, desert (sandy or stony) and dunes, bare rock: 1.5 km/h
+# Lowland forest (deciduous or degraded evergreen), swamp bushland and grassland, salt hardpans: 1 km/h
+# Submontane and montane forest: 0.6 km/h
+# Closed evergreen lowland forest, swamp forest, mangrove: 0.3 km/h
 
+# The off-road navigation speeds are for temperate forests, so they get a terrain factor of 1.
 terrain_coefficients = {
-    'Boreal Forests/Taiga': 1.0,
-    'Deserts & Xeric Shrublands': 1.0,
-    'Flooded Grasslands & Savannas': 1.0,
-    'Mangroves': 1.0,
-    'Mediterranean Forests, Woodlands & Scrub': 1.0,
-    'Montane Grasslands & Shrublands': 1.0,
-    'N/A': 1.0,
     'Temperate Broadleaf & Mixed Forests': 1.0,
     'Temperate Conifer Forests': 1.0,
-    'Temperate Grasslands, Savannas & Shrublands': 1.0,
+    'Deserts & Xeric Shrublands': 1.5,
+    'Boreal Forests/Taiga': 1.0,
+    'Flooded Grasslands & Savannas': 1.0,
+    'Mangroves': 0.3,
+    'Mediterranean Forests, Woodlands & Scrub': 1.0,
+    'Montane Grasslands & Shrublands': 1.5,
+    'N/A': 0.05,
+    'Temperate Grasslands, Savannas & Shrublands': 3.0,
     'Tropical & Subtropical Coniferous Forests': 1.0,
     'Tropical & Subtropical Dry Broadleaf Forests': 1.0,
-    'Tropical & Subtropical Grasslands, Savannas & Shrublands': 1.0,
+    'Tropical & Subtropical Grasslands, Savannas & Shrublands': 3.0,
     'Tropical & Subtropical Moist Broadleaf Forests': 1.0,
-    'Tundra': 1.0,
+    'Tundra': 1.5,
 }
 
 
-TC = {b: terrain_coefficients[biome]
-      for b, biome in biomes.items()}
+TC = numpy.array([
+    terrain_coefficients[biomes.get(b, "N/A")]
+    for b in range(1000)])
 
 
 def run_on_one_tile(
         lon: float, lat: float,
-        db: Engine,
+        db: sqlalchemy.engine.Engine,
         hex: sqlalchemy.Table, dist: sqlalchemy.Table, eco: sqlalchemy.Table
 ) -> None:
     ns, lat0, ew, lon0 = tile_from_geocoordinates(lon, lat)
     gdal_path = gmted_tile_from_geocoordinates(lon, lat)
     ecoregions_path = "../ecoregions/ECOREGIONS-{0:02d}{1}{2:03d}{3}_20101117_gmted_med150.tif".format(
         lat0, ns.lower(), lon0, ew.lower())
-    try:
-        with rasterio.open(gdal_path) as elevation:
-            with rasterio.open(ecoregions_path) as ecology:
-                return areas(elevation, ecology,
-                             db, hex, dist, eco)
-    finally:
-        plt.show()
+    with rasterio.open(gdal_path) as elevation:
+        with rasterio.open(ecoregions_path) as ecology:
+            return areas(elevation, ecology,
+                         db, hex, dist, eco)
 
 
 def geographical_distance(index1: Index, index2: Index) -> float:
@@ -242,10 +246,55 @@ def geographical_distance(index1: Index, index2: Index) -> float:
         (lon2, lat2)))[0, 0]
 
 
+def all_pairwise_distances(
+        elevation: numpy.array,
+        transform: rasterio.Affine,
+) -> numpy.array:
+    d_n, d_e, d_ne = [], [], []
+    for y in range(1, len(elevation) + 1):
+        (lon0, lat0) = transform * (0, y)
+        (lon1, lat1) = transform * (1, y - 1)
+
+        d = GEODESIC.inverse((lon0, lat0), [
+            (lon0, lat1), (lon1, lat0), (lon1, lat1)])
+        d_n.append(d[0, 0])
+        d_e.append(d[1, 0])
+        d_ne.append(d[2, 0])
+    distance_to_north = numpy.array(d_n)[:-1]
+    distance_to_east = numpy.array(d_e)
+    distance_to_northeast = numpy.array(d_ne)[:-1]
+    distance_to_northwest = distance_to_northeast
+
+    slope_to_north = 100 * (elevation[1:, :] - elevation[:-1, :]) / distance_to_north[:, None]
+    slope_to_east = 100 * (elevation[:, 1:] - elevation[:, :-1]) / distance_to_east[:, None]
+    slope_to_northeast = 100 * (elevation[1:, 1:] - elevation[:-1, :-1]) / distance_to_northeast[:, None]
+    slope_to_northwest = 100 * (elevation[1:, :-1] - elevation[:-1, 1:]) / distance_to_northwest[:, None]
+
+    north = distance_to_north[:, None] / navigation_speed(slope_to_north)
+    northeast = distance_to_northeast[:, None] / navigation_speed(slope_to_northeast)
+    east = distance_to_east[:, None] / navigation_speed(slope_to_east)
+    southeast = distance_to_northwest[:, None] / navigation_speed(-slope_to_northwest)
+    south = distance_to_north[:, None] / navigation_speed(-slope_to_north)
+    southwest = distance_to_northeast[:, None] / navigation_speed(-slope_to_northeast)
+    west = distance_to_east[:, None] / navigation_speed(-slope_to_east)
+    northwest = distance_to_northwest[:, None] / navigation_speed(slope_to_northwest)
+
+    return {
+        (0, -1): north,
+        (1, -1): northeast,
+        (1, 0): east,
+        (1, 1): southeast,
+        (0, 1): south,
+        (-1, 1): southwest,
+        (-1, 0): west,
+        (-1, -1): northwest
+    }
+
+
 def areas(
         raster: rasterio.DatasetReader,
         ecoraster: rasterio.DatasetReader,
-        db: sqlalchemy.Engine,
+        db: sqlalchemy.engine.Engine,
         hex: sqlalchemy.Table, dist: sqlalchemy.Table, eco: sqlalchemy.Table
 ) -> None:
     """Compute pairwise distances and ecoregion composition
@@ -285,89 +334,66 @@ def areas(
     assert numpy.allclose(ecoraster.transform.e, raster.transform.e)
     assert numpy.allclose(ecoraster.transform.f, raster.transform.f)
 
-    def geo_dist(x0: int, y0: int, x1: int, y1: int, cache: t.Dict[t.Tuple[int, int, int], float]={}) -> float:
-        if x0 > x1:
-            x0, x1 = x1, x0
-
-        if y0 > y1:
-            y0, y1 = y1, y0
-
+    for h, eco_count in hex_ecoregions(ecoregions, ecoraster.transform).items():
+        lat, lon = h3.h3_to_geo(h)
         try:
-            return cache[x1-x0, y0, y1]
-        except KeyError:
-            (lon0, lat0) = raster.transform * (x0, y0)
-            (lon1, lat1) = raster.transform * (x1, y1)
+            db.execute(hex.insert({"hexbin": h,
+                                   "longitude": lon,
+                                   "latitude": lat}))
+        except sqlalchemy.exc.IntegrityError:
+            pass
+        for id, freq in eco_count.items():
+            try:
+                db.execute(eco.insert({"hexbin": h,
+                                       "ecoregion": int(id),
+                                       "frequency": freq}))
+            except sqlalchemy.exc.IntegrityError:
+                pass
+    del lat, lon
 
-            d = GEODESIC.inverse((lon0, lat0), (lon1, lat1))[0, 0]
-            cache[x1-x0, y0, y1] = d
-            return d
+    distance_by_direction = all_pairwise_distances(
+        elevation, raster.transform)
+
+    terrain_coefficient_raster = TC[ecoregions]
 
     while starts:
         start = starts.pop(0)
         if start in failed or start in finished:
             continue
-        lat, lon = h3.h3_to_geo(start)
         neighbors: t.List[Index] = list(h3.k_ring(start, 2))
 
-        distance_known = dist.select([dist.c.hexbin2]).where(dist.c.hexbin1 == start)
+        distance_known = sqlalchemy.select([dist.c.hexbin2]).where(dist.c.hexbin1 == start)
         if not set(neighbors) - {k[0] for k in db.execute(distance_known).fetchall()}:
             finished.add(start)
             starts.extend(n for n in neighbors
                           if n not in finished
                           if n not in failed)
-            find_most = eco.select([eco.c.ecoregion]).where(eco.c.hexbin == start).order_by(eco.c.frequency)
+            find_most = sqlalchemy.select([eco.c.ecoregion]).where(eco.c.hexbin == start).order_by(eco.c.frequency)
             most = db.scalar(find_most)
             print(start, most)
-            plt.scatter(lon, lat, c=ECOREGIONS.records.get(most, {11: '0.9'})[11])
             continue
 
         try:
-            db.execute(hex.insert({"hexbin": start,
-                                   "longitude": lon,
-                                   "latitude": lat}))
-        except sqlalchemy.exc.IntegrityError:
-            pass
+            origin = neighbors.index(start)
+            points = numpy.array([h3.h3_to_geo(n)[::-1] for n in neighbors])
+            indices = numpy.round(~raster.transform * points.T).astype(int).T
+            destinations: t.List[t.Tuple[int, int]] = [
+                (i, j) for (i, j) in indices]
+            source: t.Tuple[int, int] = destinations[origin]
 
-        try:
-            distances, eco_count = distances_from_focus(
-                start,
-                neighbors,
-                elevation,
-                geo_dist,
-                biomes,
-                raster.transform,
-                ecoregions)
+            distances = distances_from_focus(
+                source,
+                set(destinations),
+                distance_by_direction,
+                terrain_coefficient_raster)
 
-            n: float = sum(eco_count.values())
-            e: t.Mapping[int, float] = {r: c/n for r, c in eco_count.items()}
-
+            local_d = {n: distances[t[1], t[0]] for n, t in zip(neighbors, destinations)}
             # For debugging: Output the results
-            print(lon, lat, neighbors,
-                  {ECOREGIONS.records.get(r, {1: None})[1]: c for r, c in e.items()})
+            print(local_d)
 
-            # For debugging: prepare a plot
-            r: int
-            r, _ = eco_count.most_common(1)[0]
-            plt.scatter(lon, lat, c=ECOREGIONS.records.get(r, {11: '0.1'})[11])
-
-            # Dump results into DB
-            for id, freq in eco_count.items():
-                try:
-                    db.execute(eco.insert({"hexbin": start,
-                                           "ecoregion": int(id),
-                                           "frequency": freq}))
-                except sqlalchemy.exc.IntegrityError:
-                    pass
-
-            for n, d in distances.items():
-                exists = sqlalchemy.select([hex.c.hexbin]).where(hex.c.hexbin == n)
-                if not db.execute(exists).fetchone():
-                    lat, lon = h3.h3_to_geo(n)
-                    db.execute(hex.insert({"hexbin": n,
-                                           "longitude": lon,
-                                           "latitude": lat}))
-                    if n not in starts:
-                        starts.append(n)
+            for n, d in local_d.items():
+                if n not in starts and n not in failed and n not in finished:
+                    starts.append(n)
                 try:
                     db.execute(dist.insert({
                         "hexbin1": start,
@@ -385,73 +411,62 @@ def areas(
     print(failed)
 
 
+def hex_ecoregions(
+        ecoregions: numpy.array,
+        transform: rasterio.Affine
+) -> t.Dict[h3.H3Index, t.Counter[int]]:
+    c: t.Dict[h3.H3Index, t.Counter[int]] = t.DefaultDict(t.Counter)
+    for y, row in enumerate(ecoregions):
+        (_, lat) = transform * (0, y)
+        area = numpy.cos(lat * numpy.pi / 180)
+        for x, eco in enumerate(row):
+            (lon, lat) = transform * (x, y)
+            index: h3.H3Index = h3.geo_to_h3(lat, lon, RESOLUTION)
+            c[index][eco] += area
+    return c
+
+
 def distances_from_focus(
-        i: Index,
-        neighbors: t.List[Index],
-        data: numpy.array,
-        geo_dist: t.Callable[[int, int, int, int], float],
-        biomes: t.Dict[int, str],
-        transform: rasterio.Affine,
-        ecoregions: rasterio.DatasetReader,
-) -> t.Tuple[t.Dict[Index, float],
-             t.Counter[int]]:
-    origin = neighbors.index(i)
-    points = numpy.array([h3.h3_to_geo(n)[::-1] for n in neighbors])
-    indices = numpy.round(~transform * points.T).astype(int).T
-    source = tuple(indices[origin])
-    destinations = {tuple(j) for j in indices}
+        source: t.Tuple[int, int],
+        destinations: t.Set[t.Tuple[int, int]],
+        distance_by_direction: t.Dict[t.Tuple[int, int], numpy.array],
+        terrain_coefficients_raster: numpy.array,
+) -> t.Dict[t.Tuple[int, int], float]:
 
     # Dijkstra's algorithm, adapted for our purposes from
     # networkx/algorithms/shortest_paths/weighted.html
-    dist: t.Dict[t.Tuple[int, int], float] = {}  # dictionary of final dists
+    dist: numpy.array = numpy.full(
+        terrain_coefficients_raster.shape,
+        numpy.nan, dtype=float)
     seen = {source: 0.0}
     c = count()
     # use heapq with (distance, label) tuples
     fringe: t.List[t.Tuple[float, int, t.Tuple[int, int]]] = []
     push(fringe, (0, next(c), source))
 
-    e: t.Counter[int] = t.Counter()
-
     def moore_neighbors(
             x0: int, y0: int
     ) -> t.Iterable[t.Tuple[t.Tuple[int, int], float]]:
-        elevation = data[y0, x0]
-        # Look up terrain factor
-        tf0 = TC.get(ecoregions[y0, x0], 1.0)
-        for i, j in [(-1, -1), (-1, 0), (-1, 1),
-                     (0, -1), (0, 1),
-                     (1, -1), (1, 0), (1, 1)]:
+        tf0 = terrain_coefficients_raster[y0, x0]
+        for (i, j), d in distance_by_direction.items():
             x1, y1 = x0 + i, y0 + j
-            if x1 < 0 or y1 < 0 or x1 >= data.shape[1] or y1 >= data.shape[0]:
+            if x1 < 0 or y1 < 0:
                 raise IndexError("Attempted to move outside tile")
-            horizontal = geo_dist(x0, y0, x1, y1)
-            ed = data[y1, x1] - elevation
-            tf1 = TC.get(ecoregions[y1, x1], 1.0)
-            yield (x1, y1), horizontal / navigation_speed(
-                ed / horizontal * 100) * (tf0 + tf1) / 2
+            tf1 = terrain_coefficients_raster[y1, x1]
+            yield (x1, y1), d[y0, x0] / (tf0 + tf1) * 2
 
     while fringe:
         (d, _, (x0, y0)) = pop(fringe)
-        if (x0, y0) in dist:
+        if numpy.isfinite(dist[y0, x0]):
             continue  # already searched this node.
-        dist[(x0, y0)] = d
+        dist[y0, x0] = d
         if (x0, y0) in destinations:
             destinations.remove((x0, y0))
             if not destinations:
                 break
 
-        lon0, lat0 = transform * (x0, y0)
-        j = h3.geo_to_h3(lat0, lon0, RESOLUTION)
-        eco = ecoregions[y0, x0]
-        if j == i:  # Looking at a tile within the focus hex
-            e[eco] += numpy.cos(lat0 * numpy.pi / 180)
-
-        if eco is None:
-            print("No biome found at", lon0, lat0)
-            continue
-
         for u, cost in moore_neighbors(x0, y0):
-            vu_dist = dist[(x0, y0)] + cost
+            vu_dist = dist[y0, x0] + cost
             if u in dist:
                 if vu_dist < dist[u]:
                     raise ValueError('Contradictory paths found:',
@@ -461,18 +476,22 @@ def distances_from_focus(
                 push(fringe, (vu_dist, next(c), u))
             elif vu_dist == seen[u]:
                 pass
-    return {n: dist[x, y]/3600 for n, (x, y) in zip(neighbors, indices)}, e
+    return dist / 3600
 
 
 def plot_distances(db: sqlalchemy.engine.Connectable, dist: sqlalchemy.Table) -> None:
-    distances = dist.select([dist.c.flat_distance, dist.c.distance])
+    distances = sqlalchemy.select([dist.c.flat_distance, dist.c.distance])
     x, y = zip(*db.execute(distances))
-    plt.scatter(x, y)
+    plt.scatter(x, y, marker='x', s=40, alpha=0.2)
 
 
 if __name__ == '__main__':
     # FIXME: Use Argparser instead
     import sys
-    db, tables = db(sys.argv[3])
-    run_on_one_tile(float(sys.argv[2]), float(sys.argv[1]), db, **tables)
-    plot_distances(db, tables['dist'])
+    engine, tables = db(sys.argv[3])
+    t_hex = tables["hex"]
+    t_dist = tables["dist"]
+    t_eco = tables["eco"]
+    run_on_one_tile(float(sys.argv[2]), float(sys.argv[1]),
+                    engine, hex=t_hex, dist=t_dist, eco=t_eco)
+    plot_distances(engine, t_dist)
