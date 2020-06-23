@@ -317,10 +317,7 @@ def areas(
     """
     i, j = raster.shape
     lon, lat = raster.transform * (j/2, i/2)
-    starts: t.List[Index] = [h3.geo_to_h3(lat, lon, RESOLUTION)]
-    failed: t.Set[Index] = set()
-    finished: t.Set[Index] = set()
-
+    initial_hex = h3.geo_to_h3(lat, lon, RESOLUTION)
     elevation = raster.read(1)
     ecoregions = ecoraster.read(1)
 
@@ -334,8 +331,11 @@ def areas(
     assert numpy.allclose(ecoraster.transform.e, raster.transform.e)
     assert numpy.allclose(ecoraster.transform.f, raster.transform.f)
 
+    centers: t.Dict[h3.H3Index, t.Tuple[int, int]] = {}
     for h, eco_count in hex_ecoregions(ecoregions, ecoraster.transform).items():
         lat, lon = h3.h3_to_geo(h)
+        i, j = ~raster.transform * (lon, lat)
+        centers[h] = (int(i + 0.5), int(j + 0.5))
         try:
             db.execute(hex.insert({"hexbin": h,
                                    "longitude": lon,
@@ -350,11 +350,11 @@ def areas(
             except sqlalchemy.exc.IntegrityError:
                 elsewhere = db.execute(
                     sqlalchemy.select([eco.c.frequency]).where(
-                        eco.c.hexbin == h, eco.c.ecoregion == int(id))
+                        (eco.c.hexbin == h) & (eco.c.ecoregion == int(id)))
                 ).fetchone()[0]
                 db.execute(eco.update(
                     frequency=elsewhere + freq
-                ).where(eco.c.hexbin == h, eco.c.ecoregion == int(id)))
+                ).where((eco.c.hexbin == h) & (eco.c.ecoregion == int(id))))
     del lat, lon
 
     distance_by_direction = all_pairwise_distances(
@@ -362,6 +362,17 @@ def areas(
 
     terrain_coefficient_raster = TC[ecoregions]
 
+    failed = run([initial_hex], dist, eco, raster.transform, centers, distance_by_direction, terrain_coefficient_raster, db)
+    # TODO: Try to load neighboring tiles, and find the distances from failed spots in them.
+    print(failed)
+
+
+def run(
+        starts: t.List[Index], dist: sqlalchemy.Table, eco: sqlalchemy.Table, transform, centers,
+        distance_by_direction, terrain_coefficient_raster, db
+):
+    failed: t.Set[Index] = set()
+    finished: t.Set[Index] = set()
     while starts:
         start = starts.pop(0)
         if start in failed or start in finished:
@@ -379,43 +390,44 @@ def areas(
             print(start, most)
             continue
 
-        try:
-            origin = neighbors.index(start)
-            points = numpy.array([h3.h3_to_geo(n)[::-1] for n in neighbors])
-            indices = numpy.round(~raster.transform * points.T).astype(int).T
-            destinations: t.List[t.Tuple[int, int]] = [
-                (i, j) for (i, j) in indices]
-            source: t.Tuple[int, int] = destinations[origin]
+        origin = neighbors.index(start)
+        points = numpy.array([h3.h3_to_geo(n)[::-1] for n in neighbors])
+        indices = numpy.round(~transform * points.T).astype(int).T
+        destinations: t.List[t.Tuple[int, int]] = [
+            (i, j) for (i, j) in indices]
+        source: t.Tuple[int, int] = destinations[origin]
 
+        try:
             distances = distances_from_focus(
                 source,
                 set(destinations),
                 distance_by_direction,
                 terrain_coefficient_raster)
-
-            local_d = {n: distances[t[1], t[0]] for n, t in zip(neighbors, destinations)}
-            # For debugging: Output the results
-            print(local_d)
-
-            for n, d in local_d.items():
-                if n not in starts and n not in failed and n not in finished:
-                    starts.append(n)
-                try:
-                    db.execute(dist.insert({
-                        "hexbin1": start,
-                        "hexbin2": n,
-                        "flat_distance": geographical_distance(start, n),
-                        "distance": d,
-                        "source": 0}))
-                except sqlalchemy.exc.IntegrityError:
-                    pass
-            finished.add(start)
-
         except (IndexError, NotImplementedError):
             print("failed")
             failed.add(start)
-    # TODO: Try to load neighboring tiles, and find the distances from failed spots in them.
-    print(failed)
+            continue
+
+        local_d = {n: distances[t[0], t[1]] for n, t in centers.items()
+                   if numpy.isfinite(distances[t])}
+        # For debugging: Output the results
+        print(local_d)
+
+        for n, d in local_d.items():
+            if n not in starts and n not in failed and n not in finished:
+                starts.append(n)
+            try:
+                db.execute(dist.insert({
+                    "hexbin1": start,
+                    "hexbin2": n,
+                    "flat_distance": geographical_distance(start, n),
+                    "distance": d,
+                    "source": 0}))
+            except sqlalchemy.exc.IntegrityError:
+                pass
+        finished.add(start)
+
+    return failed
 
 
 def hex_ecoregions(
