@@ -348,7 +348,13 @@ def areas(
                                        "ecoregion": int(id),
                                        "frequency": freq}))
             except sqlalchemy.exc.IntegrityError:
-                pass
+                elsewhere = db.execute(
+                    sqlalchemy.select([eco.c.frequency]).where(
+                        eco.c.hexbin == h, eco.c.ecoregion == int(id))
+                ).fetchone()[0]
+                db.execute(eco.update(
+                    frequency=elsewhere + freq
+                ).where(eco.c.hexbin == h, eco.c.ecoregion == int(id)))
     del lat, lon
 
     distance_by_direction = all_pairwise_distances(
@@ -408,6 +414,7 @@ def areas(
         except (IndexError, NotImplementedError):
             print("failed")
             failed.add(start)
+    # TODO: Try to load neighboring tiles, and find the distances from failed spots in them.
     print(failed)
 
 
