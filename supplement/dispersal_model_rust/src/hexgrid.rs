@@ -1,6 +1,6 @@
 use std::f64::consts::PI;
 
-pub use libh3::{geo_to_h3, GeoCoord, H3Index as Index};
+pub use libh3::{h3_to_geo, geo_to_h3, GeoCoord, H3Index as Index};
 
 pub fn closest_grid_point(longitude: f64, latitude: f64) -> Option<Index> {
     let point = GeoCoord {

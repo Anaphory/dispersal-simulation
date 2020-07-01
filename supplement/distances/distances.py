@@ -435,28 +435,33 @@ def all_pairwise_distances(
         d_e.append(d[1, 0])
         d_ne.append(d[2, 0])
     distance_to_north = numpy.array(d_n)[:-1]
-    distance_to_east = numpy.array(d_e)
-    distance_to_northeast = numpy.array(d_ne)[:-1]
-    distance_to_northwest = distance_to_northeast
-
     slope_to_north = 100 * (elevation[1:, :] - elevation[:-1, :]) / distance_to_north[:, None]
+    tc_to_north = (terrain_coefficients[1:, :] + terrain_coefficients[:-1, :]) / 2
+    north = distance_to_north[:, None] / (navigation_speed(slope_to_north) * tc_to_north)
+    south = distance_to_north[:, None] / (navigation_speed(-slope_to_north) * tc_to_north)
+    del distance_to_north, slope_to_north, tc_to_north
+
+    distance_to_east = numpy.array(d_e)
     slope_to_east = 100 * (elevation[:, 1:] - elevation[:, :-1]) / distance_to_east[:, None]
+    tc_to_east = (terrain_coefficients[:, 1:] + terrain_coefficients[:, :-1]) / 2
+    east = distance_to_east[:, None] / (navigation_speed(slope_to_east) * tc_to_east)
+    west = distance_to_east[:, None] / (navigation_speed(-slope_to_east) * tc_to_east)
+    del distance_to_east, slope_to_east, tc_to_east
+
+    distance_to_northeast = numpy.array(d_ne)[:-1]
     slope_to_northeast = 100 * (elevation[1:, 1:] - elevation[:-1, :-1]) / distance_to_northeast[:, None]
+    tc_to_northeast = (terrain_coefficients[1:, 1:] + terrain_coefficients[:-1, :-1]) / 2
+    northeast = distance_to_northeast[:, None] / (navigation_speed(slope_to_northeast) * tc_to_northeast)
+    southwest = distance_to_northeast[:, None] / (navigation_speed(-slope_to_northeast) * tc_to_northeast)
+    del distance_to_northeast, slope_to_northeast, tc_to_northeast
+    distance_to_northwest = numpy.array(d_ne)[:-1]
     slope_to_northwest = 100 * (elevation[1:, :-1] - elevation[:-1, 1:]) / distance_to_northwest[:, None]
 
-    tc_to_north = (terrain_coefficients[1:, :] + terrain_coefficients[:-1, :]) / 2
-    tc_to_east = (terrain_coefficients[:, 1:] + terrain_coefficients[:, :-1]) / 2
-    tc_to_northeast = (terrain_coefficients[1:, 1:] + terrain_coefficients[:-1, :-1]) / 2
     tc_to_northwest = (terrain_coefficients[1:, :-1] + terrain_coefficients[:-1, 1:]) / 2
 
-    north = distance_to_north[:, None] / (navigation_speed(slope_to_north) * tc_to_north)
-    northeast = distance_to_northeast[:, None] / (navigation_speed(slope_to_northeast) * tc_to_northeast)
-    east = distance_to_east[:, None] / (navigation_speed(slope_to_east) * tc_to_east)
     southeast = distance_to_northwest[:, None] / (navigation_speed(-slope_to_northwest) * tc_to_northwest)
-    south = distance_to_north[:, None] / (navigation_speed(-slope_to_north) * tc_to_north)
-    southwest = distance_to_northeast[:, None] / (navigation_speed(-slope_to_northeast) * tc_to_northeast)
-    west = distance_to_east[:, None] / (navigation_speed(-slope_to_east) * tc_to_east)
     northwest = distance_to_northwest[:, None] / (navigation_speed(slope_to_northwest) * tc_to_northwest)
+    del distance_to_northwest, slope_to_northwest, tc_to_northwest
 
     return {
         (-1, 0): north,

@@ -45,8 +45,7 @@ use rand::prelude::*;
 use rayon::prelude::*;
 use std::collections::HashMap;
 
-mod util;
-use util::{greater_of_two, smaller_of_two};
+use std::cmp::{max,min};
 
 mod debug;
 mod ecology;
@@ -152,15 +151,15 @@ to the individual families after the fact.
 
 Every family has a culture. These are very abstract and vastly simplified, due
 to the lack of quantitative data on cultural evolution in a framework comparable
-to the one used for this study. Based on the need to have a data structure that
-supports random drift, a low but positive chance of back-mutation, and a large
-number of equally similar cultures, we describe culture using a binary vector. A
-detailed discussion of this choices and the alternatives can be found in
-[#submodel:culture]. Computers make natural use of the binary representation to
-store integer numbers, so a binary vector is equivalent to an unsigned integer
-of sufficient size, which is faster to use in computations and more efficient to
-store.
- 
+to the one used for this study. Based on the need to have a data structure
+that supports random drift, a low but positive chance of back-mutation, and a
+large number of equally similar cultures, we describe culture using a binary
+vector. A detailed discussion of this choices and the alternatives can be found
+in [#submodel:culture]. Computers make natural use of the binary representation
+to store integer numbers, so a binary vector is equivalent to an unsigned
+integer of sufficient size, which is faster to use in computations and more
+efficient to store.
+
 */
 type Culture = u64;
 /**
@@ -172,7 +171,7 @@ global grid. The grid logic is implemented in Uber's H3 library [@uber-h3] and
 exposed to the simulation by the `hexgrid` module.
 
 */
-mod hexgrid;
+use minimal_metabolic_cost_surface::hexgrid;
 /**
 
 Each individual grid cell contains exactly one patch. Each of these patches has
@@ -181,9 +180,7 @@ the course of half a year. In general, whereever possible, resources are
 measured in kcal (in SI units: 1 kcal = 4.184 kJ)
 
 */
-type KCal = f32;
-// TODO: Maybe KCal should be a finite f32? If resources become infinite,
-// something has gone wrong. I bet there is a Rust crate for that…
+use minimal_metabolic_cost_surface::KCal;
 /**
 
 In the current first iteration of the model, the resource maximum is constant
@@ -192,7 +189,7 @@ Future work might add seasonality (with every other time step corresponding to
 the more plentiful half of the year and the others to the scarcer half) or
 include paleoclimate data, but that only becomes relevant once the model shows
 fundamentally reasonable dynamics.
- 
+
 */
 pub struct Patch {
     /// The resources currently available (not necessarily accessible, see XXX)
@@ -210,7 +207,7 @@ The associations between gridcells and patches and between gridcells and the
 families located there (stored in the Family's `location`) are the core of the
 model state. The state also tracks the time, measured in time steps
 corresponding to half a year each, since the start of the simulation.
- 
+
 */
 struct State {
     /// The patches of the model, indexed by their address according to the H3
@@ -223,7 +220,10 @@ struct State {
     /// The current time step, in half years since start of the simulation.
     t: HalfYears,
 }
-// TODO: At some point, we thought about storing the model parameters in the state, such that serializing and deserializing the state is exactly what is necessary to store/resume the simulation. Do it, or why not?
+// TODO: At some point, we thought about storing the model parameters in the
+// state, such that serializing and deserializing the state is exactly what is
+// necessary to store/resume the simulation. Do it, or why not? How even does
+// Rust serialization work?
 /**
 
 ## Process overview and scheduling
@@ -242,7 +242,6 @@ simulate 15000 years.
 
 The structure of a single time step consist of two parts, as follows.
 
- 
 */
 fn step(
     families: &mut Vec<Family>,
@@ -258,11 +257,14 @@ fn step(
 
 The first part focuses on the individual families, which shrink, grow, die,
 split, and move. It constructs the mapping of families at the end of the season,
-grouped by their location after potential moves. Because the movement of a
-family depends on the distribution of othe families at he start of the season,
-it can happen entirely in parallel.
+grouped by their location after potential moves. The movement decisions of
+families updated earlier affect the decisions of later families. In order to
+minimize this effect, families are reshuffled every time step.
 
-TODO: This is supposed to be readable [pseudo]code. Make it really really readable, and bigger.
+TODO: This is supposed to be readable [pseudo]code. Make it really really
+   readable, and bigger. This might require macro definitions, or it might
+   require writing a readable version of this procedure elsewhere and including
+   it in the LaTeX.
 
 */
 fn step_part_1(
@@ -280,7 +282,7 @@ fn step_part_1(
             &mut family.stored_resources,
             p,
         ) {
-            family.seasons_till_next_child = greater_of_two(family.seasons_till_next_child, 2)
+            family.seasons_till_next_child = max(family.seasons_till_next_child, 2)
         }
 
         submodels::family_lifecycle::maybe_grow(family);
@@ -766,7 +768,7 @@ mod learning {
     ) -> Vec<hexgrid::Index> {
         let mut result = vec![];
         for location in nearby {
-            if history[0..smaller_of_two(8, history.len())].contains(&location) {
+            if history[0..min(8, history.len())].contains(&location) {
                 result.push(*location);
                 continue;
             }
@@ -933,9 +935,7 @@ mod interaction {
     ) -> KCal {
         assert!(my_relative_returns + others_relative_returns > 0.);
         let my_part = my_relative_returns / (my_relative_returns + others_relative_returns)
-            * smaller_of_two(
-                my_relative_returns + others_relative_returns,
-                total_resources_available,
+            * KCal::min(my_relative_returns + others_relative_returns, total_resources_available,
             );
         assert!(my_part.is_finite());
         my_part
@@ -1036,7 +1036,7 @@ mod collectives {
         let mut sum_labor = 0.;
         for group in groups.iter_mut() {
             group.total_efficiency = group.total_efficiency + dist.sample(&mut rng) * p.payoff_std / group.total_efficiency.powf(0.5);
-            group.total_efficiency = greater_of_two(group.total_efficiency, 0.);
+            group.total_efficiency = f32::max(group.total_efficiency, 0.);
             sum_labor += group.total_efficiency;
         }
         Some((groups, sum_labor))
@@ -1108,7 +1108,7 @@ this data only about once per generation, i.e. every 60 time steps.
 > those data should be provided.
 
 */
-fn initialization(precipitation: &Vec<u16>, width: usize, p: &Parameters) -> Option<State> {
+fn initialization(precipitation: &Vec<u32>, width: usize, p: &Parameters) -> Option<State> {
     let start1: hexgrid::Index = hexgrid::closest_grid_point(-159.873, 65.613)?;
     let start2: hexgrid::Index = hexgrid::closest_grid_point(-158.2718, 60.8071)?;
 
@@ -1122,7 +1122,7 @@ fn initialization(precipitation: &Vec<u16>, width: usize, p: &Parameters) -> Opt
     loop {
         let next = match new_patches.pop() {
             None => break,
-            Some(n) => n,
+            Some(n) => n
         };
         if patches.contains_key(&next) {
             continue;
@@ -1135,23 +1135,30 @@ fn initialization(precipitation: &Vec<u16>, width: usize, p: &Parameters) -> Opt
             && p.boundary_south < latitude
             && latitude < p.boundary_north
         {
-            let patch = ecology::patch_from_coordinates(geo, precipitation, width);
+            let patch = minimal_metabolic_cost_surface::data_from_coordinates(geo, precipitation, width);
             match patch {
                 None => {
                     patches.insert(next, None);
                     continue;
                 }
-                Some(resources) => {
-                    patches.insert(
-                        next,
-                        Some(Patch {
-                            resources: resources
-                                * p.time_step_energy_use
-                                * area
-                                * p.accessible_resources,
-                            max_resources: resources * p.time_step_energy_use * area,
-                        }),
-                    );
+                Some(&precipitation) => {
+                    match ecology::precipitation_to_resources(precipitation) {
+                        None => {
+                            patches.insert(next, None);
+                            continue;
+                        }
+                        Some(resources) => {
+                            patches.insert(
+                                next,
+                                Some(Patch {
+                                    resources: resources
+                                        * p.time_step_energy_use
+                                        * area
+                                        * p.accessible_resources,
+                                    max_resources: resources * p.time_step_energy_use * area
+                                }));
+                        }
+                    }
                 }
             };
             for q in hexgrid::nearby_locations(next) {

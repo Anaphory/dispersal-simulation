@@ -13,3 +13,5 @@ rayon = ">=0.0.0"
 libh3 = ">=0.0.0"
 tiff = ">=0.0.0"
 argparse = ">=0.0.0"
+petgraph = ">=0.0.0"
+minimal_metabolic_cost_surface = { path = "minimal_metabolic_cost_surface" }
