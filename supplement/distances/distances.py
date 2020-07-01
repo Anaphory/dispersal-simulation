@@ -283,8 +283,8 @@ def run_on_one_tile(
                 lat, lon = h3.h3_to_geo(hexbin)
                 engine.execute(
                     hex.update().where(
-                        hex.c.hexbin == hexbin &
-                        hex.c.vlatitude == None
+                        (hex.c.hexbin == hexbin) &
+                        (hex.c.vlatitude == None)
                     ).values({
                         "vlatitude": lat,
                         "vlongitude": lon}))
@@ -292,6 +292,9 @@ def run_on_one_tile(
                 print("Uninhabited.")
                 continue
             if engine.execute(sqlalchemy.select([hex.c.vlongitude]).where(hex.c.hexbin == hexbin)).scalar:
+                lat, lon = engine.execute(sqlalchemy.select(
+                    [hex.c.vlatitude, hex.c.vlongitude]).where(hex.c.hexbin == hexbin)).fetchone()
+                center[hexbin] = rowcol((lat, lon))
                 print("Known in DB.")
                 continue
             rmin = min(p[0] for p in points)
