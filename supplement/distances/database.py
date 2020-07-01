@@ -30,6 +30,9 @@ def db(file: str = "sqlite:///hexbins.sqlite") -> t.Tuple[sqlalchemy.engine.Conn
         sqlalchemy.Column('hexbin', H3Index, primary_key=True),
         sqlalchemy.Column('longitude', sqlalchemy.Float),
         sqlalchemy.Column('latitude', sqlalchemy.Float),
+        sqlalchemy.Column('vlongitude', sqlalchemy.Float),
+        sqlalchemy.Column('vlatitude', sqlalchemy.Float),
+        sqlalchemy.Column('habitable', sqlalchemy.Boolean()),
     )
     dist = sqlalchemy.Table(
         'dist', metadata,
@@ -55,17 +58,22 @@ def db(file: str = "sqlite:///hexbins.sqlite") -> t.Tuple[sqlalchemy.engine.Conn
     )
     reach = sqlalchemy.Table(
         'reach', metadata,
-        sqlalchemy.Column('id', sqlalchemy.Integer(), primary_key=True),
-        sqlalchemy.Column('index', sqlalchemy.Integer())
+        sqlalchemy.Column('reach_id', sqlalchemy.Integer(), primary_key=True),
+        sqlalchemy.Column('record_index', sqlalchemy.Integer()),
+        sqlalchemy.Column('next_down', sqlalchemy.Integer(), sqlalchemy.ForeignKey('reach.reach_id')),
+        sqlalchemy.Column("travel_downstream", sqlalchemy.Float()),
+        sqlalchemy.Column("travel_upstream", sqlalchemy.Float()),
     )
     flows = sqlalchemy.Table(
         'flows', metadata,
         sqlalchemy.Column(
             'hexbin', H3Index,
-            sqlalchemy.ForeignKey(hex.c.hexbin)),
+            sqlalchemy.ForeignKey(hex.c.hexbin), primary_key=True),
         sqlalchemy.Column(
-            'reach', sqlalchemy.Integer(),
-            sqlalchemy.ForeignKey(reach.c.id)),
+            'reach_id', sqlalchemy.Integer(),
+            sqlalchemy.ForeignKey(reach.c.reach_id), primary_key=True),
+        sqlalchemy.Column('start', sqlalchemy.Float()),
+        sqlalchemy.Column('end', sqlalchemy.Float()),
     )
     metadata.create_all(engine)
     return engine, {

@@ -2,6 +2,8 @@ import zipfile
 import typing as t
 from pathlib import Path
 
+import numpy
+
 import shapefile
 import shapely.geometry as sgeom
 from shapely.prepared import prep
@@ -86,4 +88,38 @@ class Ecoregions:
         return None
 
 ECOREGIONS = Ecoregions()
+
+
+biomes = {eco: record[3] for eco, record in ECOREGIONS.records.items()}
+
+# [@pozzi2008accessibility]: Walking speeds
+# Open or sparse grasslands, croplands (> 50%, or with open woody vegetation, or irrigated), mosaic of forest/croplands or forest/savannah, urban areas: 3 km/h
+# Deciduous shrubland or woodland, closed grasslands, tree crops, desert (sandy or stony) and dunes, bare rock: 1.5 km/h
+# Lowland forest (deciduous or degraded evergreen), swamp bushland and grassland, salt hardpans: 1 km/h
+# Submontane and montane forest: 0.6 km/h
+# Closed evergreen lowland forest, swamp forest, mangrove: 0.3 km/h
+
+# The off-road navigation speeds are for temperate forests, so they get a terrain factor of 1.
+terrain_coefficients = {
+    'Temperate Broadleaf & Mixed Forests': 1.0,
+    'Temperate Conifer Forests': 1.0,
+    'Deserts & Xeric Shrublands': 1.5,
+    'Boreal Forests/Taiga': 1.0,
+    'Flooded Grasslands & Savannas': 1.0,
+    'Mangroves': 0.3,
+    'Mediterranean Forests, Woodlands & Scrub': 1.0,
+    'Montane Grasslands & Shrublands': 1.5,
+    'N/A': 0.05,
+    'Temperate Grasslands, Savannas & Shrublands': 3.0,
+    'Tropical & Subtropical Coniferous Forests': 1.0,
+    'Tropical & Subtropical Dry Broadleaf Forests': 1.0,
+    'Tropical & Subtropical Grasslands, Savannas & Shrublands': 3.0,
+    'Tropical & Subtropical Moist Broadleaf Forests': 1.0,
+    'Tundra': 1.5,
+}
+
+
+TC = numpy.array([
+    terrain_coefficients[biomes.get(b, "N/A")]
+    for b in range(1000)])
 
