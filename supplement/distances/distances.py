@@ -280,6 +280,15 @@ def run_on_one_tile(
                 print("Not competely in this tile.")
                 continue
             if hexbin not in starts:
+                lat, lon = h3.h3_to_geo(hexbin)
+                engine.execute(
+                    hex.update().where(
+                        hex.c.hexbin == hexbin &
+                        hex.c.vlatitude == None
+                    ).values({
+                        "vlatitude": lat,
+                        "vlongitude": lon}))
+                center[hexbin] = rowcol((lat, lon))
                 print("Uninhabited.")
                 continue
             if engine.execute(sqlalchemy.select([hex.c.vlongitude]).where(hex.c.hexbin == hexbin)).scalar:
