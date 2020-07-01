@@ -338,7 +338,7 @@ def run_on_one_tile(
             continue
 
         points = []
-        for n in neighbor3:
+        for n in neighbors2 | neighbors3:
             try:
                 points.append(center[n])
             except KeyError:
@@ -569,7 +569,7 @@ if __name__ == '__main__':
             t_hex.update().values({'habitable': True}).where(t_hex.c.hexbin.in_(
                 sqlalchemy.select([t_eco.c.hexbin]).where(t_eco.c.ecoregion != 999))))
 
-    for lon in range(-145, 175, 30):
+    for lon in range(-175, 175, 30):
         for lat in range(-80, 80, 20):
             try:
                 run_on_one_tile(lon, lat, engine, t_hex, t_dist)
