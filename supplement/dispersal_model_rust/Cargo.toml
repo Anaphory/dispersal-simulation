@@ -3,6 +3,7 @@ name = "dispersal_model_rust"
 version = "0.1.0"
 authors = ["Gereon A. Kaiping <gkaiping@geo.uzh.ch>"]
 edition = "2018"
+debug = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -13,5 +14,5 @@ rayon = ">=0.0.0"
 libh3 = ">=0.0.0"
 tiff = ">=0.0.0"
 argparse = ">=0.0.0"
+lazy_static = ">=0.0.0"
 petgraph = ">=0.0.0"
-minimal_metabolic_cost_surface = { path = "minimal_metabolic_cost_surface" }
