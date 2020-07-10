@@ -45,6 +45,7 @@ mod debug;
 mod ecology;
 mod hexgrid;
 mod tests;
+mod movementgraph;
 
 use submodels::parameters::Parameters;
 
@@ -841,7 +842,7 @@ mod sensing {
                 vec![]
             }
             Some(l) => {
-                hexgrid::bounded_dijkstra(
+                movementgraph::bounded_dijkstra(
                     &patch_graph,
                     *l,
                     100_000.,
