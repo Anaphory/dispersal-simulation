@@ -39,11 +39,9 @@ use rayon::prelude::*;
 use std::collections::HashMap;
 
 mod util;
-use util::{greater_of_two, smaller_of_two};
 
 mod debug;
 mod ecology;
-mod hexgrid;
 mod tests;
 mod movementgraph;
 
@@ -84,12 +82,12 @@ pub struct Family {
     /// The family's shared culture.
     culture: Culture,
     /// The current location of the agent.
-    location: hexgrid::Index,
+    location: Index,
     /// The previous locations of the agent. This is useful for some bits of
     /// analysis, but agents are also guaranteed to have knowledge about their
     /// recent locations within range, where other knowledge depends on random
     /// factors.
-    location_history: Vec<hexgrid::Index>,
+    location_history: Vec<Index>,
     /// The amount of stored resources, in kcal, the family has access to.
     stored_resources: KCal,
 
@@ -154,6 +152,8 @@ others to the scarcer half). By nature, the simulation invites the extension to
 include paleoclimate data, but that only becomes relevant once it shows
 fundamentally reasonable dynamics.
  */
+type Index = usize;
+
 pub struct Patch {
     /// The resources currently available (not necessarily accessible, see XXX)
     /// in this patch, in kcal / season.
@@ -176,7 +176,7 @@ struct State {
     /// The patches of the model, indexed by their address according to the H3
     /// discrete global grid system. This set is fixed, although the properties
     /// of the patches may change with time.
-    patches: HashMap<hexgrid::Index, Patch>,
+    patches: HashMap<Index, Patch>,
     /// The agents (families) currently active in the simulation. This vector
     /// changes over time as new families are added and old families die out.
     families: Vec<Family>,
@@ -204,10 +204,11 @@ The structure of a single time step consist of two parts, as follows.
  */
 fn step(
     families: &mut Vec<Family>,
-    patches: &mut HashMap<hexgrid::Index, Patch>,
+    patches: &mut HashMap<Index, Patch>,
     p: &Parameters,
     t: HalfYears,
-) -> Option<HashMap<hexgrid::Index, Vec<Family>>> {
+) -> Option<HashMap<Index, Vec<Family>>>
+{
     let mut families_by_location = step_part_1(families, patches, p, t)?;
     step_part_2(&mut families_by_location, patches, p);
     Some(families_by_location)
@@ -223,12 +224,13 @@ it can happen entirely in parallel.
 use std::thread;
 fn step_part_1(
     families: &mut Vec<Family>,
-    patches: &HashMap<hexgrid::Index, Patch>,
+    patches: &HashMap<Index, Patch>,
     p: &Parameters,
     t: HalfYears,
-) -> Option<HashMap<hexgrid::Index, Vec<Family>>> {
-    let mut families_by_location: HashMap<hexgrid::Index, Vec<Family>> = HashMap::new();
-    let mut cultures_by_location: HashMap<hexgrid::Index, HashMap<Culture, usize>> = HashMap::new();
+) -> Option<HashMap<Index, Vec<Family>>>
+{
+    let mut families_by_location: HashMap<Index, Vec<Family>> = HashMap::new();
+    let mut cultures_by_location: HashMap<Index, HashMap<Culture, usize>> = HashMap::new();
 
     for family in families.iter_mut() {
         if submodels::family_lifecycle::use_resources_and_maybe_shrink(
@@ -336,10 +338,11 @@ patches recover advance to the next season according to Submodule 7.6. This
 concludes a time step.
  */
 fn step_part_2(
-    families_by_location: &mut HashMap<hexgrid::Index, Vec<Family>>,
-    patches: &mut HashMap<hexgrid::Index, Patch>,
+    families_by_location: &mut HashMap<Index, Vec<Family>>,
+    patches: &mut HashMap<Index, Patch>,
     p: &Parameters,
-) -> Option<()> {
+) -> Option<()>
+{
     for (patch_id, families) in families_by_location {
         assert!(families.len() > 0);
         let mut patch = patches.entry(*patch_id).or_insert(Patch {
@@ -364,7 +367,7 @@ fn step_part_2(
 
         for cooperating_families in cooperatives {
             let families = cooperating_families.families;
-            crate::submodels::culture::adjust(families, p);
+            crate::submodels::culture::adjust(families, p.culture_dimensionality, p.culture_mutation_rate);
         }
         submodels::ecology::exploit(&mut patch, resource_reduction);
     }
@@ -489,7 +492,7 @@ mod emergence {
     being larger in more marginal environments where migration is more frequent.
     */
     pub fn cultural_distance_by_geographical_distance(
-        cultures_by_location: &HashMap<hexgrid::Index, HashMap<Culture, usize>>,
+        cultures_by_location: &HashMap<Index, HashMap<Culture, usize>>,
         max_geo_distance: i32,
     ) -> HashMap<i32, HashMap<u32, usize>> {
         let mut gd_cd: HashMap<i32, HashMap<u32, usize>> = HashMap::new();
@@ -560,8 +563,8 @@ mod emergence {
     agents, but entirely determined by their cultures.
      */
 
-    pub fn similar_culture(c1: Culture, c2: Culture, p: &Parameters) -> bool {
-        submodels::culture::distance(c1, c2) < p.cooperation_threshold
+    pub fn similar_culture(c1: Culture, c2: Culture, cooperation_threshold: u32) -> bool {
+        submodels::culture::distance(c1, c2) < cooperation_threshold
     }
 }
 
@@ -588,13 +591,14 @@ mod adaptation {
 
     pub fn decide_on_moving<'a>(
         family: &'a Family,
-        known_destinations: Vec<(hexgrid::Index, &Patch, usize, usize)>,
+        known_destinations: Vec<(Index, &Patch, usize, usize)>,
         avoid_stay: bool,
         p: &Parameters,
-    ) -> Option<hexgrid::Index> {
+    ) -> Option<Index>
+    {
         let mut kd = known_destinations.iter();
         let (mut target, mut patch, mut cooperators, mut competitors): (
-            hexgrid::Index,
+            Index,
             &Patch,
             usize,
             usize,
@@ -657,17 +661,18 @@ mod objectives {
     pub fn best_location(
         size: usize,
         max_gain: &mut KCal,
-        kd: std::slice::Iter<(hexgrid::Index, &Patch, usize, usize)>,
+        kd: std::slice::Iter<(Index, &Patch, usize, usize)>,
         p: &Parameters,
         threshold: KCal,
-    ) -> Option<hexgrid::Index> {
+    ) -> Option<Index>
+    {
         let mut rng = rand::thread_rng();
 
         // This variable `c` is used to randomly draw between several
         // equally-optimal options. It counts the number of best options
         // encountered so far.
         let mut c = 0;
-        let mut target: Option<hexgrid::Index> = None;
+        let mut target: Option<Index> = None;
         for (coords, patch, cooperators, competitors) in kd {
             let expected_gain = prediction::expected_resources_from_patch(
                 size as f32,
@@ -713,10 +718,10 @@ mod learning {
     use crate::*;
 
     pub fn known_location(
-        history: &Vec<hexgrid::Index>,
-        nearby: &Vec<hexgrid::Index>,
+        history: &Vec<Index>,
+        nearby: &Vec<Index>,
         attention_probability: f32,
-    ) -> Vec<hexgrid::Index> {
+    ) -> Vec<Index> {
         let mut result = vec![];
         for location in nearby {
             if history[0..smaller_of_two(8, history.len())].contains(&location) {
@@ -765,7 +770,8 @@ mod prediction {
         cooperators: f32,
         competitors: f32,
         p: &Parameters,
-    ) -> KCal {
+    ) -> KCal
+    {
         assert!(my_effective_size + cooperators > 0.);
         submodels::ecology::resources_from_patch(
             patch,
@@ -802,12 +808,13 @@ mod sensing {
     }
 
     pub fn scout<'a>(
-        location: hexgrid::Index,
+        location: Index,
         reference_culture: Culture,
-        patches: &'a HashMap<hexgrid::Index, Patch>,
-        cultures_by_location: &HashMap<hexgrid::Index, HashMap<Culture, usize>>,
+        patches: &'a HashMap<Index, Patch>,
+        cultures_by_location: &HashMap<Index, HashMap<Culture, usize>>,
         p: &Parameters,
-    ) -> Option<(hexgrid::Index, &'a Patch, usize, usize)> {
+    ) -> Option<(Index, &'a Patch, usize, usize)>
+    {
         let cultures = match cultures_by_location.get(&location) {
             None => return Some((location, patches.get(&location)?, 0, 0)),
             Some(c) => c,
@@ -815,7 +822,7 @@ mod sensing {
         let mut cooper: usize = 0;
         let mut compet: usize = 0;
         for (culture, count) in cultures {
-            if emergence::similar_culture(reference_culture, *culture, p) {
+            if emergence::similar_culture(reference_culture, *culture, p.cooperation_threshold) {
                 cooper += count;
             } else {
                 compet += count;
@@ -828,15 +835,15 @@ mod sensing {
     /// explicitly modelled.
 
     pub fn nearby_locations(
-        location: hexgrid::Index,
-    ) -> Vec<hexgrid::Index> {
+        location: Index,
+        p: &Parameters,
+    ) -> Vec<Index> {
         let mut rng = rand::thread_rng();
         let NORM = 60.*60.*8.; // 8 hours
         let neighbors = movementgraph::bounded_dijkstra(
             location,
             60.*60.*12.*10.,
-            movementgraph::edge_costs_from_db
-        )
+            p.dispersal_graph.edges)
             .iter()
             .filter(|&(_, v)| rng.gen::<f64>() < 1./(2. + v / NORM))
             .map(|(n, _)| *n)
@@ -846,12 +853,13 @@ mod sensing {
 
     pub fn observe_neighbors<'a>(
         family: &'a Family,
-        patches: &'a HashMap<hexgrid::Index, Patch>,
-        cultures_by_location: &HashMap<hexgrid::Index, HashMap<Culture, usize>>,
-        neighbors: &Vec<hexgrid::Index>,
+        patches: &'a HashMap<Index, Patch>,
+        cultures_by_location: &HashMap<Index, HashMap<Culture, usize>>,
+        neighbors: &Vec<Index>,
         p: &Parameters,
-    ) -> Vec<(hexgrid::Index, &'a Patch, usize, usize)> {
-        let mut result: Vec<(hexgrid::Index, &'a Patch, usize, usize)> = vec![];
+    ) -> Vec<(Index, &'a Patch, usize, usize)>
+    {
+        let mut result: Vec<(Index, &'a Patch, usize, usize)> = vec![];
         match scout(
             family.location,
             family.culture,
@@ -972,7 +980,8 @@ mod collectives {
     pub fn cooperatives<'a>(
         families_in_this_location: Vec<&'a mut Family>,
         p: &Parameters,
-    ) -> Option<(Vec<Cooperative<'a>>, f32)> {
+    ) -> Option<(Vec<Cooperative<'a>>, f32)>
+    {
         let mut groups: Vec<Cooperative> = vec![];
 
         for family in families_in_this_location {
@@ -980,7 +989,7 @@ mod collectives {
             for group in groups.iter_mut() {
                 let mut join = true;
                 for other_family in group.families.iter() {
-                    if !emergence::similar_culture(family.culture, other_family.culture, p) {
+                    if !emergence::similar_culture(family.culture, other_family.culture, p.cooperation_threshold) {
                         join = false;
                         break;
                     }
@@ -1037,7 +1046,7 @@ mod observation {
     sizes, for each spot in each time step.
     */
     pub fn print_population_by_location(
-        cultures_by_location: HashMap<hexgrid::Index, HashMap<Culture, usize>>,
+        cultures_by_location: HashMap<Index, HashMap<Culture, usize>>,
     ) {
         println!(
             "POPULATION: {:?}",
@@ -1058,7 +1067,7 @@ mod observation {
     computational effort and high autocorrelation of the outcomes, we collect
     this data only about once per generation, i.e. every 60 time steps.
     */
-    pub fn print_gd_cd(cultures_by_location: HashMap<hexgrid::Index, HashMap<Culture, usize>>) {
+    pub fn print_gd_cd(cultures_by_location: HashMap<Index, HashMap<Culture, usize>>) {
         let gd_cd: HashMap<i32, HashMap<u32, usize>> =
             emergence::cultural_distance_by_geographical_distance(&cultures_by_location, 5 * 5 * 2);
         println!("GD_CD: {:?}", gd_cd)
@@ -1080,14 +1089,17 @@ mod observation {
 > Are the initial values chosen arbitrarily or based on data? References to
 > those data should be provided.
 */
-fn initialization(precipitation: &Vec<u16>, width: usize, p: &Parameters) -> Option<State> {
+mod hexgrid;
+
+fn initialization(precipitation: &Vec<u16>, width: usize, p: &Parameters) -> Option<State>
+{
     let start1: hexgrid::Index = hexgrid::closest_grid_point(-159.873, 65.613)?;
     let start2: hexgrid::Index = hexgrid::closest_grid_point(-158.2718, 60.8071)?;
 
     let area: f32 = libh3::hex_area_km_2(5) as f32;
 
-    let mut patches: HashMap<hexgrid::Index, Option<Patch>> = HashMap::new();
-    let mut new_patches: std::collections::BinaryHeap<hexgrid::Index> =
+    let mut patches: HashMap<Index, Option<Patch>> = HashMap::new();
+    let mut new_patches: std::collections::BinaryHeap<Index> =
         std::collections::BinaryHeap::new();
     new_patches.push(start1);
     new_patches.push(start2);
@@ -1160,7 +1172,7 @@ fn initialization(precipitation: &Vec<u16>, width: usize, p: &Parameters) -> Opt
         seasons_till_next_mutation: None,
         stored_resources: 1_600_000.,
     };
-    // let families: HashMap<hexgrid::Index, Vec<Family>> = HashMap::new();
+    // let families: HashMap<Index, Vec<Family>> = HashMap::new();
     // families.insert(start1, vec![f1]);
     // families.insert(start2, vec![f2]);
     Some(State {
@@ -1196,25 +1208,26 @@ mod input {
 */
 mod submodels {
     pub mod culture {
-        use crate::{Culture, Family, Parameters};
+        use crate::{Culture, Family};
         use rand::prelude::*;
 
         pub fn distance(c1: Culture, c2: Culture) -> u32 {
             (c1 ^ c2).count_ones()
         }
 
-        pub fn mutate_culture(family: &mut Family, p: &Parameters) {
+        pub fn mutate_culture(family: &mut Family, culture_dimensionality: u8, culture_mutation_rate: f64)
+        {
             match family.seasons_till_next_mutation {
                 None => {
                     family.seasons_till_next_mutation =
-                        Some(random::<f64>().log(1. - p.culture_mutation_rate) as u32);
-                    mutate_culture(family, p);
+                        Some(random::<f64>().log(1. - culture_mutation_rate) as u32);
+                    mutate_culture(family, culture_dimensionality, culture_mutation_rate);
                 }
                 Some(0) => {
-                    let i: u8 = rand::thread_rng().gen_range(0, p.culture_dimensionality);
+                    let i: u8 = rand::thread_rng().gen_range(0, culture_dimensionality);
                     family.culture ^= 1 << i;
                     family.seasons_till_next_mutation =
-                        Some(random::<f64>().log(1. - p.culture_mutation_rate) as u32);
+                        Some(random::<f64>().log(1. - culture_mutation_rate) as u32);
                 }
                 Some(k) => {
                     family.seasons_till_next_mutation = Some(k - 1);
@@ -1222,9 +1235,10 @@ mod submodels {
             }
         }
 
-        pub fn adjust(mut cooperating_families: Vec<&mut Family>, p: &Parameters) {
+        pub fn adjust(mut cooperating_families: Vec<&mut Family>, culture_dimensionality: u8, culture_mutation_rate: f64)
+        {
             for f in &mut cooperating_families {
-                mutate_culture(f, p);
+                mutate_culture(f, culture_dimensionality, culture_mutation_rate);
             }
             let family: Option<&&mut Family> = cooperating_families.choose(&mut rand::thread_rng());
             match family {
@@ -1240,9 +1254,10 @@ mod submodels {
     }
 
     pub mod family_lifecycle {
-        use crate::{Family, KCal, Parameters};
+        use crate::{Family, KCal, Parameters, hexgrid};
 
-        pub fn resources_at_season_end(resources: KCal, size: usize, p: &Parameters) -> KCal {
+        pub fn resources_at_season_end(resources: KCal, size: usize, p: &Parameters) -> KCal
+        {
             let mut resources_after: KCal = resources - (size as f32) * p.time_step_energy_use;
             if resources_after > 0. {
                 resources_after *= 1. - p.storage_loss;
@@ -1283,7 +1298,8 @@ mod submodels {
             size: &mut usize,
             resources: &mut KCal,
             p: &Parameters,
-        ) -> bool {
+        ) -> bool
+        {
             let mut has_shrunk = false;
             while resources_at_season_end(*resources, *size, p) < 0. && *size > 0 {
                 *size -= 1;
@@ -1299,7 +1315,7 @@ mod submodels {
     }
 
     pub mod ecology {
-        use crate::{collectives, interaction, KCal, Parameters, Patch};
+        use crate::{collectives, interaction, KCal, Parameters, Patch, hexgrid};
 
         pub fn resources_from_patch(
             patch: &Patch,
@@ -1307,7 +1323,8 @@ mod submodels {
             others_labor: f32,
             _estimate: bool,
             p: &Parameters,
-        ) -> KCal {
+        ) -> KCal
+        {
             let my_relative_returns: f32 = p.time_step_energy_use
                 * labor
                 * interaction::effective_labor_through_cooperation(labor, p.cooperation_gain);
@@ -1351,7 +1368,8 @@ mod submodels {
             group: &mut collectives::Cooperative,
             total_labor_here: f32,
             p: &Parameters,
-        ) -> KCal {
+        ) -> KCal
+        {
             let labor: f32 = group.total_efficiency;
 
             assert!(labor > 0.);
@@ -1368,6 +1386,8 @@ mod submodels {
 
     pub mod parameters {
         use crate::KCal;
+        use std::collections::HashMap;
+        use crate::hexgrid;
 
         pub struct Parameters {
             pub attention_probability: f32,
@@ -1386,11 +1406,111 @@ mod submodels {
             pub boundary_east: f64,
             pub boundary_south: f64,
             pub boundary_north: f64,
+
+            pub dispersal_graph: petgraph::csr::Csr<(hexgrid::Index, f64, f64, HashMap<i32, f64>), f64, petgraph::Directed, usize>,
         }
     }
 }
 
-fn main() {
+fn main() -> Result<(), i8> {
+    let try_conn = rusqlite::Connection::open_with_flags(
+        "/home/gereon/Public/settlement-of-americas/supplement/distances/plot.sqlite",
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY);
+    let conn: rusqlite::Connection;
+    match try_conn {
+        Err(e) => {
+            return Err(1);
+        }
+        Ok(k) => {
+            conn = k;
+        }
+    }
+
+    let try_stmt = conn.prepare("SELECT hexbin1, hexbin2, distance FROM dist WHERE hexbin1 = ?");
+    let mut stmt: rusqlite::Statement;
+    match try_stmt {
+        Err(e) => {
+            return Err(2);
+        }
+        Ok(k) => {
+            stmt = k;
+        }
+    }
+
+    let from_db = |h: &Index| {
+        let result = match stmt.query_map(
+            rusqlite::params![*h as i64],
+            |row| Ok((row.get::<usize, i64>(1)? as u64, row.get::<usize, f64>(2)?))
+        ) {
+            Ok(k) => {
+                k.filter_map(Result::ok).collect()
+            }
+            Err(e) => {
+                vec![]
+            }
+        };
+        result
+    };
+
+    use crate::hexgrid;
+
+    let mut graph: petgraph::csr::Csr<
+            (Index, f64, f64, HashMap<_, _>),
+        f64,
+        petgraph::Directed,
+        usize> = petgraph::csr::Csr::new();
+
+        let mut nodes_stmt;
+        match conn.prepare("SELECT hexbin, vlongitude, vlatitude FROM hex") {
+            Err(e) => { return Err(3); }
+            Ok(k) => { nodes_stmt = k; }
+        }
+        let mut eco_stmt;
+        match conn.prepare("SELECT ecoregion, count FROM eco WHERE hexbin = ?") {
+            Err(e) => { return Err(3); }
+            Ok(k) => { eco_stmt = k; }
+        }
+        let mut dist_stmt;
+        match conn.prepare("SELECT distance FROM dist WHERE hexbin1 = ? AND hexbin2 = ? ORDER BY distance LIMIT 1") {
+            Err(e) => { return Err(3); }
+            Ok(k) => { dist_stmt = k; }
+        }
+
+        nodes_stmt.query_map(rusqlite::NO_PARAMS, |node| {
+            let hexbin: i32 = node.get(0)?;
+            let vlongitude: f64 = node.get(1)?;
+            let vlatitude: f64 = node.get(2)?;
+            let mut ecos: HashMap<_, _> = HashMap::new();
+            eco_stmt.query_map(rusqlite::params![hexbin], |eco| {
+                ecos.insert(eco.get(0)?, eco.get(1)?);
+                Ok(())
+            });
+            ecos.remove(&999);
+            if ecos.len() == 0 {
+                return Ok(())
+            }
+            graph.add_node((hexbin as hexgrid::Index, vlongitude, vlatitude, ecos));
+            Ok(())
+        });
+
+        for i in 0..graph.node_count() {
+            let hexbin1 = graph[i].0;
+            for j in 0..graph.node_count() {
+                if i == j {
+                    continue;
+                }
+                let hexbin2 = graph[j].0;
+                dist_stmt.query_map(
+                    rusqlite::params![hexbin1 as i32, hexbin2 as i32],
+                    |dist| {
+                        graph.add_edge(i, j, dist.get(0)?);
+                        Ok(())
+                    }
+                );
+            }
+        }
+
+
     let mut p = Parameters {
         attention_probability: 0.1,
         time_step_energy_use: 2263. as KCal * 365.242_2 / 2.,
@@ -1408,13 +1528,17 @@ fn main() {
         boundary_east: -34.535_395,
         boundary_south: -56.028_198,
         boundary_north: 74.52671,
+
+        dispersal_graph: graph,
     };
     let mut max_t: HalfYears = 20000;
     parse_args(&mut p, &mut max_t);
     run(p, max_t);
+    Ok(())
 }
 
-fn parse_args(p: &mut Parameters, max_t: &mut HalfYears) {
+fn parse_args(p: &mut Parameters, max_t: &mut HalfYears)
+{
     let mut parser = argparse::ArgumentParser::new();
     parser.set_description("Run a dispersal simulation");
     // TODO: Attach an ArgumentParser to the parameters object, so parameters can be set from the CLI.
@@ -1451,7 +1575,8 @@ fn parse_args(p: &mut Parameters, max_t: &mut HalfYears) {
     parser.parse_args_or_exit();
 }
 
-fn run(p: Parameters, max_t: HalfYears) -> Option<()> {
+fn run(p: Parameters, max_t: HalfYears) -> Option<()>
+{
     println!("# Initialization ...");
     // FIXME: There is something messed up in lat/long -> image pixels. It works
     // currently, but the names point out that I misunderstood something, eg.
