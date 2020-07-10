@@ -826,34 +826,22 @@ mod sensing {
 
     /// Individuals know about nearby locations. The exploration is not
     /// explicitly modelled.
-    use std::ops::Index;
 
     pub fn nearby_locations(
         location: hexgrid::Index,
     ) -> Vec<hexgrid::Index> {
         let mut rng = rand::thread_rng();
-        let patch_graph: petgraph::csr::Csr<
-                hexgrid::Index, f64, petgraph::Directed, usize
-                > = petgraph::csr::Csr::new();
-        let mapping: HashMap<hexgrid::Index, usize> = HashMap::new();
-        let NORM = 2.;
-        match mapping.get(&location) {
-            None => {
-                vec![]
-            }
-            Some(l) => {
-                movementgraph::bounded_dijkstra(
-                    &patch_graph,
-                    *l,
-                    100_000.,
-                    |w| *w.weight()
-                )
-                    .iter()
-                    .filter(|&(_, v)| rng.gen::<f64>() < 1./(2. + v / NORM))
-                    .map(|(n, _)| *patch_graph.index(*n))
-                    .collect()
-            }
-        }
+        let NORM = 60.*60.*8.; // 8 hours
+        let neighbors = movementgraph::bounded_dijkstra(
+            location,
+            60.*60.*12.*10.,
+            movementgraph::edge_costs_from_db
+        )
+            .iter()
+            .filter(|&(_, v)| rng.gen::<f64>() < 1./(2. + v / NORM))
+            .map(|(n, _)| *n)
+            .collect();
+        neighbors
     }
 
     pub fn observe_neighbors<'a>(

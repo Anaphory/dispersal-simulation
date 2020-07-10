@@ -7,13 +7,13 @@ use std::cmp::Ordering;
 use rusqlite::{params, Connection, Result, OpenFlags};
 use crate::hexgrid;
 
-fn edge_costs_from_db(h: &hexgrid::Index) -> Result<Vec<(hexgrid::Index, f64)>> {
+pub fn edge_costs_from_db(h: &hexgrid::Index) -> Result<Vec<(hexgrid::Index, f64)>> {
     let conn = Connection::open_with_flags(
         "/home/gereon/Public/settlement-of-americas/supplement/distances/plot.sqlite",
         OpenFlags::SQLITE_OPEN_READ_ONLY)?;
 
-    let stmt = conn.prepare("SELECT hexbin1, hexbin2, distance FROM dist WHERE hexbin1 = ?")?;
-    match stmt.query_map(
+    let mut stmt = conn.prepare("SELECT hexbin1, hexbin2, distance FROM dist WHERE hexbin1 = ?")?;
+    let result = match stmt.query_map(
         params![*h as i64],
         |row| Ok((row.get::<usize, i64>(1)? as u64, row.get::<usize, f64>(2)?))
     ) {
@@ -23,7 +23,8 @@ fn edge_costs_from_db(h: &hexgrid::Index) -> Result<Vec<(hexgrid::Index, f64)>> 
         Err(e) => {
             Err(e)
         }
-    }
+    };
+    result
 }
 
 // From petgraph
@@ -85,8 +86,8 @@ pub fn bounded_dijkstra<N, F, K>(
     edge_cost: F
 ) -> HashMap<N, K>
 where
-    N: Eq + Hash,
-    F: Fn(&N) -> &[(N, K)],
+    N: Eq + Hash + Copy,
+    F: Fn(&N) -> Result<Vec<(N, K)>>,
     K: Measure + Copy,
 {
     let mut visited: HashSet<N> = HashSet::new();
@@ -103,22 +104,22 @@ where
         if max_distance < node_score {
             break;
         }
-        for (next, cost) in edge_cost(&node) {
+        for (next, cost) in edge_cost(&node).unwrap_or(vec![]) {
             if visited.is_visited(&next) {
                 continue;
             }
-            let next_score = node_score + *cost;
-            match scores.entry(*next) {
+            let next_score = node_score + cost;
+            match scores.entry(next) {
                 Occupied(ent) => {
                     if next_score < *ent.get() {
                         *ent.into_mut() = next_score;
-                        visit_next.push(MinScored(next_score, *next));
+                        visit_next.push(MinScored(next_score, next));
                         //predecessor.insert(next.clone(), node.clone());
                     }
                 }
                 Vacant(ent) => {
                     ent.insert(next_score);
-                    visit_next.push(MinScored(next_score, *next));
+                    visit_next.push(MinScored(next_score, next));
                     //predecessor.insert(next.clone(), node.clone());
                 }
             }
