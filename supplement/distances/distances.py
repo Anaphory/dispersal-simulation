@@ -232,7 +232,7 @@ def run_on_one_tile(
                                 0, m_trafo.e, m_trafo.f - 500 * m_trafo.e)
     def rowcol(latlon):
         lat, lon = latlon
-        if lon > 0:
+        if lon > 170:
             # FIXME: We can and need to do this because we are working on the
             # Americas and the Americas only. The generic solution is more
             # difficult.
@@ -279,28 +279,32 @@ def run_on_one_tile(
             if hexbin in partial:
                 print("Not competely in this tile.")
                 continue
-            if hexbin not in starts:
-                lat, lon = h3.h3_to_geo(hexbin)
-                engine.execute(
-                    hex.update().where(
-                        (hex.c.hexbin == hexbin) &
-                        (hex.c.vlatitude == None)
-                    ).values({
-                        "vlatitude": lat,
-                        "vlongitude": lon}))
-                center[hexbin] = rowcol((lat, lon))
-                print("Uninhabited.")
+            result = engine.execute(sqlalchemy.select([
+                hex.c.habitable, hex.c.vlongitude, hex.c.vlatitude,
+                hex.c.longitude, hex.c.latitude]
+            ).where(
+                hex.c.hexbin == hexbin
+            )).fetchone()
+            if not result:
+                print("Middle of nowhere.")
+                center[hexbin] = rowcol(h3.h3_to_geo(hexbin))
                 continue
-            if engine.execute(sqlalchemy.select([hex.c.vlongitude]).where(hex.c.hexbin == hexbin)).scalar:
-                lat, lon = engine.execute(sqlalchemy.select(
-                    [hex.c.vlatitude, hex.c.vlongitude]).where(hex.c.hexbin == hexbin)).fetchone()
-                center[hexbin] = rowcol((lat, lon))
+            h, vlon, vlat, lon, lat = result
+            if vlon and vlat:
                 print("Known in DB.")
+                center[hexbin] = rowcol((vlat, vlon))
                 continue
+            if lon and lat and not h:
+                print("Uninhabitable.")
+                center[hexbin] = rowcol((lat, lon))
+                continue
+            print("Computing centralities…")
             rmin = min(p[0] for p in points)
             rmax = max(p[0] for p in points)
             cmin = min(p[1] for p in points)
             cmax = max(p[1] for p in points)
+            assert rmin >= 0
+            assert cmin >= 0
 
             dist = {(n, e): d[rmin-min(n, 0):rmax + 1 - max(0, n),
                               cmin-min(e, 0):cmax + 1 - max(0, e)]
@@ -313,16 +317,19 @@ def run_on_one_tile(
                       or (i, j + 1) not in points]
 
             c = t.Counter()
+            max_dist = 0
             for r0, c0 in border:
                 pred = {(r0, c0): None}
-                distances_from_focus((r0, c0), set(border), dist, pred=pred)
+                all_dist = distances_from_focus((r0, c0), set(border), dist, pred=pred)
                 for b1 in border:
                     n = b1
                     while pred[n]:
                         n = pred[n]
                         c[n] += 1
+                max_dist = max(max_dist, all_dist.max())
             (r0, c0), centrality = c.most_common(1)[0]
-            print(hexbin, r0, c0, centrality)
+            center[hexbin] = (r0 + rmin, c0 + cmin)
+            print(hexbin, center[hexbin], centrality)
             lon, lat = transform * (c0 + cmin, r0 + rmin)
             rlat, rlon = h3.h3_to_geo(hexbin)
             print(f"Centalic node at ({lon}, {lat}). [Actual center at ({rlon}, {rlat}).]")
@@ -332,11 +339,19 @@ def run_on_one_tile(
                 ).values({
                     "vlatitude": lat,
                     "vlongitude": lon}))
+            db.execute(t_dist.insert({
+                "hexbin1": hexbin,
+                "hexbin2": hexbin,
+                "flat_distance": 0.0,
+                "distance": max_dist,
+                "source": 4}))
 
     failed: t.Set[ArrayIndex] = set()
     finished: t.Set[ArrayIndex] = set()
     while starts:
         start = starts.pop(0)
+        if start not in center:
+            breakpoint()
         print(f"Computing area around {start:}…")
         this, neighbors1, neighbors2, neighbors3 = list(h3.k_ring_distances(start, 3))
         neighbors: t.Set[h3.H3Index] = neighbors1 | neighbors2
@@ -359,10 +374,12 @@ def run_on_one_tile(
         rmax = max(p[0] for p in points)
         cmin = min(p[1] for p in points)
         cmax = max(p[1] for p in points)
+        assert rmin >= 0
+        assert cmin >= 0
 
         def rel_rowcol(latlon):
             lat, lon = latlon
-            if lon > 0:
+            if lon > 170:
                 lon = lon - 360
             col, row = ~transform * (lon, lat)
             return int(row) - rmin, int(col) - cmin
@@ -583,13 +600,21 @@ if __name__ == '__main__':
     if engine.execute(sqlalchemy.select([func.count(t_hex.c.habitable)]).where(t_hex.c.habitable)).scalar() < 100:
         analyze_all_hexes()
         engine.execute(
-            t_hex.update().values({'habitable': True}).where(t_hex.c.hexbin.in_(
-                sqlalchemy.select([t_eco.c.hexbin]).where(t_eco.c.ecoregion != 999))))
+            t_hex.update().values(
+                {'habitable': True, 'vlatitude': None, 'vlongitude': None}
+            ).where(
+                t_hex.c.hexbin.in_(
+                    sqlalchemy.select([t_eco.c.hexbin]
+                    ).where(
+                        t_eco.c.ecoregion != 999))))
 
-    for lon in range(-175, 175, 30):
-        for lat in range(-80, 80, 20):
-            try:
-                run_on_one_tile(lon, lat, engine, t_hex, t_dist)
-            except rasterio.RasterioIOError:
-                continue
+    tiles = [(lon, lat)
+             for lon in range(165, -195, -30)
+             for lat in range(-60, 90, 20)]
+    tiles.sort(key=lambda _: numpy.random.random())
+    for lon, lat in tiles:
+        try:
+            run_on_one_tile(lon, lat, engine, t_hex, t_dist)
+        except rasterio.RasterioIOError:
+            continue
     plot_distances(engine, t_dist)

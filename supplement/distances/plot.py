@@ -44,7 +44,7 @@ def plot_sampled(engine: sqlalchemy.engine.Connectable, t_hex: sqlalchemy.Table)
     s = numpy.array(s)
     h = numpy.array(h)
     plt.scatter(
-        x, y, marker='o', s=s/3600, alpha=0.4, c='r')
+        x, y, marker='o', s=s/3600, alpha=0.3, c='r')
     er = ecoregion_tile_from_geocoordinates(-165, 60).read(1)
     plt.imshow(-TC[er], extent=(-180, -150, 50, 70))
 
@@ -56,9 +56,9 @@ if __name__ == '__main__':
     t_hex = tables["hex"]
     t_dist = tables["dist"]
     t_eco = tables["eco"]
-    # plot_distances(engine, t_dist)
-    # plt.show()
-    # plot_sampled(engine, t_hex)
-    # plt.show()
+    plot_distances(engine, t_dist)
+    plt.show()
+    plot_sampled(engine, t_hex)
+    plt.show()
     plot_locations(engine, t_hex)
     plt.show()
