@@ -952,7 +952,7 @@ for (j in 1:nrow(data)) {
       cost = 0.5,
       epsilon = 0.1
     )
-  preds.svm[j] <- predict(svm.l, newdata = test.iter)
+  preds.svm[j] <- predict(svm.l, newdata = test.iter)[1]
   preds.svm
 }
 
@@ -1422,9 +1422,11 @@ setwd(wd)
 worldRaster <- nppRast
 worldRaster[!is.na(worldRaster)] <- 0
 # and rasterize
-ecozonRast <- rasterize(ecozon, worldRaster, field="OBJECTID")
+ecozonRast <- rasterize(ecozon, worldRaster)
+
 summary(ecozonRast)
 ```
+
 
 ```{r}
 # Scale absolute differences so that they sum to unity
@@ -1457,41 +1459,82 @@ crs(effects.unity.bio.rast) <- "+proj=longlat +datum=WGS84"
 crs(effects.unity.pat.rast) <- "+proj=longlat +datum=WGS84"
 ecozStack <-
   stack(
-    ecozonRast,
     lpdensity,
     effects.unity.npp.rast,
     effects.unity.bio.rast,
-    effects.unity.pat.rast
+    effects.unity.pat.rast,
+    ecozonRast
   )
 # Make a data frame.
 ecozData <- as.data.frame(ecozStack, xy = T)
-```
-```{r}
-names(ecozData) <- c("x", "y", "zcode", "ldensity", "nppEffectL", "bioEffectL", "patEffectL")
-ecozData$zone = ecozon$BIOME_NAME[ecozData$zcode]
-ecozData$name = ecozon$ECO_NAME[ecozData$zcode]
-ecozData$id = ecozon$ECO_ID[ecozData$zcode]
-ecozData$zone[ecozData$zcode==11] <- "Tundra"
-
-ecozData$zcode[ecozData$zone=="Tundra"] <- 1
-ecozData$zcode[ecozData$zone=="Boreal Forests/Taiga"] <- 2
-ecozData$zcode[ecozData$zone=="Montane Grasslands & Shrublands"] <- 3
-ecozData$zcode[ecozData$zone=="Temperate Conifer Forests"] <- 4
-ecozData$zcode[ecozData$zone=="Temperate Broadleaf & Mixed Forests"] <- 5
-ecozData$zcode[ecozData$zone=="Temperate Grasslands, Savannas & Shrublands"] <- 6
-ecozData$zcode[ecozData$zone=="Mediterranean Forests, Woodlands & Scrub"] <- 7
-ecozData$zcode[ecozData$zone=="Deserts & Xeric Shrublands"] <- 8
-ecozData$zcode[ecozData$zone=="Tropical & Subtropical Grasslands, Savannas & Shrublands"] <- 9
-ecozData$zcode[ecozData$zone=="Flooded Grasslands & Savannas"] <- 10
-ecozData$zcode[ecozData$zone=="Mangroves"] <- 11
-ecozData$zcode[ecozData$zone=="Tropical & Subtropical Moist Broadleaf Forests"] <- 12
-ecozData$zcode[ecozData$zone=="Tropical & Subtropical Dry Broadleaf Forests"] <- 13
-ecozData$zcode[ecozData$zone=="Tropical & Subtropical Coniferous Forests"] <- 14
-
 # Remove NA:s
 ecozData <- ecozData[complete.cases(ecozData),]
+```
+```{r}
+names(ecozData)[1:6] <- c("x", "y", "ldensity", "nppEffectL", "bioEffectL", "patEffectL")
+
+ecozData$zcode <- NA
+ecozData$zcode[ecozData$layer_BIOME_NAME=="Tundra"] <- 1
+ecozData$zcode[ecozData$layer_BIOME_NAME=="Boreal Forests/Taiga"] <- 2
+ecozData$zcode[ecozData$layer_BIOME_NAME=="Montane Grasslands & Shrublands"] <- 3
+ecozData$zcode[ecozData$layer_BIOME_NAME=="Temperate Conifer Forests"] <- 4
+ecozData$zcode[ecozData$layer_BIOME_NAME=="Temperate Broadleaf & Mixed Forests"] <- 5
+ecozData$zcode[ecozData$layer_BIOME_NAME=="Temperate Grasslands, Savannas & Shrublands"] <- 6
+ecozData$zcode[ecozData$layer_BIOME_NAME=="Mediterranean Forests, Woodlands & Scrub"] <- 7
+ecozData$zcode[ecozData$layer_BIOME_NAME=="Deserts & Xeric Shrublands"] <- 8
+ecozData$zcode[ecozData$layer_BIOME_NAME=="Tropical & Subtropical Grasslands, Savannas & Shrublands"] <- 9
+ecozData$zcode[ecozData$layer_BIOME_NAME=="Flooded Grasslands & Savannas"] <- 10
+ecozData$zcode[ecozData$layer_BIOME_NAME=="Mangroves"] <- 11
+ecozData$zcode[ecozData$layer_BIOME_NAME=="Tropical & Subtropical Moist Broadleaf Forests"] <- 12
+ecozData$zcode[ecozData$layer_BIOME_NAME=="Tropical & Subtropical Dry Broadleaf Forests"] <- 13
+ecozData$zcode[ecozData$layer_BIOME_NAME=="Tropical & Subtropical Coniferous Forests"] <- 14
+
 # Add new variable to use in the plotting (for ordering the zones)
 ecozData$zcode <- as.factor(ecozData$zcode)
+```
+
+```{r}
+# Calculate mean and max population densities per ecoregion
+means_by_ecoregion <- aggregate(ldensity ~ layer_OBJECTID, ecozData, mean)
+row.names(means_by_ecoregion) <- unique(ecozData$layer_ECO_NAME[order(ecozData$layer_OBJECTID)])
+# Mean population density
+write.csv(means_by_ecoregion, "ecoregion_mean_log_pop_density.csv")
+means_by_ecoregion[order(means_by_ecoregion$ldensity, decreasing=TRUE),]
+```
+
+```{r}
+steps = 12
+
+# Define breaks in the ln(population density)
+t.steps <- 0:steps
+x.min <- cellStats(ecozonRast, stat = "min")
+step.len <-
+  (cellStats(ecozonRast, stat = "max") - cellStats(ecozonRast, stat = "min")) /
+  steps
+breaks <- vector()
+
+for (i in 1:length(t.steps)) {
+  breaks[i] <- x.min + t.steps[i] * step.len
+  return = breaks
+}
+
+# Define colors
+col <- viridis(steps)
+
+# Finally, the global map itself
+par(mar = c(0, 0, 0, 0))
+
+image(
+  ecozonRast,
+  col = col,
+  breaks = breaks,
+  asp = 1,
+  main = "",
+  xlab = "",
+  ylab = "",
+  axes = F,
+  xlim = c(-180, 180)
+)
 ```
 
 ```{r}
@@ -1527,21 +1570,6 @@ row.names(meansPATEF) <- unique(ecozData$zone[order(ecozData$zcode)])
 meansPATEF[order(meansPATEF$patEffectL, decreasing=TRUE),]
 ```
 ```{r}
-ecozData$zcode[ecozData$zone=="Tundra"] <- 1
-ecozData$zcode[ecozData$zone=="Boreal Forests/Taiga"] <- 2
-ecozData$zcode[ecozData$zone=="Montane Grasslands & Shrublands"] <- 3
-ecozData$zcode[ecozData$zone=="Temperate Conifer Forests"] <- 4
-ecozData$zcode[ecozData$zone=="Temperate Broadleaf & Mixed Forests"] <- 5
-ecozData$zcode[ecozData$zone=="Temperate Grasslands, Savannas & Shrublands"] <- 6
-ecozData$zcode[ecozData$zone=="Mediterranean Forests, Woodlands & Scrub"] <- 7
-ecozData$zcode[ecozData$zone=="Deserts & Xeric Shrublands"] <- 8
-ecozData$zcode[ecozData$zone=="Tropical & Subtropical Grasslands, Savannas & Shrublands"] <- 9
-ecozData$zcode[ecozData$zone=="Flooded Grasslands & Savannas"] <- 10
-ecozData$zcode[ecozData$zone=="Mangroves"] <- 11
-ecozData$zcode[ecozData$zone=="Tropical & Subtropical Moist Broadleaf Forests"] <- 12
-ecozData$zcode[ecozData$zone=="Tropical & Subtropical Dry Broadleaf Forests"] <- 13
-ecozData$zcode[ecozData$zone=="Tropical & Subtropical Coniferous Forests"] <- 14
-
 # Make a box-plot (see above tables for eco zone codes (zcode))
 cols=c(
   "snow3",
@@ -1556,7 +1584,8 @@ par(mar=c(2,3,2,0))
 boxplot(nppEffectL~zcode, data=ecozData, range=0,boxwex=0.5, col=cols,boxlty=0,
 ylim=c(0,1),medcol="black", whisklty=1,whiskcol=cols,staplecol=cols,
 medlwd=0.7, yaxt="n")
-points(1:14, meansNPPEF$nppEffectL, col = "black", pch=19, cex=0.30)
+k = length(meansNPPEF$nppEffectL)
+points(1:k, meansNPPEF$nppEffectL, col = "black", pch=19, cex=0.30)
 axis(side=2, at=c(0,0.2,0.4,0.6,0.8,1), las=2, tck=-0.03)
 abline(h=0.5)
 mtext(side=3, "Limiting effect of NPP")
@@ -1565,7 +1594,7 @@ par(mar=c(2,0,2,3))
 boxplot(bioEffectL~zcode, data=ecozData, range=0,boxwex=0.5, col=cols,boxlty=0,
 ylim=c(0,1), medcol="black", whisklty=1,whiskcol=cols,staplecol=cols,
 medlwd=0.7, yaxt="n")
-points(1:14, meansBIOEF$bioEffectL, col = "black", pch=19, cex=0.30)
+points(1:k, meansBIOEF$bioEffectL, col = "black", pch=19, cex=0.30)
 axis(side=4, at=c(0,0.2,0.4,0.6,0.8,1), las=2, tck=-0.03)
 mtext(side=3, "Limiting effect of biodiversity")
 abline(h=0.5)
@@ -1574,7 +1603,7 @@ par(mar=c(2,3,2,0))
 boxplot(patEffectL~zcode, data=ecozData, range=0,boxwex=0.5, col=cols,boxlty=0,
 ylim=c(0,1), medcol="black", whisklty=1,whiskcol=cols,staplecol=cols,
 medlwd=0.7, yaxt="n")
-points(1:14, meansPATEF$patEffectL, col = "black", pch=19, cex=0.30)
+points(1:k, meansPATEF$patEffectL, col = "black", pch=19, cex=0.30)
 axis(side=2, at=c(0,0.2,0.4,0.6,0.8,1), las=2, tck=-0.03)
 mtext(side=3, "Limiting effect of pathogens")
 abline(h=0.5)
@@ -1582,7 +1611,7 @@ par(fig=c(0.505,0.925,0.02,0.47), new=T)
 par(mar=c(2,0,2,3))
 boxplot(ldensity~zcode, data=ecozData, range=0,boxwex=0.5, col=cols,boxlty=0,
 medcol="black", whisklty=1,whiskcol=cols,staplecol=cols,medlwd=0.7, yaxt="n")
-points(1:14, means$ldensity, col = "black", pch=19, cex=0.30)
+points(1:k, means$ldensity, col = "black", pch=19, cex=0.30)
 axis(side=4, at=c(-2,-1,0,1,2,3,4), las=2, tck=-0.03)
 mtext(side=3, "ln(Population density)")
 ```

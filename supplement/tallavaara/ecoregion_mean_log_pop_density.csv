@@ -1,793 +1,793 @@
-"","name","ldensity"
-"1","Admiralty Islands lowland rain forests",4.0974917821114
-"2","Aegean and Western Turkey sclerophyllous and mixed forests",2.13331596527082
-"3","Afghan Mountains semi-desert",1.30248547521061
-"4","Ahklun and Kilbuck Upland Tundra",0.977186366941075
-"5","Al-Hajar foothill xeric woodlands and shrublands",0.777874727210317
-"6","Al-Hajar montane woodlands and shrublands",0.759580174873787
-"7","Alai-Western Tian Shan steppe",1.6117677865496
-"8","Alashan Plateau semi-desert",0.463267443958331
-"9","Alaska Peninsula montane taiga",1.71320577037012
-"10","Alaska-St. Elias Range tundra",0.633686524205738
-"11","Albany thickets",2.94960430827254
-"12","Alberta-British Columbia foothills forests",1.86421750985489
-"13","Albertine Rift montane forests",1.47304249952389
-"14","Aldabra Island xeric scrub",1.08302391180798
-"15","Aleutian Islands tundra",1.84050212615075
-"16","Allegheny Highlands forests",3.14616602870839
-"17","Alps conifer and mixed forests",2.46642781775555
-"18","Altai alpine meadow and tundra",1.71548985598458
-"19","Altai montane forest and forest steppe",1.4546657063152
-"20","Altai steppe and semi-desert",1.94369241997949
-"21","Alto Paraná Atlantic forests",2.96638767513126
-"22","Amazon-Orinoco-Southern Caribbean mangroves",2.95309228707746
-"23","Amur meadow steppe",1.91768844789713
-"24","Anatolian conifer and deciduous mixed forests",2.1610548492277
-"25","Andaman Islands rain forests",2.74517811949172
-"26","Angolan montane forest-grassland",1.89044088368986
-"27","Angolan mopane woodlands",1.94002555730349
-"28","Angolan scarp savanna and woodlands",1.59672727070173
-"29","Angolan wet miombo woodlands",1.55318109302441
-"30","Appalachian mixed mesophytic forests",3.52347164518471
-"31","Appalachian Piedmont forests",3.39146333337869
-"32","Appalachian-Blue Ridge forests",3.46165336032365
-"33","Appenine deciduous montane forests",2.12768380183466
-"34","Apure-Villavicencio dry forests",2.70759930310593
-"35","Arabian desert",2.35387728613581
-"36","Arabian sand desert",0.424074035570131
-"37","Arabian-Persian Gulf coastal plain desert",2.3168102997738
-"38","Araucaria moist forests",2.91306273146247
-"39","Aravalli west thorn scrub forests",2.44337357151188
-"40","Araya and Paria xeric scrub",2.95907106025888
-"41","Arctic coastal tundra",-0.416250895572695
-"42","Arctic foothills tundra",-0.324673473197806
-"43","Arizona Mountains forests",2.28282758196664
-"44","Arnhem Land tropical savanna",3.01581550533565
-"45","Atacama desert",0.23848318791909
-"46","Atlantic Coast restingas",2.7889888881731
-"47","Atlantic coastal pine barrens",3.87323238446442
-"48","Australian Alps montane grasslands",3.10412953812163
-"49","Azerbaijan shrub desert and steppe",2.06903492885911
-"50","Azores temperate mixed forests",2.01095505938591
-"51","Badghyz and Karabil semi-desert",1.36647861006464
-"52","Bahamian pineyards",0.226082963697568
-"53","Bahamian-Antillean mangroves",2.53265332466742
-"54","Bahia coastal forests",2.96831159345687
-"55","Bahia interior forests",2.78358964546481
-"56","Baja California desert",0.811593287213633
-"57","Bajío dry forests",2.73736464555287
-"58","Balkan mixed forests",2.00917525364037
-"59","Balsas dry forests",2.63025514369536
-"60","Baltic mixed forests",2.26086191368584
-"61","Baluchistan xeric woodlands",1.25976866468217
-"62","Banda Sea Islands moist deciduous forests",3.36167042980405
-"63","Belizian pine savannas",2.71591893898117
-"64","Beni savanna",3.49165945390704
-"65","Beringia lowland tundra",1.01465370074617
-"66","Beringia upland tundra",0.326457896489572
-"67","Biak-Numfoor rain forests",4.2150743753271
-"68","Blue Mountains forests",2.52163101562382
-"69","Bohai Sea saline meadow",1.45675495681477
-"70","Bolivian montane dry forests",2.5959591173798
-"71","Bolivian Yungas",3.69126178064036
-"72","Borneo lowland rain forests",2.51607108095098
-"73","Borneo peat swamp forests",2.80020374724826
-"74","Brahmaputra Valley semi-evergreen forests",2.35965923150067
-"75","Brazilian Atlantic dry forests",2.12900002259769
-"76","Brigalow tropical savanna",0.578821318460697
-"77","British Columbia coastal conifer forests",2.56525980653705
-"78","Brooks-British Range tundra",2.69419026108462
-"79","Buru rain forests",-0.287086734179644
-"80","Caatinga",2.90179776960045
-"81","Caatinga Enclaves moist forests",2.67612682978226
-"82","Caledon conifer forests",2.55248957277183
-"83","California Central Valley grasslands",2.3386809590726
-"84","California coastal sage and chaparral",1.9884497258094
-"85","California interior chaparral and woodlands",1.92474059543653
-"86","California montane chaparral and woodlands",2.92209002456434
-"87","Cameroon Highlands forests",2.41399338782549
-"88","Campos Rupestres montane savanna",-0.0201136004399705
-"89","Canadian Aspen forests and parklands",2.56566955280364
-"90","Canadian High Arctic tundra",4.21950274892264
-"91","Canadian Low Arctic tundra",2.1333310983066
-"92","Canadian Middle Arctic Tundra",1.80259606933864
-"93","Canary Islands dry woodlands and forests",-0.460116747381652
-"94","Cantabrian mixed forests",0.472555074132789
-"95","Canterbury-Otago tussock grasslands",2.80777521615694
-"96","Cape Verde Islands dry forests",2.5225830487383
-"97","Cape York Peninsula tropical savanna",0.566521564058258
-"98","Caqueta moist forests",3.34053202865537
-"99","Cardamom Mountains rain forests",2.51653114137904
-"100","Caribbean shrublands",1.79810499746683
-"101","Carnarvon xeric shrublands",2.16781252622051
-"102","Carolines tropical moist forests",1.03758617843162
-"103","Carpathian montane forests",3.98194780349969
-"104","Carpentaria tropical savanna",2.21832106562331
-"105","Caspian Hyrcanian mixed forests",2.35232661638639
-"106","Caspian lowland desert",2.2624539673653
-"107","Catatumbo moist forests",1.00422146384796
-"108","Cauca Valley dry forests",2.83475980340475
-"109","Cauca Valley montane forests",2.78885833196344
-"110","Caucasus mixed forests",2.81075698613224
-"111","Cayos Miskitos-San Andrés and Providencia moist forests",2.5358515540056
-"112","Central Afghan Mountains xeric woodlands",2.52791891576037
-"113","Central African mangroves",1.09935829945159
-"114","Central American Atlantic moist forests",-0.75501333355935
-"115","Central American dry forests",2.83417087977336
-"116","Central American montane forests",2.64714725908777
-"117","Central American pine-oak forests",2.83330738464298
-"118","Central Anatolian steppe",2.77661200056905
-"119","Central Anatolian steppe and woodlands",1.78223076008855
-"120","Central Andean dry puna",2.71150295723863
-"121","Central Andean puna",0.995947415823361
-"122","Central Andean wet puna",1.68040671224525
-"123","Central Asian northern desert",2.61204580625724
-"124","Central Asian riparian woodlands",0.887190712687629
-"125","Central Asian southern desert",0.996414459754437
-"126","Central British Columbia Mountain forests",0.837547681341407
-"127","Central bushveld",1.8589780409135
-"128","Central Canadian Shield forests",2.58130324703487
-"129","Central China Loess Plateau mixed forests",1.55892034992629
-"130","Central Congolian lowland forests",1.6263965527289
-"131","Central Deccan Plateau dry deciduous forests",0.230600513408591
-"132","Central European mixed forests",0.886799521223265
-"133","Central Indochina dry forests",3.550187927864
-"134","Central Korean deciduous forests",1.61660721134032
-"135","Central Mexican matorral",1.6920615104426
-"136","Central Pacific Northwest coastal forests",2.18269281327495
-"137","Central Persian desert basins",3.71613379296748
-"138","Central Polynesian tropical moist forests",0.989319566583888
-"139","Central Ranges xeric scrub",4.36378031431573
-"140","Central South Antarctic Peninsula tundra",1.12100454943435
-"141","Central Tibetan Plateau alpine steppe",3.32096313919286
-"142","Central US forest-grasslands transition",2.22833654521916
-"143","Central Zambezian wet miombo woodlands",0.826303795304645
-"144","Central-Southern Cascades Forests",1.89633812988609
-"145","Central-Southern US mixed grasslands",3.53104022389716
-"146","Cerrado",1.85571194148295
-"147","Changbai Mountains mixed forests",2.99098794918493
-"148","Changjiang Plain evergreen forests",2.02105529765223
-"149","Chao Phraya freshwater swamp forests",1.0856109607183
-"150","Chao Phraya lowland moist deciduous forests",1.93668370741723
-"151","Chatham Island temperate forests",2.23920290887509
-"152","Chhota-Nagpur dry deciduous forests",-0.015943618726542
-"153","Chiapas Depression dry forests",0.679399978480928
-"154","Chiapas montane forests",2.60207053382866
-"155","Chihuahuan desert",2.45026587921876
-"156","Chilean Matorral",1.74358397851211
-"157","Chimalapas montane forests",1.44533707162547
-"158","Chin Hills-Arakan Yoma montane forests",2.86499943958747
-"159","Chiquitano dry forests",1.30626124431965
-"160","Chocó-Darién moist forests",3.37895440519521
-"161","Christmas and Cocos Islands tropical forests",1.96157274748097
-"162","Clipperton Island shrub and grasslands",-0.226029948351825
-"163","Colorado Rockies forests",1.67835831090549
-"164","Comoros forests",2.38558024056
-"165","Congolian coastal forests",0.0750922889069491
-"166","Cook Inlet taiga",0.612106946218661
-"167","Cook Islands tropical moist forests",1.54534974024188
-"168","Coolgardie woodlands",3.92816144889075
-"169","Copper Plateau taiga",1.28993835672988
-"170","Cordillera Central páramo",0.799607956972179
-"171","Cordillera de Merida páramo",2.91979538015191
-"172","Cordillera La Costa montane forests",4.45182157562063
-"173","Cordillera Oriental montane forests",3.14329871510459
-"174","Corsican montane broadleaf and mixed forests",3.11460147696
-"175","Costa Rican seasonal moist forests",2.1206657144502
-"176","Crete Mediterranean forests",2.38221717076262
-"177","Crimean Submediterranean forest complex",1.65709588522591
-"178","Cross-Niger transition forests",2.51853417753028
-"179","Cross-Sanaga-Bioko coastal forests",-0.679891888578604
-"180","Cross-Timbers savanna-woodland",-0.684812199235456
-"181","Cuban cactus scrub",2.99006844776448
-"182","Cuban dry forests",2.6095354931862
-"183","Cuban moist forests",2.59224388323921
-"184","Cuban pine forests",2.63781391518964
-"185","Cuban wetlands",2.62417320317419
-"186","Cyprus Mediterranean forests",2.51046372061792
-"187","Da Hinggan-Dzhagdy Mountains conifer forests",1.92052163388829
-"188","Daba Mountains evergreen forests",1.42695959857252
-"189","Daurian forest steppe",1.65596781802998
-"190","Davis Highlands tundra",1.49534243095636
-"191","Deccan thorn scrub forests",-0.81310923982328
-"192","Dinaric Mountains mixed forests",1.21385724353966
-"193","Djibouti xeric shrublands",2.24015502805001
-"194","Drakensberg Escarpment savanna and thicket",1.67200759885862
-"195","Drakensberg grasslands",2.77220300724164
-"196","Dronning Maud Land tundra",1.09173690242668
-"197","Dry Chaco",-0.896175998479235
-"198","Dry miombo woodlands",2.11011336457414
-"199","East Afghan montane conifer forests",2.45759638305879
-"200","East African halophytics",1.4925333169149
-"201","East African mangroves",2.80179348870772
-"202","East African montane forests",2.03442086986203
-"203","East African montane moorlands",2.75830370869552
-"204","East Antarctic tundra",2.02036703422543
-"205","East Arabian fog shrublands and sand desert",1.79970477286432
-"206","East Deccan dry-evergreen forests",0.628690551842464
-"207","East Deccan moist deciduous forests",0.594664645324998
-"208","East European forest steppe",3.03364201593725
-"209","East Sahara Desert",0.990575776775266
-"210","East Saharan montane xeric woodlands",2.30727879315368
-"211","East Siberian taiga",-0.128969809227929
-"212","East Sudanian savanna",0.910609494842811
-"213","Eastern Anatolian deciduous forests",0.666715629874607
-"214","Eastern Anatolian montane steppe",1.00371747211397
-"215","Eastern Arc forests",2.59516415454447
-"216","Eastern Australia mulga shrublands",1.9330225366924
-"217","Eastern Australian temperate forests",2.01853839409043
-"218","Eastern Canadian Forest-Boreal transition",2.76336907871697
-"219","Eastern Canadian forests",2.1976955502959
-"220","Eastern Canadian Shield taiga",1.59056145548101
-"221","Eastern Cascades forests",3.3767937199073
-"222","Eastern Congolian swamp forests",1.45406702972242
-"223","Eastern Cordillera Real montane forests",0.481407922553437
-"224","Eastern Gobi desert steppe",0.25757602010663
-"225","Eastern Great Lakes lowland forests",2.33200405378823
-"226","Eastern Guinean forests",2.32091820009041
-"227","Eastern Himalayan alpine shrub and meadows",3.13743115576298
-"228","Eastern Himalayan broadleaf forests",0.379226161025389
-"229","Eastern Himalayan subalpine conifer forests",0.701791238332607
-"230","Eastern Java-Bali montane rain forests",2.05348134496644
-"231","Eastern Java-Bali rain forests",1.43432454034911
-"232","Eastern Mediterranean conifer-broadleaf forests",2.21959009724472
-"233","Eastern Micronesia tropical moist forests",1.47266834390884
-"234","Eastern Panamanian montane forests",1.56196011380785
-"235","Ecuadorian dry forests",1.69691566329756
-"236","Einasleigh upland savanna",2.34028327842878
-"237","Elburz Range forest steppe",2.31591487830433
-"238","Ellsworth Land tundra",2.29124520816482
-"239","Ellsworth Mountains tundra",2.75415949437129
-"240","Emin Valley steppe",1.99569474539137
-"241","Enriquillo wetlands",1.57247160538003
-"242","Esperance mallee",2.26104841353324
-"243","Espinal",2.55100634837897
-"244","Ethiopian montane forests",1.44408973373155
-"245","Ethiopian montane grasslands and woodlands",1.75771804082622
-"246","Ethiopian montane moorlands",2.29638320851572
-"247","Etosha Pan halophytics",1.13648489088832
-"248","European Atlantic mixed forests",2.41772719851727
-"249","Euxine-Colchic broadleaf forests",1.53740646422511
-"250","Everglades flooded grasslands",1.49019870518834
-"251","Eyre and York mallee",2.20176921009748
-"252","Faroe Islands boreal grasslands",2.28155214429499
-"253","Fernando de Noronha-Atol das Rocas moist forests",2.85302403565246
-"254","Fiji tropical dry forests",1.71411435851463
-"255","Fiji tropical moist forests",2.06799939768415
-"256","Flinders-Lofty montane woodlands",3.31598845365444
-"257","Flint Hills tallgrass prairie",3.44954705702171
-"258","Fraser Plateau and Basin conifer forests",2.4059916823668
-"259","Fynbos shrubland",1.52120604764426
-"260","Galápagos Islands xeric scrub",3.33409014623309
-"261","Gariep Karoo",2.11401295315825
-"262","Ghorat-Hazarajat alpine meadow",3.29663604307171
-"263","Gibson desert",1.63509389519312
-"264","Gissaro-Alai open woodlands",1.38870035405295
-"265","Gobi Lakes Valley desert steppe",0.728158449390612
-"266","Godavari-Krishna mangroves",1.11544449722041
-"267","Granitic Seychelles forests",2.07941351021723
-"268","Great Basin montane forests",0.834363688318575
-"269","Great Basin shrub steppe",0.650377102794068
-"270","Great Sandy-Tanami desert",1.87833518701105
-"271","Great Victoria desert",1.44220075579275
-"272","Greater Negros-Panay rain forests",1.13433662077039
-"273","Guajira-Barranquilla xeric scrub",1.13014029481496
-"274","Guayaquil flooded grasslands",0.709923688122799
-"275","Guianan freshwater swamp forests",2.939499600401
-"276","Guianan Highlands moist forests",2.99095348726326
-"277","Guianan lowland moist forests",2.29865627954794
-"278","Guianan piedmont moist forests",3.07581024233063
-"279","Guianan savanna",3.10922393976572
-"280","Guinean forest-savanna",2.99208582738332
-"281","Guinean mangroves",3.06523819344125
-"282","Guinean montane forests",3.37591790102875
-"283","Guizhou Plateau broadleaf and mixed forests",0.122400908244673
-"284","Gulf of California xeric scrub",-0.705391707018958
-"285","Gulf of St. Lawrence lowland forests",-0.48488753567442
-"286","Gurupa várzea",1.50875720153397
-"287","Hainan Island monsoon rain forests",0.87912736740615
-"288","Halmahera rain forests",2.74736164843066
-"289","Hampton mallee and woodlands",3.93735740465903
-"290","Hawai'i tropical dry forests",1.5060827299973
-"291","Hawai'i tropical high shrublands",3.26314708845454
-"292","Hawai'i tropical low shrublands",1.09703405693258
-"293","Hawai'i tropical moist forests",3.31335758175202
-"294","Helanshan montane conifer forests",2.8792305442965
-"295","Hengduan Mountains subalpine conifer forests",2.42973188791834
-"296","High Monte",1.13604671217165
-"297","Highveld grasslands",2.50451452597255
-"298","Himalayan subtropical broadleaf forests",-1.00043675655423
-"299","Himalayan subtropical pine forests",1.23771181628564
-"300","Hindu Kush alpine meadow",2.30626212101731
-"301","Hispaniolan dry forests",0.872984167039178
-"302","Hispaniolan moist forests",1.72701572685116
-"303","Hispaniolan pine forests",1.78540971142851
-"304","Hobyo grasslands and shrublands",2.543548651988
-"305","Hokkaido deciduous forests",2.59549860783145
-"306","Hokkaido montane conifer forests",2.61080676748663
-"307","Honshu alpine conifer forests",1.22422059664122
-"308","Horn of Africa xeric bushlands",2.62209194440329
-"309","Huang He Plain mixed forests",2.70009492253786
-"310","Humid Chaco",2.7923628661984
-"311","Humid Pampas",1.25558363317764
-"312","Huon Peninsula montane rain forests",1.37079633280907
-"313","Iberian conifer forests",2.66991104548518
-"314","Iberian sclerophyllous and semi-deciduous forests",2.62606551721736
-"315","Iceland boreal birch forests and alpine tundra",4.51742469453301
-"316","Ile Europa and Bassas da India xeric scrub",0.981120166089835
-"317","Illyrian deciduous forests",2.15827827217222
-"318","Indochina mangroves",2.11543682352194
-"319","Indus River Delta-Arabian Sea mangroves",1.19043357669346
-"320","Indus Valley desert",2.38784525539649
-"321","Inner Niger Delta flooded savanna",1.90124585464254
-"322","Interior Alaska-Yukon lowland taiga",1.16705718253232
-"323","Interior Plateau US Hardwood Forests",1.5056354672615
-"324","Interior Yukon-Alaska alpine tundra",1.63509525399352
-"325","Iquitos várzea",0.542654059805047
-"326","Irrawaddy dry forests",3.71623359853051
-"327","Irrawaddy freshwater swamp forests",0.348237039521708
-"328","Irrawaddy moist deciduous forests",2.94635298064655
-"329","Islas Revillagigedo dry forests",2.18792824231717
-"330","Isthmian-Atlantic moist forests",1.69825198211517
-"331","Isthmian-Pacific moist forests",1.85325166518377
-"332","Itigi-Sumbu thicket",2.34490955399692
-"333","Jalisco dry forests",2.0268724379999
-"334","Jamaican dry forests",2.0849576996501
-"335","Jamaican moist forests",2.13235955066123
-"336","Japurá-Solimões-Negro moist forests",3.00475707864291
-"337","Jarrah-Karri forest and shrublands",2.56354922171218
-"338","Jian Nan subtropical evergreen forests",2.6066308967211
-"339","Jos Plateau forest-grassland",3.30536920599501
-"340","Juan Fernández Islands temperate forests",2.64563996753698
-"341","Junggar Basin semi-desert",1.16932664152046
-"342","Juruá-Purus moist forests",0.7260445181391
-"343","Kalaallit Nunaat Arctic steppe",0.54530411977381
-"344","Kalahari Acacia woodlands",0.872136908693758
-"345","Kalahari xeric savanna",3.53198201749912
-"346","Kamchatka taiga",2.08407506058852
-"347","Kamchatka tundra",0.695035057538745
-"348","Kamchatka-Kurile meadows and sparse forests",-1.0537109845364
-"349","Kaokoveld desert",1.71857003766649
-"350","Karakoram-West Tibetan Plateau alpine steppe",1.13932698643581
-"351","Kayah-Karen montane rain forests",1.21527956335479
-"352","Kazakh forest steppe",1.09611992758588
-"353","Kazakh semi-desert",1.27847688132422
-"354","Kazakh steppe",2.49193221771175
-"355","Kazakh upland steppe",1.94148156046138
-"356","Kermadec Islands subtropical moist forests",0.950687256508894
-"357","Khangai Mountains alpine meadow",1.56660422846225
-"358","Khangai Mountains conifer forests",1.42488803744517
-"359","Kimberly tropical savanna",1.14089858640893
-"360","Klamath-Siskiyou forests",1.27202359620705
-"361","Knysna-Amatole montane forests",1.1783643355016
-"362","Kola Peninsula tundra",2.17254877421709
-"363","Kopet Dag semi-desert",3.46061830918334
-"364","Kopet Dag woodlands and forest steppe",3.98735213178529
-"365","Kuh Rud and Eastern Iran montane woodlands",3.61797839581279
-"366","Kwazulu Natal-Cape coastal forests",0.987960701755607
-"367","La Costa xeric shrublands",1.27819539730574
-"368","Lake Chad flooded savanna",1.40245704893428
-"369","Lara-Falcón dry forests",0.93667938233516
-"370","Leeward Islands moist forests",2.83789353885811
-"371","Lesser Antillean dry forests",2.53959368368306
-"372","Lesser Sundas deciduous forests",2.85817907296365
-"373","Limpopo lowveld",1.63565285888505
-"374","Llanos",3.15488044610939
-"375","Lord Howe Island subtropical forests",2.19483445154566
-"376","Louisiade Archipelago rain forests",1.84995900389168
-"377","Low Monte",2.71377707096684
-"378","Lower Gangetic Plains moist deciduous forests",2.55377747449281
-"379","Luang Prabang montane rain forests",3.38318239872042
-"380","Luzon montane rain forests",3.76567339878371
-"381","Luzon rain forests",1.09568234879112
-"382","Luzon tropical pine forests",0.410981666061132
-"383","Madagascar dry deciduous forests",1.80749880337425
-"384","Madagascar ericoid thickets",2.28872082158049
-"385","Madagascar humid forests",2.3903567225197
-"386","Madagascar mangroves",2.28653128089192
-"387","Madagascar spiny thickets",0.737763299506385
-"388","Madagascar subhumid forests",0.756435844883602
-"389","Madagascar succulent woodlands",0.574586924573433
-"390","Madeira evergreen forests",1.11626906669234
-"391","Madeira-Tapajós moist forests",0.869316235697021
-"392","Magdalena Valley dry forests",0.912152900816372
-"393","Magdalena Valley montane forests",3.81749301454098
-"394","Magdalena-Urabá moist forests",0.780754435919621
-"395","Magellanic subpolar forests",0.848243433889278
-"396","Makgadikgadi halophytics",2.49328197555643
-"397","Malabar Coast moist forests",2.72920116784395
-"398","Maldives-Lakshadweep-Chagos Archipelago tropical moist forests",2.94597801801554
-"399","Malpelo Island xeric scrub",2.09794223444819
-"400","Manchurian mixed forests",2.08030866232004
-"401","Mandara Plateau woodlands",0.0345087559560982
-"402","Maputaland coastal forests and woodlands",2.35908046281148
-"403","Marajó várzea",1.86050545550245
-"404","Maranhão Babaçu forests",1.12126507008311
-"405","Marañón dry forests",2.7865528793009
-"406","Marianas tropical dry forests",3.12075504267273
-"407","Marie Byrd Land tundra",0.852465759274842
-"408","Marquesas tropical moist forests",3.42151598535819
-"409","Masai xeric grasslands and shrublands",3.0755249305572
-"410","Mascarene forests",2.65412679291173
-"411","Mato Grosso tropical dry forests",3.33062842708322
-"412","Mediterranean conifer and mixed forests",2.18519440144164
-"413","Mediterranean dry woodlands and steppe",0.842076652014313
-"414","Mediterranean High Atlas juniper steppe",3.75087170811079
-"415","Mediterranean woodlands and forests",1.34626367129825
-"416","Meghalaya subtropical forests",2.06846924312319
-"417","Mentawai Islands rain forests",1.18462788328511
-"418","Meseta Central matorral",1.74038286798916
-"419","Mesoamerican Gulf-Caribbean mangroves",1.74176023761605
-"420","Mesopotamian shrub desert",0.62022574392002
-"421","Mid-Atlantic US coastal savannas",2.69900652814084
-"422","Mid-Canada Boreal Plains forests",2.23420703951312
-"423","Midwest Canadian Shield forests",0.773517495760907
-"424","Mindanao montane rain forests",-0.741850345105883
-"425","Mindanao-Eastern Visayas rain forests",1.75737488915731
-"426","Mindoro rain forests",3.63857492504378
-"427","Miskito pine forests",1.27424183669018
-"428","Mississippi lowland forests",3.32640425529744
-"429","Mitchell Grass Downs",3.46054861504021
-"430","Mizoram-Manipur-Kachin rain forests",2.68259570371823
-"431","Mojave desert",2.82009968381728
-"432","Mongolian-Manchurian grassland",3.6833998018299
-"433","Montana Valley and Foothill grasslands",1.6581094631319
-"434","Monte Alegre várzea",0.877132723438463
-"435","Motagua Valley thornscrub",0.920667568673403
-"436","Mount Cameroon and Bioko montane forests",1.19853780779889
-"437","Mulanje Montane forest-grassland",2.23721629347629
-"438","Murray-Darling woodlands and mallee",3.84340038249127
-"439","Muskwa-Slave Lake taiga",3.19827366666661
-"440","Myanmar Coast mangroves",0.236029062477386
-"441","Myanmar coastal rain forests",1.95704531027843
-"442","Nama Karoo shrublands",1.75785300876806
-"443","Namaqualand-Richtersveld steppe",1.08719441623081
-"444","Namib Desert",1.83395050500403
-"445","Namibian savanna woodlands",1.44297744289453
-"446","Nansei Islands subtropical evergreen forests",1.86836291433419
-"447","Napo moist forests",1.30305907215781
-"448","Naracoorte woodlands",0.903733953654569
-"449","Narmada Valley dry deciduous forests",1.5343111960327
-"450","Nebraska Sand Hills mixed grasslands",1.4404334544251
-"451","Negro-Branco moist forests",1.82801594532588
-"452","Nelson Coast temperate forests",2.52860886864489
-"453","Nenjiang River grassland",0.866706143877232
-"454","New Britain-New Ireland lowland rain forests",2.3865158640621
-"455","New Britain-New Ireland montane rain forests",2.97396173761317
-"456","New Caledonia dry forests",3.0511824447637
-"457","New Caledonia rain forests",1.64501498153214
-"458","New England-Acadian forests",3.93490632033621
-"459","New Guinea mangroves",3.8612438181251
-"460","New Zealand South Island montane grasslands",1.2677630723867
-"461","Nicobar Islands rain forests",2.31702610205349
-"462","Niger Delta swamp forests",2.57461672453442
-"463","Nigerian lowland forests",2.66503326399862
-"464","Nihonkai evergreen forests",4.44602431660313
-"465","Nihonkai montane deciduous forests",3.20065974171009
-"466","Nile Delta flooded savanna",-1.06047441968581
-"467","Norfolk Island subtropical forests",0.0140609761682934
-"468","North Arabian desert",1.12482936678958
-"469","North Cascades conifer forests",2.51078284521512
-"470","North Deccan dry deciduous forests",1.23040413088683
-"471","North Tibetan Plateau-Kunlun Mountains alpine desert",0.44177966213542
-"472","North Victoria Land tundra",3.51062829040445
-"473","North Western Ghats moist deciduous forests",0.259976423301978
-"474","North Western Ghats montane rain forests",1.22442257184313
-"475","Northeast Antarctic Peninsula tundra",2.46673564118319
-"476","Northeast Brazil restingas",1.78408646979354
-"477","Northeast China Plain deciduous forests",0.60186092481888
-"478","Northeast Congolian lowland forests",1.27098961205068
-"479","Northeast Himalayan subalpine conifer forests",-0.352737753954282
-"480","Northeast Siberian coastal tundra",0.397892631701345
-"481","Northeast Siberian taiga",0.0911511424767569
-"482","Northeast Spain and Southern France Mediterranean forests",0.0950209408766084
-"483","Northeast US Coastal forests",3.03013285556584
-"484","Northern Acacia-Commiphora bushlands and thickets",0.30002470711584
-"485","Northern Anatolian conifer and deciduous forests",2.40520394134289
-"486","Northern Andean páramo",2.45479056228562
-"487","Northern Annamites rain forests",3.60531502602429
-"488","Northern California coastal forests",2.29089580667311
-"489","Northern Canadian Shield taiga",2.07061361420715
-"490","Northern Congolian Forest-Savanna",3.69259186988985
-"491","Northern Cordillera forests",2.0364953953702
-"492","Northern Indochina subtropical forests",4.25009280634753
-"493","Northern Khorat Plateau moist deciduous forests",0.158199068148868
-"494","Northern Mesoamerican Pacific mangroves",0.349390218828506
-"495","Northern New Guinea lowland rain and freshwater swamp forests",0.597788046400906
-"496","Northern New Guinea montane rain forests",1.91424742580106
-"497","Northern Shortgrass prairie",1.01441595368742
-"498","Northern Swahili coastal forests",2.44420449602354
-"499","Northern Tallgrass prairie",4.60683808423761
-"500","Northern Thailand-Laos moist deciduous forests",4.59748302043145
-"501","Northern Triangle subtropical forests",1.8400309992839
-"502","Northern Triangle temperate forests",1.92746406087942
-"503","Northern Vietnam lowland rain forests",2.34078490339325
-"504","Northland temperate kauri forests",2.20477355584549
-"505","Northwest Andean montane forests",1.30824611626359
-"506","Northwest Antarctic Peninsula tundra",2.77484142705522
-"507","Northwest Congolian lowland forests",4.09859812476945
-"508","Northwest Hawai'i scrub",2.44518647139136
-"509","Northwest Iberian montane forests",1.31362865501416
-"510","Northwest Russian-Novaya Zemlya tundra",1.82463799137378
-"511","Northwest Territories taiga",1.39830904942389
-"512","Northwestern Himalayan alpine shrub and meadows",0.327964596925159
-"513","Novosibirsk Islands Arctic desert",0.329290083840986
-"514","Nullarbor Plains xeric shrublands",2.10892735029065
-"515","Nyanga-Chimanimani Montane forest-grassland",1.42170131086679
-"516","Oaxacan montane forests",-0.698870787818633
-"517","Ogasawara subtropical moist forests",2.36249101708889
-"518","Ogilvie-MacKenzie alpine tundra",0.668550932609883
-"519","Okanogan dry forests",2.61916785704806
-"520","Okhotsk-Manchurian taiga",2.8403310096864
-"521","Orinoco Delta swamp forests",0.279322689433837
-"522","Orinoco wetlands",2.52358964429679
-"523","Orissa semi-evergreen forests",1.45626870600209
-"524","Ozark Highlands mixed forests",1.18029993246589
-"525","Ozark Mountain forests",2.34423873808798
-"526","Pacific Coastal Mountain icefields and tundra",2.5902751172519
-"527","Palau tropical moist forests",0.80250123026353
-"528","Palawan rain forests",3.7135203794168
-"529","Palouse prairie",3.78088593761121
-"530","Pamir alpine desert and tundra",1.38373487740093
-"531","Panamanian dry forests",4.06427710137302
-"532","Pannonian mixed forests",2.80254553378806
-"533","Pantanal",1.95775652946116
-"534","Pantanos de Centla",1.38359810791176
-"535","Pantepui forests & shrublands",2.5568139924928
-"536","Papuan Central Range sub-alpine grasslands",4.67883806623569
-"537","Paraguaná xeric scrub",2.10971518121447
-"538","Paraná flooded savanna",3.21577715970136
-"539","Paropamisus xeric woodlands",2.50613937078649
-"540","Patagonian steppe",3.20680933246307
-"541","Patía valley dry forests",3.24240501815313
-"542","Peninsular Malaysian montane rain forests",2.78046268816694
-"543","Peninsular Malaysian peat swamp forests",1.45657110791503
-"544","Peninsular Malaysian rain forests",0.842408545711535
-"545","Pernambuco coastal forests",2.07141483223078
-"546","Pernambuco interior forests",2.91295044508148
-"547","Peruvian Yungas",2.64833165883886
-"548","Petén-Veracruz moist forests",2.72998390195881
-"549","Pilbara shrublands",2.40330043758462
-"550","Pindus Mountains mixed forests",2.55965396719744
-"551","Piney Woods",3.31283765403911
-"552","Po Basin mixed forests",2.54925705953948
-"553","Pontic steppe",1.25066452358336
-"554","Prince Charles Mountains tundra",2.35275897149411
-"555","Puerto Rican dry forests",3.49349559413049
-"556","Puerto Rican moist forests",2.45365351331289
-"557","Puget lowland forests",1.93473546439127
-"558","Purus várzea",2.40982685455241
-"559","Pyrenees conifer and mixed forests",2.51631724609294
-"560","Qaidam Basin semi-desert",3.92550591680411
-"561","Qilian Mountains conifer forests",3.81694584987305
-"562","Qilian Mountains subalpine meadows",3.3683878876004
-"563","Qin Ling Mountains deciduous forests",2.7317854876217
-"564","Qionglai-Minshan conifer forests",0.545156588159152
-"565","Queen Charlotte Islands conifer forests",1.18621978928392
-"566","Queensland tropical rain forests",1.81830473353126
-"567","Rakiura Island temperate forests",1.05080628504143
-"568","Rann of Kutch seasonal salt marsh",1.91444932855894
-"569","Rapa Nui and Sala y Gómez subtropical forests",2.62287594294425
-"570","Red River freshwater swamp forests",3.78110526324193
-"571","Red Sea coastal desert",1.37124313168441
-"572","Red Sea-Arabian Desert shrublands",2.68710428468354
-"573","Registan-North Pakistan sandy desert",1.08635226191899
-"574","Renosterveld shrubland",0.710390788131757
-"575","Richmond temperate forests",0.768982976353252
-"576","Rio Negro campinarana",1.23505336102612
-"577","Rock and Ice",2.48283703305389
-"578","Rodope montane mixed forests",0.735321439887331
-"579","Russian Arctic desert",-0.482022188667833
-"580","Russian Bering tundra",0.196243263610247
-"581","Rwenzori-Virunga montane moorlands",3.08844092346015
-"582","Saharan Atlantic coastal desert",0.650535863983308
-"583","Saharan halophytics",3.01120321339419
-"584","Sahelian Acacia savanna",3.2582961369933
-"585","Sakhalin Island taiga",2.04182594978547
-"586","Samoan tropical moist forests",3.18633927977283
-"587","San Félix-San Ambrosio Islands temperate forests",0.44450322814514
-"588","San Lucan xeric scrub",1.12242703768063
-"589","Santa Lucia Montane Chaparral & Woodlands",1.66786570316797
-"590","Santa Marta montane forests",4.08694130273385
-"591","São Tomé, Príncipe, and Annobón forests",1.59223531954436
-"592","Sarmatic mixed forests",2.7962506046379
-"593","Sayan alpine meadows and tundra",3.36120995115351
-"594","Sayan Intermontane steppe",4.35871809460967
-"595","Sayan montane conifer forests",-0.900933643617144
-"596","Scandinavian and Russian taiga",2.33441012206803
-"597","Scandinavian coastal conifer forests",1.58834235855787
-"598","Scandinavian Montane Birch forest and grasslands",1.73609733849323
-"599","Scotia Sea Islands tundra",1.79105198124905
-"600","Sechura desert",1.65321697667023
-"601","Selenge-Orkhon forest steppe",2.14827616402851
-"602","Seram rain forests",1.26165253581043
-"603","Serra do Mar coastal forests",1.49493194928192
-"604","Sichuan Basin evergreen broadleaf forests",1.41467031890005
-"605","Sierra de la Laguna dry forests",3.40258210633185
-"606","Sierra de los Tuxtlas",2.93393013521721
-"607","Sierra Madre de Chiapas moist forests",1.59939520431131
-"608","Sierra Madre de Oaxaca pine-oak forests",1.76629113641035
-"609","Sierra Madre del Sur pine-oak forests",1.88547821048156
-"610","Sierra Madre Occidental pine-oak forests",2.59010127129695
-"611","Sierra Madre Oriental pine-oak forests",2.35006638573152
-"612","Sierra Nevada forests",2.79755430340829
-"613","Simpson desert",2.59695223378889
-"614","Sinaloan dry forests",2.77635684060406
-"615","Sinú Valley dry forests",2.18250851538436
-"616","Snake-Columbia shrub steppe",3.06656816159283
-"617","Society Islands tropical moist forests",0.906250792701695
-"618","Socotra Island xeric shrublands",3.0581009633192
-"619","Solimões-Japurá moist forests",2.90693949869738
-"620","Solomon Islands rain forests",1.75527995367219
-"621","Somali montane xeric woodlands",0.518033679814302
-"622","Sonoran desert",2.7029669287647
-"623","Sonoran-Sinaloan subtropical dry forest",0.760520541671438
-"624","South American Pacific mangroves",3.64958596500681
-"625","South Antarctic Peninsula tundra",1.56150904672599
-"626","South Apennine mixed montane forests",2.3231814106029
-"627","South Arabian fog woodlands, shrublands, and dune",-0.410918609811858
-"628","South Arabian plains and plateau desert",3.03893208612349
-"629","South Central Rockies forests",1.2314865799596
-"630","South China-Vietnam subtropical evergreen forests",2.05482642216341
-"631","South Deccan Plateau dry deciduous forests",1.92756069939132
-"632","South Iran Nubo-Sindian desert and semi-desert",2.3970275529548
-"633","South Orkney Islands tundra",1.47273607661752
-"634","South Sahara desert",1.0069659931981
-"635","South Siberian forest steppe",2.30375089180584
-"636","South Taiwan monsoon rain forests",2.58717316399014
-"637","South Western Ghats moist deciduous forests",0.199457583816536
-"638","South Western Ghats montane rain forests",1.92651361457158
-"639","Southeast Australia temperate forests",1.66456754638787
-"640","Southeast Iberian shrubs and woodlands",1.97680534037162
-"641","Southeast Indochina dry evergreen forests",1.83856648625064
-"642","Southeast Tibet shrublands and meadows",1.06352206886917
-"643","Southeast US conifer savannas",2.8092823748953
-"644","Southeast US mixed woodlands and savannas",0.462486292363744
-"645","Southern Acacia-Commiphora bushlands and thickets",3.31590316620417
-"646","Southern Africa mangroves",2.00810411807053
-"647","Southern Anatolian montane conifer and deciduous forests",1.58819890316697
-"648","Southern Andean steppe",4.36253168697569
-"649","Southern Andean Yungas",2.24455745419322
-"650","Southern Annamites montane rain forests",2.80828401514624
-"651","Southern Atlantic Brazilian mangroves",2.15400576531232
-"652","Southern Cone Mesopotamian savanna",1.15157198641438
-"653","Southern Congolian forest-savanna",2.94668331543804
-"654","Southern Great Lakes forests",1.69483607764065
-"655","Southern Hudson Bay taiga",2.51591855849841
-"656","Southern Indian Ocean Islands tundra",2.74046794211209
-"657","Southern Korea evergreen forests",0.749196394489163
-"658","Southern Mesoamerican Pacific mangroves",3.49877001556552
-"659","Southern New Guinea freshwater swamp forests",0.925870085400845
-"660","Southern Pacific dry forests",1.46107725520158
-"661","Southern Rift Montane forest-grassland",2.33928788885684
-"662","Southern Swahili coastal forests and woodlands",4.41112398167224
-"663","Southern Vietnam lowland dry forests",4.60569148111836
-"664","Southwest Amazon moist forests",2.70877700082786
-"665","Southwest Arabian coastal xeric shrublands",0.72331629018183
-"666","Southwest Arabian Escarpment shrublands and woodlands",1.86322206306782
-"667","Southwest Arabian highland xeric scrub",2.01923281457822
-"668","Southwest Arabian montane woodlands and grasslands",3.49812738805455
-"669","Southwest Australia savanna",2.01919507905306
-"670","Southwest Australia woodlands",3.5338322310613
-"671","Southwest Borneo freshwater swamp forests",0.997559585089131
-"672","Southwest Iberian Mediterranean sclerophyllous and mixed forests",0.986853518496514
-"673","Sri Lanka dry-zone dry evergreen forests",1.5601759705062
-"674","Sri Lanka lowland rain forests",2.30023409446291
-"675","Sri Lanka montane rain forests",2.06963997751046
-"676","St. Helena scrub and woodlands",2.17700353126079
-"677","St. Peter and St. Paul Rocks",2.11611558132031
-"678","Succulent Karoo xeric shrublands",1.62097657342724
-"679","Sudd flooded grasslands",1.32641738017634
-"680","Suiphun-Khanka meadows and forest meadows",1.55303806474347
-"681","Sulawesi lowland rain forests",2.4379215346006
-"682","Sulawesi montane rain forests",2.21924520458451
-"683","Sulu Archipelago rain forests",1.20917400556539
-"684","Sumatran freshwater swamp forests",2.16687440330998
-"685","Sumatran lowland rain forests",1.32125988902847
-"686","Sumatran peat swamp forests",2.46127470816359
-"687","Sumatran tropical pine forests",3.05068362613211
-"688","Sumba deciduous forests",2.48486790000109
-"689","Sunda Shelf mangroves",2.54212659295363
-"690","Sundaland heath forests",2.85709077365941
-"691","Sundarbans freshwater swamp forests",2.37630410067743
-"692","Sundarbans mangroves",3.1156420632812
-"693","Syrian xeric grasslands and shrublands",1.83235702963103
-"694","Taiheiyo evergreen forests",2.50452905616545
-"695","Taiheiyo montane deciduous forests",2.21881186216311
-"696","Taimyr-Central Siberian tundra",0.383240366478809
-"697","Taiwan subtropical evergreen forests",0.217825493032596
-"698","Taklimakan desert",1.16376994231889
-"699","Talamancan montane forests",2.17236610110375
-"700","Tamaulipan matorral",2.68288438253134
-"701","Tamaulipan mezquital",-0.392591293838957
-"702","Tapajós-Xingu moist forests",1.90783821115595
-"703","Tarim Basin deciduous forests and steppe",0.303488831181414
-"704","Tasmanian Central Highland forests",2.67755168709151
-"705","Tasmanian temperate forests",2.31942661309084
-"706","Tasmanian temperate rain forests",1.98380498071763
-"707","Tehuacán Valley matorral",3.87580727752368
-"708","Tenasserim-South Thailand semi-evergreen rain forests",0.185783463410967
-"709","Terai-Duar savanna and grasslands",2.55776429011092
-"710","Texas blackland prairies",2.80764652822744
-"711","Thar desert",3.01442045227898
-"712","Tian Shan foothill arid steppe",2.8720007413219
-"713","Tian Shan montane conifer forests",2.63065857355086
-"714","Tian Shan montane steppe and meadows",0.699005568683296
-"715","Tibesti-Jebel Uweinat montane xeric woodlands",3.00966274518362
-"716","Tibetan Plateau alpine shrublands and meadows",1.14360666932791
-"717","Tigris-Euphrates alluvial salt marsh",2.11100483942883
-"718","Timor and Wetar deciduous forests",1.85925904933655
-"719","Tirari-Sturt stony desert",1.60816371026826
-"720","Tocantins/Pindare moist forests",0.595477842280901
-"721","Tongan tropical moist forests",0.0928248669157452
-"722","Tonle Sap freshwater swamp forests",1.31488181927878
-"723","Tonle Sap-Mekong peat swamp forests",1.08316648836198
-"724","Torngat Mountain tundra",2.39831524133419
-"725","Trans Fly savanna and grasslands",1.90028392190217
-"726","Trans-Baikal Bald Mountain tundra",0.904737558757023
-"727","Trans-Baikal conifer forests",3.4256046813779
-"728","Trans-Mexican Volcanic Belt pine-oak forests",1.82725533273481
-"729","Transantarctic Mountains tundra",0.0112991109222328
-"730","Trindade-Martin Vaz Islands tropical forests",0.862922606189755
-"731","Trinidad and Tobago dry forest",3.05259615282773
-"732","Trinidad and Tobago moist forest",0.990045277658297
-"733","Tristan Da Cunha-Gough Islands shrub and grasslands",1.60959357802196
-"734","Trobriand Islands rain forests",2.84225058218075
-"735","Tuamotu tropical moist forests",3.94005996330273
-"736","Tumbes-Piura dry forests",2.14735985163171
-"737","Uatumã-Trombetas moist forests",4.08217665340611
-"738","Upper Midwest US forest-savanna transition",2.06580879234965
-"739","Urals montane forest and taiga",1.9302710250822
-"740","Uruguayan savanna",3.45859165838104
-"741","Ussuri broadleaf and mixed forests",3.00344000671289
-"742","Valdivian temperate forests",1.05894205821123
-"743","Vanuatu rain forests",3.06789680518265
-"744","Venezuelan Andes montane forests",1.64620205337754
-"745","Veracruz dry forests",2.71382368973967
-"746","Veracruz moist forests",2.08552642094198
-"747","Veracruz montane forests",2.81909946711931
-"748","Victoria Basin forest-savanna",2.07366805985519
-"749","Victoria Plains tropical savanna",3.03412273704107
-"750","Vogelkop montane rain forests",2.98965079137992
-"751","Vogelkop-Aru lowland rain forests",3.73796305371317
-"752","Wasatch and Uinta montane forests",2.87063514261235
-"753","Watson Highlands taiga",2.91201180430084
-"754","West Sahara desert",1.91693078339478
-"755","West Saharan montane xeric woodlands",4.13982969377666
-"756","West Siberian taiga",4.2060228798854
-"757","West Sudanian savanna",2.41298985647148
-"758","Western Australian Mulga shrublands",0.784741307331435
-"759","Western Congolian forest-savanna",2.47683176334272
-"760","Western Congolian swamp forests",-0.035543277888458
-"761","Western Ecuador moist forests",0.0823301514042148
-"762","Western European broadleaf forests",1.24175460987456
-"763","Western Great Lakes forests",0.885146968285909
-"764","Western Guinean lowland forests",1.02065387271679
-"765","Western Gulf coastal grasslands",0.353993503352529
-"766","Western Himalayan alpine shrub and meadows",1.61905710945639
-"767","Western Himalayan broadleaf forests",2.33691664250799
-"768","Western Himalayan subalpine conifer forests",2.65863589760327
-"769","Western Java montane rain forests",-0.602510393908623
-"770","Western Java rain forests",2.81953543855901
-"771","Western Polynesian tropical moist forests",1.68235098895755
-"772","Western shortgrass prairie",2.22295063382383
-"773","Western Siberian hemiboreal forests",2.0721609037739
-"774","Westland temperate forests",1.86576229840035
-"775","Willamette Valley oak savanna",1.81373304073599
-"776","Wrangel Island Arctic desert",2.03811211895464
-"777","Wyoming Basin shrub steppe",1.97039257241087
-"778","Xingu-Tocantins-Araguaia moist forests",2.92610534359058
-"779","Yamal-Gydan tundra",4.36846550403486
-"780","Yap tropical dry forests",1.99240539198421
-"781","Yapen rain forests",-0.485377927319135
-"782","Yarlung Zanbo arid steppe",1.61631446211846
-"783","Yellow Sea saline meadow",3.66768758045991
-"784","Yucatán dry forests",-0.0904575520791858
-"785","Yunnan Plateau subtropical evergreen forests",4.42438550989839
-"786","Zagros Mountains forest steppe",1.34259170030904
-"787","Zambezian Baikiaea woodlands",2.47786084669482
-"788","Zambezian coastal flooded savanna",2.63570573799733
-"789","Zambezian evergreen dry forests",1.60488881354278
-"790","Zambezian flooded grasslands",2.47965109641054
-"791","Zambezian mopane woodlands",2.31886490212086
-"792","Zambezian-Limpopo mixed woodlands",1.20877279680191
+"","layer_OBJECTID","ldensity"
+"Admiralty Islands lowland rain forests",2,4.0974917821114
+"Aegean and Western Turkey sclerophyllous and mixed forests",3,2.13331596527082
+"Afghan Mountains semi-desert",4,1.30248547521061
+"Ahklun and Kilbuck Upland Tundra",5,0.977186366941075
+"Al-Hajar foothill xeric woodlands and shrublands",6,0.777874727210317
+"Al-Hajar montane woodlands and shrublands",7,0.759580174873787
+"Alai-Western Tian Shan steppe",8,1.6117677865496
+"Alashan Plateau semi-desert",9,0.463267443958331
+"Alaska-St. Elias Range tundra",10,0.633686524205738
+"Alaska Peninsula montane taiga",11,1.71320577037012
+"Albany thickets",12,2.95334229676252
+"Alberta-British Columbia foothills forests",13,1.86421750985489
+"Albertine Rift montane forests",14,1.47547851157093
+"Aldabra Island xeric scrub",15,1.08302391180798
+"Aleutian Islands tundra",16,1.84050212615075
+"Allegheny Highlands forests",17,3.14616602870839
+"Alps conifer and mixed forests",18,2.46642781775555
+"Altai alpine meadow and tundra",19,1.71548985598458
+"Altai montane forest and forest steppe",20,1.4546657063152
+"Altai steppe and semi-desert",21,1.94369241997949
+"Alto Paraná Atlantic forests",22,2.96502991730754
+"Amazon-Orinoco-Southern Caribbean mangroves",23,2.95309228707746
+"Amur meadow steppe",25,1.91768844789713
+"Anatolian conifer and deciduous mixed forests",26,2.1610548492277
+"Andaman Islands rain forests",27,2.74517811949172
+"Angolan montane forest-grassland",28,1.89044088368986
+"Angolan mopane woodlands",29,1.94002555730349
+"Angolan scarp savanna and woodlands",30,1.59672727070173
+"Angolan wet miombo woodlands",31,1.55318109302441
+"Appalachian-Blue Ridge forests",33,3.46165336032365
+"Appalachian mixed mesophytic forests",34,3.52347164518471
+"Appalachian Piedmont forests",35,3.39146333337869
+"Appenine deciduous montane forests",36,2.09104132905453
+"Apure-Villavicencio dry forests",37,2.70759930310593
+"Arabian sand desert",38,0.422137324741384
+"Araucaria moist forests",39,2.91306273146247
+"Araya and Paria xeric scrub",40,2.95907106025888
+"Arctic coastal tundra",41,-0.416250895572695
+"Russian Arctic desert",42,-0.482022188667833
+"Arctic foothills tundra",43,-0.324673473197806
+"Arizona Mountains forests",44,2.31608968883798
+"Arnhem Land tropical savanna",45,3.01581550533565
+"Atacama desert",47,0.23848318791909
+"Atlantic Coast restingas",48,2.7889888881731
+"Saharan Atlantic coastal desert",49,0.650535863983308
+"Atlantic coastal pine barrens",50,3.87323238446442
+"Congolian coastal forests",51,0.0750922889069491
+"European Atlantic mixed forests",52,2.41772719851727
+"Australian Alps montane grasslands",53,3.09091638124688
+"Azerbaijan shrub desert and steppe",54,2.06903492885911
+"Azores temperate mixed forests",55,2.01095505938591
+"Badghyz and Karabil semi-desert",56,1.36647861006464
+"Bahamian-Antillean mangroves",57,2.53265332466742
+"Bahia coastal forests",58,2.96831159345687
+"Bahia interior forests",59,2.78429291591059
+"Baja California desert",60,0.811593287213633
+"Bajío dry forests",61,2.73736464555287
+"Balkan mixed forests",62,2.00917525364037
+"Balsas dry forests",63,2.63089248721969
+"Baltic mixed forests",64,2.26086191368584
+"Baluchistan xeric woodlands",65,1.25976866468217
+"Banda Sea Islands moist deciduous forests",66,3.36167042980405
+"Belizian pine savannas",67,2.71167022610384
+"Beni savanna",68,3.48534866747345
+"Russian Bering tundra",69,0.196243263610247
+"Beringia lowland tundra",70,1.01465370074617
+"Beringia upland tundra",71,0.326457896489572
+"Biak-Numfoor rain forests",73,4.2150743753271
+"Blue Mountains forests",74,2.52163101562382
+"Bohai Sea saline meadow",75,1.45675495681477
+"Bolivian montane dry forests",76,2.5959591173798
+"Bolivian Yungas",77,3.69126178064036
+"Borneo lowland rain forests",78,2.51607108095098
+"Borneo montane rain forests",79,2.80020374724826
+"Borneo peat swamp forests",80,2.36078731622686
+"Brahmaputra Valley semi-evergreen forests",81,0.578821318460697
+"Brigalow tropical savanna",82,2.5661359466275
+"British Columbia coastal conifer forests",83,2.69419026108462
+"Brooks-British Range tundra",84,-0.287086734179644
+"Buru rain forests",85,2.90179776960045
+"Caatinga",86,2.67612682978226
+"Caatinga Enclaves moist forests",87,2.55248957277183
+"Caledon conifer forests",88,2.3386809590726
+"California Central Valley grasslands",89,1.9583882329741
+"California coastal sage and chaparral",90,1.92474059543653
+"California interior chaparral and woodlands",91,2.87221825678334
+"California montane chaparral and woodlands",92,2.41399338782549
+"Cameroon Highlands forests",93,-0.0381918068385647
+"Campos Rupestres montane savanna",94,2.56139208621003
+"Canadian Aspen forests and parklands",95,2.1333310983066
+"Canadian Low Arctic tundra",96,-0.460116747381652
+"Canary Islands dry woodlands and forests",97,0.472555074132789
+"Cantabrian mixed forests",98,2.80777521615694
+"Canterbury-Otago tussock grasslands",99,2.5225830487383
+"Cape Verde Islands dry forests",100,0.566521564058258
+"Cape York Peninsula tropical savanna",101,3.34053202865537
+"Caqueta moist forests",102,2.51653114137904
+"Cardamom Mountains rain forests",103,1.79810499746683
+"Caribbean shrublands",104,2.16781252622051
+"Carnarvon xeric shrublands",105,1.03758617843162
+"Carolines tropical moist forests",106,3.98194780349969
+"Carpathian montane forests",107,2.21976928082319
+"Carpentaria tropical savanna",108,2.35232661638639
+"Caspian Hyrcanian mixed forests",109,2.2624539673653
+"Caspian lowland desert",110,1.00422146384796
+"Catatumbo moist forests",111,2.83000858307821
+"Cauca Valley dry forests",112,2.78885833196344
+"Cauca Valley montane forests",113,2.81075698613224
+"Caucasus mixed forests",114,2.5358515540056
+"Celtic broadleaf forests",116,2.52791891576037
+"Central Afghan Mountains xeric woodlands",117,1.09935829945159
+"Central African mangroves",118,-0.75501333355935
+"Central American Atlantic moist forests",119,2.83417087977336
+"Central American dry forests",120,2.64673274131715
+"Central American montane forests",121,2.91083070199516
+"Central American pine-oak forests",122,2.77189408722518
+"Central Anatolian steppe",123,1.75972247999263
+"Central Anatolian steppe and woodlands",124,1.89663044541613
+"Central-Southern Cascades Forests",125,3.53104022389716
+"Central-Southern US mixed grasslands",126,2.71150295723863
+"Central Andean dry puna",127,0.995947415823361
+"Central Andean puna",128,1.68040671224525
+"Central Andean wet puna",129,2.61204580625724
+"Central Asian northern desert",130,0.887190712687629
+"Central Asian riparian woodlands",131,0.996414459754437
+"Central Asian southern desert",132,0.837547681341407
+"Central British Columbia Mountain forests",133,1.8589780409135
+"Central bushveld",134,2.58130324703487
+"Central Canadian Shield forests",135,1.55892034992629
+"Central China Loess Plateau mixed forests",136,1.6263965527289
+"Central Congolian lowland forests",137,0.230600513408591
+"Central Deccan Plateau dry deciduous forests",138,0.886799521223265
+"Central European mixed forests",139,2.22833654521916
+"Central US forest-grasslands transition",140,3.550187927864
+"Central Indochina dry forests",141,1.61660721134032
+"Central Korean deciduous forests",142,1.6920615104426
+"Central Mexican matorral",143,2.16228419158302
+"Central Pacific Northwest coastal forests",144,3.71613379296748
+"Central Persian desert basins",145,0.989319566583888
+"Central Range Papuan montane rain forests",147,4.67883806623569
+"Papuan Central Range sub-alpine grasslands",148,4.36706771936929
+"Central Ranges xeric scrub",149,1.12328352330179
+"Central Tallgrass prairie",151,3.32096313919286
+"Central Tibetan Plateau alpine steppe",152,0.826303795304645
+"Central Zambezian wet miombo woodlands",153,1.85971837254442
+"Cerrado",154,2.99044547132678
+"Changbai Mountains mixed forests",155,2.02109875518812
+"Changjiang Plain evergreen forests",156,1.0856109607183
+"Chao Phraya freshwater swamp forests",157,1.93668370741723
+"Chao Phraya lowland moist deciduous forests",158,2.23920290887509
+"Cherskii-Kolyma mountain tundra",160,-0.0210405194996651
+"Chhota-Nagpur dry deciduous forests",161,0.679399978480928
+"Chiapas Depression dry forests",162,2.60365692463316
+"Chiapas montane forests",163,2.45026587921876
+"Chihuahuan desert",164,1.74110276918448
+"Chilean Matorral",165,1.44533707162547
+"Chimalapas montane forests",166,2.86499943958747
+"Chin Hills-Arakan Yoma montane forests",167,1.30626124431965
+"Chiquitano dry forests",168,3.37921669850661
+"Chocó-Darién moist forests",169,1.96157274748097
+"Chukchi Peninsula tundra",171,-0.226029948351825
+"Colorado Plateau shrublands",174,1.68628890999041
+"Colorado Rockies forests",175,2.38558024056
+"Comoros forests",176,0.612106946218661
+"Cook Inlet taiga",177,1.54534974024188
+"Cook Islands tropical moist forests",178,3.92816144889075
+"Coolgardie woodlands",179,1.28993835672988
+"Copper Plateau taiga",180,0.799607956972179
+"Cordillera Central páramo",181,2.92761152536065
+"Cordillera de Merida páramo",182,4.44662637624143
+"Cordillera La Costa montane forests",183,3.44539446178338
+"Cordillera Oriental montane forests",184,3.11460147696
+"Corsican montane broadleaf and mixed forests",185,2.13384034844595
+"Costa Rican seasonal moist forests",186,2.38221717076262
+"Crete Mediterranean forests",187,1.65709588522591
+"Crimean Submediterranean forest complex",188,2.51853417753028
+"Cross-Niger transition forests",189,-0.679891888578604
+"Cross-Sanaga-Bioko coastal forests",190,-0.684812199235456
+"Cross-Timbers savanna-woodland",191,2.99006844776448
+"Cuban cactus scrub",192,2.6095354931862
+"Cuban dry forests",193,2.59224388323921
+"Cuban moist forests",194,2.63781391518964
+"Cuban pine forests",195,2.62417320317419
+"Cuban wetlands",196,2.51046372061792
+"Cyprus Mediterranean forests",197,1.92052163388829
+"Da Hinggan-Dzhagdy Mountains conifer forests",198,1.42695959857252
+"Daba Mountains evergreen forests",199,1.65596781802998
+"Daurian forest steppe",200,1.49534243095636
+"Davis Highlands tundra",201,-0.81310923982328
+"Deccan thorn scrub forests",202,1.21385724353966
+"Dinaric Mountains mixed forests",203,2.23979590776105
+"Djibouti xeric shrublands",204,1.67200759885862
+"Drakensberg Escarpment savanna and thicket",205,2.77220300724164
+"Drakensberg grasslands",206,2.48360117490492
+"Rock and Ice",207,-0.902197418475154
+"Dry Chaco",208,2.45759638305879
+"East Afghan montane conifer forests",209,1.4925333169149
+"East African halophytics",210,2.89134199476468
+"East African mangroves",211,2.02036703422543
+"East African montane forests",212,1.80859552499984
+"East Arabian fog shrublands and sand desert",214,0.629875248094368
+"East Central Texas forests",215,3.03364201593725
+"East Deccan dry-evergreen forests",216,0.990575776775266
+"East European forest steppe",217,2.30727879315368
+"East Sahara Desert",218,-0.128969809227929
+"East Saharan montane xeric woodlands",219,0.877373864005263
+"East Siberian taiga",220,0.666715629874607
+"East Sudanian savanna",221,1.0046661493695
+"Eastern Anatolian deciduous forests",222,1.9330225366924
+"Eastern Anatolian montane steppe",223,2.01850136746443
+"Eastern Arc forests",224,2.1976955502959
+"Eastern Australia mulga shrublands",225,1.59056145548101
+"Eastern Australian temperate forests",226,3.37718166383721
+"Eastern Canadian forests",227,1.45406702972242
+"Eastern Canadian Shield taiga",228,0.481407922553437
+"Eastern Cascades forests",229,2.76336907871697
+"Eastern Congolian swamp forests",230,0.25757602010663
+"Eastern Cordillera Real montane forests",231,2.33303573762273
+"Eastern Canadian Forest-Boreal transition",232,2.32091820009041
+"Eastern Gobi desert steppe",233,0.594664645324998
+"Eastern Great Lakes lowland forests",234,3.13743115576298
+"Eastern Guinean forests",235,0.378574161626282
+"East Deccan moist deciduous forests",236,0.701791238332607
+"Eastern Himalayan alpine shrub and meadows",237,2.05348134496644
+"Eastern Himalayan broadleaf forests",238,1.43432454034911
+"Eastern Himalayan subalpine conifer forests",239,2.21959009724472
+"Eastern Java-Bali montane rain forests",240,1.47547058724767
+"Eastern Java-Bali rain forests",241,1.55963169704234
+"Eastern Mediterranean conifer-broadleaf forests",242,1.70330155604469
+"Eastern Panamanian montane forests",244,2.36871800756633
+"Ecuadorian dry forests",245,2.31591487830433
+"Edwards Plateau savanna",246,2.29124520816482
+"Einasleigh upland savanna",247,2.75415949437129
+"Elburz Range forest steppe",248,1.99569474539137
+"Emin Valley steppe",251,1.57247160538003
+"English Lowlands beech forests",253,2.26104841353324
+"Enriquillo wetlands",254,2.55100634837897
+"Eritrean coastal desert",255,1.44408973373155
+"Esperance mallee",256,1.75771804082622
+"Espinal",257,2.29638320851572
+"Ethiopian montane forests",258,1.13408229841407
+"Ethiopian montane grasslands and woodlands",259,1.53138627234935
+"Ethiopian montane moorlands",260,1.49019870518834
+"Etosha Pan halophytics",261,2.20176921009748
+"Euxine-Colchic broadleaf forests",262,2.29890799752793
+"Everglades flooded grasslands",263,2.85302403565246
+"Eyre and York mallee",264,1.71411435851463
+"Faroe Islands boreal grasslands",265,2.06799939768415
+"Fiji tropical dry forests",267,3.31598845365444
+"Fiji tropical moist forests",268,3.44954705702171
+"Fiordland temperate forests",269,2.4059916823668
+"Flinders-Lofty montane woodlands",270,1.52367546810723
+"Flint Hills tallgrass prairie",271,3.33409014623309
+"Fraser Plateau and Basin conifer forests",272,2.11401295315825
+"Fynbos shrubland",273,3.29461396066377
+"Galápagos Islands xeric scrub",274,1.63509389519312
+"Gariep Karoo",275,1.38870035405295
+"Ghorat-Hazarajat alpine meadow",276,1.11544449722041
+"Gibson desert",277,0.728158449390612
+"Gissaro-Alai open woodlands",278,2.07941351021723
+"Godavari-Krishna mangroves",279,0.834363688318575
+"Gobi Lakes Valley desert steppe",280,0.650377102794068
+"Great Basin montane forests",282,1.91633666285708
+"Great Basin shrub steppe",283,1.44568265655722
+"Great Lakes Basin desert steppe",284,1.13433662077039
+"Great Sandy-Tanami desert",285,1.13014029481496
+"Great Victoria desert",286,0.710189022748993
+"Greater Negros-Panay rain forests",287,2.939499600401
+"Guajira-Barranquilla xeric scrub",288,2.99095348726326
+"Guayaquil flooded grasslands",289,2.29865627954794
+"Guianan freshwater swamp forests",290,3.07581024233063
+"Guianan Highlands moist forests",291,3.11864921442801
+"Guianan lowland moist forests",292,2.99227586295268
+"Guianan piedmont moist forests",293,3.06062707419635
+"Guianan savanna",294,3.3754710265207
+"Guinean forest-savanna",295,0.123223148655336
+"Guinean mangroves",296,-0.705391707018958
+"Guinean montane forests",297,-0.481698430558482
+"Guizhou Plateau broadleaf and mixed forests",298,1.50875720153397
+"Gulf of California xeric scrub",299,0.87912736740615
+"Gulf of St. Lawrence lowland forests",300,2.74736164843066
+"Gurupa várzea",301,3.92215535076235
+"Hainan Island monsoon rain forests",302,1.49291707583738
+"Halmahera rain forests",303,3.26314708845454
+"Hampton mallee and woodlands",304,1.09703405693258
+"Hawai'i tropical dry forests",305,3.31335758175202
+"Hawai'i tropical high shrublands",306,2.8792305442965
+"Hawai'i tropical low shrublands",307,2.42973188791834
+"Hawai'i tropical moist forests",308,4.21950274892264
+"Helanshan montane conifer forests",309,1.13604671217165
+"Hengduan Mountains subalpine conifer forests",310,2.50451452597255
+"Canadian High Arctic tundra",311,-1.00043675655423
+"High Monte",312,1.23771181628564
+"Highveld grasslands",313,2.30729406790799
+"Himalayan subtropical broadleaf forests",314,0.872984167039178
+"Himalayan subtropical pine forests",315,1.72701572685116
+"Hindu Kush alpine meadow",316,1.78540971142851
+"Hispaniolan dry forests",317,2.543548651988
+"Hispaniolan moist forests",318,2.59549860783145
+"Hispaniolan pine forests",319,2.61080676748663
+"Hobyo grasslands and shrublands",320,1.22422059664122
+"Hokkaido deciduous forests",321,2.62209194440329
+"Hokkaido montane conifer forests",322,2.70009492253786
+"Honshu alpine conifer forests",323,2.78593003046806
+"Horn of Africa xeric bushlands",324,1.25558363317764
+"Huang He Plain mixed forests",325,1.37079633280907
+"Humid Chaco",326,2.66991104548518
+"Humid Pampas",327,2.62606551721736
+"Huon Peninsula montane rain forests",328,4.51387416513565
+"Iberian conifer forests",329,2.15686036138921
+"Iberian sclerophyllous and semi-deciduous forests",330,2.1162063219789
+"Iceland boreal birch forests and alpine tundra",331,1.15529317775373
+"Illyrian deciduous forests",332,2.38650925748489
+"Indochina mangroves",333,1.90124585464254
+"Indus River Delta-Arabian Sea mangroves",334,1.16705718253232
+"Indus Valley desert",335,1.5056354672615
+"Inner Niger Delta flooded savanna",336,1.63509525399352
+"Interior Alaska-Yukon lowland taiga",337,0.542654059805047
+"Interior Plateau US Hardwood Forests",338,3.71623359853051
+"Interior Yukon-Alaska alpine tundra",339,0.348237039521708
+"Iquitos várzea",340,2.97283857977522
+"Irrawaddy dry forests",341,2.19447420276354
+"Irrawaddy freshwater swamp forests",342,1.69825198211517
+"Irrawaddy moist deciduous forests",343,1.85473951726016
+"Isthmian-Atlantic moist forests",345,2.34376534399956
+"Isthmian-Pacific moist forests",346,2.0268724379999
+"Italian sclerophyllous and semi-deciduous forests",347,2.09051880454795
+"Itigi-Sumbu thicket",348,2.13235955066123
+"Jalisco dry forests",349,3.00475707864291
+"Jamaican dry forests",350,2.56354922171218
+"Jamaican moist forests",351,2.6066308967211
+"Japurá-Solimões-Negro moist forests",352,3.30536920599501
+"Jarrah-Karri forest and shrublands",353,2.64563996753698
+"Jian Nan subtropical evergreen forests",354,1.16932664152046
+"Jos Plateau forest-grassland",355,0.7260445181391
+"Junggar Basin semi-desert",357,0.872136908693758
+"Juruá-Purus moist forests",358,3.53198201749912
+"Kalaallit Nunaat High Arctic tundra",359,-1.0537109845364
+"Kalahari Acacia woodlands",360,2.08407506058852
+"Kalahari xeric savanna",361,1.71857003766649
+"Kamchatka-Kurile meadows and sparse forests",362,1.13932698643581
+"Kamchatka taiga",363,1.21527956335479
+"Kaokoveld desert",364,1.09611992758588
+"Karakoram-West Tibetan Plateau alpine steppe",365,1.28058463676695
+"Kayah-Karen montane rain forests",366,2.49193221771175
+"Kazakh forest steppe",367,1.94148156046138
+"Kazakh semi-desert",368,0.950687256508894
+"Kazakh steppe",369,1.56660422846225
+"Kazakh upland steppe",370,1.42488803744517
+"Khangai Mountains alpine meadow",372,1.14089858640893
+"Khangai Mountains conifer forests",373,1.27202359620705
+"Khathiar-Gir dry deciduous forests",374,1.17761946727425
+"Kimberly tropical savanna",375,2.17254877421709
+"Kinabalu montane alpine meadows",376,3.46061830918334
+"Klamath-Siskiyou forests",377,3.98735213178529
+"Knysna-Amatole montane forests",378,3.61797839581279
+"Kola Peninsula tundra",379,0.987960701755607
+"Kopet Dag semi-desert",380,1.27819539730574
+"Kopet Dag woodlands and forest steppe",381,1.40245704893428
+"Kuh Rud and Eastern Iran montane woodlands",382,0.936566704780343
+"Kwazulu Natal-Cape coastal forests",383,2.83789353885811
+"La Costa xeric shrublands",384,2.86813725312923
+"Lake Chad flooded savanna",385,1.46136014810273
+"Lara-Falcón dry forests",386,3.15488044610939
+"Leeward Islands moist forests",387,2.19483445154566
+"Lesser Sundas deciduous forests",388,1.84995900389168
+"Limpopo lowveld",389,2.71377707096684
+"Llanos",390,2.55377747449281
+"Lord Howe Island subtropical forests",391,3.38318239872042
+"Louisiade Archipelago rain forests",392,3.76567339878371
+"Low Monte",393,1.09568234879112
+"Lower Gangetic Plains moist deciduous forests",394,0.410981666061132
+"Luang Prabang montane rain forests",395,1.80749880337425
+"Luzon montane rain forests",396,2.26140966442979
+"Luzon rain forests",397,2.39113431203096
+"Luzon tropical pine forests",398,2.28653128089192
+"Madagascar dry deciduous forests",399,0.737763299506385
+"Madagascar ericoid thickets",400,0.807990787394825
+"Madagascar humid forests",401,0.574586924573433
+"Madagascar mangroves",402,0.869316235697021
+"Madagascar spiny thickets",403,1.11626906669234
+"Madagascar subhumid forests",404,0.780380185333451
+"Madagascar succulent woodlands",405,0.912152900816372
+"Madeira-Tapajós moist forests",406,3.81709435850547
+"Madeira evergreen forests",407,0.848243433889278
+"Magdalena-Urabá moist forests",408,2.49328197555643
+"Magdalena Valley dry forests",409,2.72920116784395
+"Magdalena Valley montane forests",410,2.94597801801554
+"Magellanic subpolar forests",411,2.09794223444819
+"Makgadikgadi halophytics",412,2.08030866232004
+"Malabar Coast moist forests",413,0.0345087559560982
+"Maldives-Lakshadweep-Chagos Archipelago tropical moist forests",414,2.35908046281148
+"Manchurian mixed forests",416,1.86087431583767
+"Mandara Plateau woodlands",417,1.12126507008311
+"Maputaland coastal forests and woodlands",418,2.7865528793009
+"Maracaibo dry forests",419,3.11466814578366
+"Marajó várzea",420,3.41851212938586
+"Maranhão Babaçu forests",421,3.0755249305572
+"Marañón dry forests",422,2.65412679291173
+"Marianas tropical dry forests",423,3.33062842708322
+"Masai xeric grasslands and shrublands",425,2.18150601054913
+"Mascarene forests",426,0.842076652014313
+"Mato Grosso tropical dry forests",427,3.75180865789535
+"Mediterranean Acacia-Argania dry woodlands and succulent thickets",428,1.34626367129825
+"Mediterranean conifer and mixed forests",429,2.08138303785775
+"Mediterranean dry woodlands and steppe",430,1.18462788328511
+"Mediterranean High Atlas juniper steppe",431,1.74038286798916
+"Mediterranean woodlands and forests",432,1.7451607114598
+"Meghalaya subtropical forests",433,0.62022574392002
+"Mentawai Islands rain forests",434,2.23420703951312
+"Meseta Central matorral",435,1.80259606933864
+"Mesoamerican Gulf-Caribbean mangroves",436,2.69522669730485
+"Mesopotamian shrub desert",437,0.773517495760907
+"Mid-Canada Boreal Plains forests",438,1.75737488915731
+"Canadian Middle Arctic Tundra",439,-0.741850345105883
+"Mid-Atlantic US coastal savannas",440,3.63857492504378
+"Midwest Canadian Shield forests",441,1.27424183669018
+"Mindanao-Eastern Visayas rain forests",442,3.32640425529744
+"Mindanao montane rain forests",443,3.46054861504021
+"Mindoro rain forests",444,2.68259570371823
+"Miskito pine forests",445,2.82316026106497
+"Mississippi lowland forests",446,3.6833998018299
+"Mitchell Grass Downs",447,1.6581094631319
+"Mizoram-Manipur-Kachin rain forests",448,0.877132723438463
+"Mojave desert",449,0.92357345921387
+"Mongolian-Manchurian grassland",450,1.19853780779889
+"Montana Valley and Foothill grasslands",451,2.23495246121802
+"Monte Alegre várzea",452,3.8572819394988
+"Motagua Valley thornscrub",453,3.19827366666661
+"Mount Cameroon and Bioko montane forests",454,0.236029062477386
+"Murray-Darling woodlands and mallee",456,1.76305666980133
+"Muskwa-Slave Lake taiga",457,1.08719441623081
+"Myanmar Coast mangroves",458,1.83395050500403
+"Myanmar coastal rain forests",459,1.44297744289453
+"Nama Karoo shrublands",460,1.86844956362743
+"Namaqualand-Richtersveld steppe",461,1.29946249696077
+"Namib Desert",462,0.903733953654569
+"Namibian savanna woodlands",463,1.5343111960327
+"Nansei Islands subtropical evergreen forests",464,1.4404334544251
+"Napo moist forests",465,1.83212166324668
+"Naracoorte woodlands",466,2.52860886864489
+"Narmada Valley dry deciduous forests",467,0.866706143877232
+"Nebraska Sand Hills mixed grasslands",468,2.3865158640621
+"Negro-Branco moist forests",469,2.97396173761317
+"Nelson Coast temperate forests",470,3.0511824447637
+"Nenjiang River grassland",471,1.64501498153214
+"New Britain-New Ireland lowland rain forests",472,3.93490632033621
+"New Britain-New Ireland montane rain forests",473,3.8612438181251
+"New Caledonia dry forests",474,2.31702610205349
+"New Caledonia rain forests",475,2.57461672453442
+"New England-Acadian forests",476,2.66503326399862
+"New Guinea mangroves",477,4.44602431660313
+"Nicobar Islands rain forests",478,3.20065974171009
+"Niger Delta swamp forests",479,-1.06047441968581
+"Nigerian lowland forests",480,0.0140609761682934
+"Nihonkai evergreen forests",481,2.46673564118319
+"Nihonkai montane deciduous forests",482,2.78628644821277
+"Nile Delta flooded savanna",483,1.12482936678958
+"North Arabian desert",487,0.518033679814302
+"North Arabian highland shrublands",488,0.444737563872754
+"New Zealand North Island temperate forests",489,3.51062829040445
+"North Saharan Xeric Steppe and Woodland",490,0.259976423301978
+"Somali montane xeric woodlands",491,1.22442257184313
+"North Tibetan Plateau-Kunlun Mountains alpine desert",492,0.60186092481888
+"North Western Ghats moist deciduous forests",494,0.397892631701345
+"North Western Ghats montane rain forests",495,0.0911511424767569
+"Northeast China Plain deciduous forests",496,1.78408646979354
+"Northeast India-Myanmar pine forests",497,1.27098961205068
+"Northeast Siberian coastal tundra",498,-0.352737753954282
+"Northeast Siberian taiga",499,0.0946368918451431
+"Northeast Brazil restingas",500,3.03013285556584
+"Northeast Congolian lowland forests",501,0.30002470711584
+"Northeast Himalayan subalpine conifer forests",502,2.40520394134289
+"Northeast Spain and Southern France Mediterranean forests",503,2.45479056228562
+"Northeast US Coastal forests",504,3.60531502602429
+"Northern Acacia-Commiphora bushlands and thickets",505,2.28994823555976
+"Northern Anatolian conifer and deciduous forests",506,2.06899635583688
+"Northern Andean páramo",507,3.69732280860314
+"Northern Annamites rain forests",508,1.23040413088683
+"Northern California coastal forests",509,4.25009280634753
+"Northern Canadian Shield taiga",510,0.158199068148868
+"Northern Congolian Forest-Savanna",511,0.348709787481562
+"North Deccan dry deciduous forests",512,0.597788046400906
+"Northern Indochina subtropical forests",513,1.91424742580106
+"Northern Khorat Plateau moist deciduous forests",514,1.01441595368742
+"Northern Mesoamerican Pacific mangroves",515,2.44420449602354
+"Northern New Guinea lowland rain and freshwater swamp forests",516,4.60683808423761
+"Northern New Guinea montane rain forests",517,4.59748302043145
+"Northern Shortgrass prairie",518,1.84097310363203
+"Northern Swahili coastal forests",519,1.94784248797897
+"Northern Tallgrass prairie",520,2.34078490339325
+"Northern Thailand-Laos moist deciduous forests",521,2.20477355584549
+"Northern Triangle subtropical forests",522,1.31362865501416
+"Northern Triangle temperate forests",523,1.82463799137378
+"Northern Vietnam lowland rain forests",524,1.30824611626359
+"Northland temperate kauri forests",525,4.09859812476945
+"Northwest Iberian montane forests",526,2.44518647139136
+"Northwest Russian-Novaya Zemlya tundra",527,0.32080278050485
+"Northwest Andean montane forests",528,2.44677374377257
+"Northwest Congolian lowland forests",529,0.329290083840986
+"Northwestern Himalayan alpine shrub and meadows",531,2.10892735029065
+"Aravalli west thorn scrub forests",532,1.4214907053853
+"Novosibirsk Islands Arctic desert",533,-0.698870787818633
+"Nujiang Langcang Gorge alpine conifer and mixed forests",534,2.36249101708889
+"Nullarbor Plains xeric shrublands",535,0.668550932609883
+"Nyanga-Chimanimani Montane forest-grassland",536,2.61916785704806
+"Oaxacan montane forests",537,2.84894237881618
+"Ogilvie-MacKenzie alpine tundra",539,0.279322689433837
+"Okanogan dry forests",540,2.52358964429679
+"Okhotsk-Manchurian taiga",541,1.45626870600209
+"Ordos Plateau steppe",542,1.18029993246589
+"Orinoco Delta swamp forests",543,2.34423873808798
+"Orinoco wetlands",544,2.5902751172519
+"Orissa semi-evergreen forests",545,0.80250123026353
+"Ozark Highlands mixed forests",546,3.7135203794168
+"Ozark Mountain forests",547,3.78088593761121
+"Pacific Coastal Mountain icefields and tundra",548,1.38373487740093
+"Palau tropical moist forests",549,4.06427710137302
+"Palawan rain forests",550,2.80254553378806
+"Palouse prairie",551,1.95775652946116
+"Pamir alpine desert and tundra",552,1.38383961420843
+"Panamanian dry forests",553,2.5568139924928
+"Pannonian mixed forests",554,2.10987090413731
+"Pantanal",555,3.21577715970136
+"Pantanos de Centla",556,2.50613937078649
+"Pantepui forests & shrublands",557,3.20680933246307
+"Paraguaná xeric scrub",558,3.24240501815313
+"Paraná flooded savanna",559,2.78046268816694
+"Paropamisus xeric woodlands",560,1.45657110791503
+"Patagonian steppe",561,0.842408545711535
+"Patía valley dry forests",562,2.07141483223078
+"Peninsular Malaysian montane rain forests",563,2.90993925639631
+"Peninsular Malaysian peat swamp forests",564,2.64833165883886
+"Peninsular Malaysian rain forests",565,2.73238667359287
+"Pernambuco coastal forests",566,2.40330043758462
+"Pernambuco interior forests",567,2.55965396719744
+"Peruvian Yungas",568,3.31283765403911
+"Petén-Veracruz moist forests",569,2.54967003853691
+"Pilbara shrublands",570,1.25066452358336
+"Pindus Mountains mixed forests",571,2.35275897149411
+"Piney Woods",572,3.49349559413049
+"Po Basin mixed forests",573,2.45365351331289
+"Pontic steppe",574,1.93473546439127
+"Puerto Rican dry forests",576,2.40982685455241
+"Puerto Rican moist forests",577,2.51631724609294
+"Puget lowland forests",578,3.92550591680411
+"Purus-Madeira moist forests",579,3.81694584987305
+"Purus várzea",580,3.37570134513823
+"Pyrenees conifer and mixed forests",581,2.7317854876217
+"Qaidam Basin semi-desert",582,0.545156588159152
+"Qilian Mountains conifer forests",583,1.81830473353126
+"Qilian Mountains subalpine meadows",584,1.05080628504143
+"Qin Ling Mountains deciduous forests",585,1.91444932855894
+"Qionglai-Minshan conifer forests",586,2.62287594294425
+"Queensland tropical rain forests",587,3.78110526324193
+"Rakiura Island temperate forests",588,2.68710428468354
+"Rann of Kutch seasonal salt marsh",589,1.37124313168441
+"Red River freshwater swamp forests",591,1.08635226191899
+"Red Sea-Arabian Desert shrublands",592,0.71060782531543
+"Red Sea coastal desert",593,0.768982976353252
+"Red Sea mangroves",594,1.23505336102612
+"Registan-North Pakistan sandy desert",595,0.735321439887331
+"Renosterveld shrubland",596,3.12220371734506
+"Richmond temperate forests",597,3.01120321339419
+"Rio Negro campinarana",598,3.25372857133801
+"Rodope montane mixed forests",599,2.04182594978547
+"Rwenzori-Virunga montane moorlands",600,3.18633927977283
+"Saharan halophytics",601,0.445515690257674
+"Sahelian Acacia savanna",602,1.12658518095111
+"Sakhalin Island taiga",603,1.66786570316797
+"Samoan tropical moist forests",604,4.08694130273385
+"San Lucan xeric scrub",606,1.59223531954436
+"Santa Lucia Montane Chaparral & Woodlands",607,2.7962506046379
+"Santa Marta montane forests",608,3.36120995115351
+"Santa Marta páramo",609,4.35871809460967
+"São Tomé, Príncipe, and Annobón forests",610,-0.900933643617144
+"Sarmatic mixed forests",611,2.33474002654243
+"Sayan alpine meadows and tundra",612,1.58834235855787
+"Sayan Intermontane steppe",613,1.73609733849323
+"Sayan montane conifer forests",614,1.79105198124905
+"Scandinavian and Russian taiga",615,1.65535208371591
+"Scandinavian coastal conifer forests",616,2.14827616402851
+"Scandinavian Montane Birch forest and grasslands",617,1.26165253581043
+"Sechura desert",619,1.49493194928192
+"Selenge-Orkhon forest steppe",620,1.41467031890005
+"Seram rain forests",621,3.40258210633185
+"Serra do Mar coastal forests",623,2.93362413125479
+"Sichuan Basin evergreen broadleaf forests",624,1.59939520431131
+"Sierra de la Laguna dry forests",625,1.76629113641035
+"Sierra de la Laguna pine-oak forests",626,1.88547821048156
+"Sierra de los Tuxtlas",627,2.59010127129695
+"Sierra Madre de Chiapas moist forests",628,2.35006638573152
+"Sierra Madre de Oaxaca pine-oak forests",629,2.79610534569322
+"Sierra Madre del Sur pine-oak forests",630,2.59370582612396
+"Sierra Madre Occidental pine-oak forests",631,2.77266492042951
+"Sierra Madre Oriental pine-oak forests",632,2.17935268948719
+"Sierra Nevada forests",633,3.06656816159283
+"Simpson desert",634,0.906382551578322
+"Sinaloan dry forests",635,3.05961046257355
+"Sinú Valley dry forests",636,2.90693949869738
+"Snake-Columbia shrub steppe",637,1.75527995367219
+"Socotra Island xeric shrublands",639,0.760520541671438
+"Solimões-Japurá moist forests",640,2.70355546956888
+"Solomon Islands rain forests",641,3.64958596500681
+"Somali Acacia-Commiphora bushlands and thickets",642,1.56116729222719
+"Sonoran-Sinaloan subtropical dry forest",643,2.3306126864249
+"Sonoran desert",644,1.23305230387712
+"South American Pacific mangroves",645,2.05482642216341
+"South Apennine mixed montane forests",647,1.92756069939132
+"South Central Rockies forests",648,2.3970275529548
+"South China-Vietnam subtropical evergreen forests",649,1.26994298882762
+"South Deccan Plateau dry deciduous forests",651,1.47273607661752
+"South Iran Nubo-Sindian desert and semi-desert",652,1.00688668575983
+"New Zealand South Island montane grasslands",653,2.30375089180584
+"New Zealand South Island temperate forests",654,2.58717316399014
+"South Sahara desert",656,0.199491822838198
+"South Siberian forest steppe",657,1.92651361457158
+"South Taiwan monsoon rain forests",658,1.66456754638787
+"South Western Ghats moist deciduous forests",660,1.06352206886917
+"South Western Ghats montane rain forests",661,0.462486292363744
+"Southeast Australia temperate forests",662,2.8157496551291
+"Southeast Australia temperate savanna",663,1.96333951292694
+"Southeast Tibet shrublands and meadows",664,1.83856648625064
+"Southeast US conifer savannas",666,3.31590316620417
+"Southeast Iberian shrubs and woodlands",667,2.00810411807053
+"Southeast Indochina dry evergreen forests",668,1.58819890316697
+"Southeast Papuan rain forests",669,4.36195396360508
+"Southern Acacia-Commiphora bushlands and thickets",670,2.24788569276994
+"Southern Africa mangroves",671,2.80828401514624
+"Southern Anatolian montane conifer and deciduous forests",672,2.15400576531232
+"Southern Andean steppe",673,1.15157198641438
+"Southern Andean Yungas",674,2.94668331543804
+"Southern Annamites montane rain forests",675,1.69483607764065
+"Southern Atlantic Brazilian mangroves",676,2.51591855849841
+"Southern Cone Mesopotamian savanna",677,2.74046794211209
+"Southern Congolian forest-savanna",678,0.749196394489163
+"Southern Great Lakes forests",679,3.49877001556552
+"Southern Hudson Bay taiga",680,0.925870085400845
+"Southern Korea evergreen forests",682,1.46107725520158
+"Southern Mesoamerican Pacific mangroves",683,2.33928788885684
+"Southern New Guinea freshwater swamp forests",684,4.41112398167224
+"Southern New Guinea lowland rain forests",685,4.60569148111836
+"Southern Pacific dry forests",686,2.71128631340105
+"Southern Rift Montane forest-grassland",687,1.84886191388646
+"Southern Swahili coastal forests and woodlands",688,2.03429850144532
+"Southern Vietnam lowland dry forests",689,2.01919507905306
+"Southwest Amazon moist forests",690,3.53459788047351
+"Southwest Arabian Escarpment shrublands and woodlands",691,0.997559585089131
+"Southwest Arabian highland xeric scrub",692,0.986853518496514
+"Southwest Australia savanna",693,1.5601759705062
+"Southwest Australia woodlands",694,2.30023409446291
+"Southwest Borneo freshwater swamp forests",695,2.07036838242137
+"Southwest Iberian Mediterranean sclerophyllous and mixed forests",696,2.11611558132031
+"Sri Lanka dry-zone dry evergreen forests",697,1.62097657342724
+"Sri Lanka lowland rain forests",698,1.32641738017634
+"Sri Lanka montane rain forests",699,1.55303806474347
+"Succulent Karoo xeric shrublands",701,2.22126496849
+"Sudd flooded grasslands",702,1.20917400556539
+"Suiphun-Khanka meadows and forest meadows",703,2.16687440330998
+"Sulaiman Range alpine meadows",704,1.32125988902847
+"Sulawesi montane rain forests",706,2.42505855297097
+"Sulu Archipelago rain forests",707,3.05068362613211
+"Sumatran freshwater swamp forests",708,2.48486790000109
+"Sumatran lowland rain forests",709,2.54212659295363
+"Sumatran montane rain forests",710,2.85709077365941
+"Sumatran peat swamp forests",711,2.37630410067743
+"Sumatran tropical pine forests",712,3.1156420632812
+"Sumba deciduous forests",713,1.83235702963103
+"Sunda Shelf mangroves",714,2.50452905616545
+"Sundaland heath forests",715,2.21881186216311
+"Sundarbans freshwater swamp forests",716,0.383240366478809
+"Sundarbans mangroves",717,0.217825493032596
+"Syrian xeric grasslands and shrublands",718,1.16242427979601
+"Taiheiyo evergreen forests",719,2.17078387652739
+"Taiheiyo montane deciduous forests",720,2.68288438253134
+"Taimyr-Central Siberian tundra",721,-0.392591293838957
+"Taiwan subtropical evergreen forests",722,1.90783821115595
+"Taklimakan desert",723,0.303488831181414
+"Talamancan montane forests",724,2.67755168709151
+"Tamaulipan matorral",725,2.34081030263725
+"Tamaulipan mezquital",726,1.98360425345205
+"Tapajós-Xingu moist forests",727,3.87580727752368
+"Tarim Basin deciduous forests and steppe",728,0.185783463410967
+"Tasmanian Central Highland forests",729,2.55776429011092
+"Tasmanian temperate forests",730,2.80764652822744
+"Tasmanian temperate rain forests",731,3.01442045227898
+"Tehuacán Valley matorral",732,2.8720007413219
+"Tenasserim-South Thailand semi-evergreen rain forests",733,2.63065857355086
+"Terai-Duar savanna and grasslands",734,0.699005568683296
+"Texas blackland prairies",735,3.00966274518362
+"Thar desert",736,1.14360666932791
+"Tian Shan foothill arid steppe",737,2.11067811058308
+"Tian Shan montane conifer forests",738,1.85925904933655
+"Tian Shan montane steppe and meadows",739,1.60816371026826
+"Tibesti-Jebel Uweinat montane xeric woodlands",740,0.0928248669157452
+"Tibetan Plateau alpine shrublands and meadows",741,1.08316648836198
+"Tigris-Euphrates alluvial salt marsh",742,1.31488181927878
+"Timor and Wetar deciduous forests",743,2.39831524133419
+"Tirari-Sturt stony desert",744,0.904552744585701
+"Tongan tropical moist forests",745,3.4256046813779
+"Tonle Sap-Mekong peat swamp forests",746,1.82725533273481
+"Tonle Sap freshwater swamp forests",747,1.90028392190217
+"Torngat Mountain tundra",748,0.0112991109222328
+"Trans-Baikal Bald Mountain tundra",749,0.990045277658297
+"Trans-Baikal conifer forests",750,1.60959357802196
+"Trans-Mexican Volcanic Belt pine-oak forests",751,2.8411273574324
+"Trans Fly savanna and grasslands",752,3.94005996330273
+"Trinidad and Tobago moist forest",754,2.14735985163171
+"Trobriand Islands rain forests",756,4.08217665340611
+"Tumbes-Piura dry forests",759,2.06580879234965
+"Tyrrhenian-Adriatic sclerophyllous and mixed forests",760,1.93220302636292
+"Uatumã-Trombetas moist forests",761,3.46225854923671
+"Ucayali moist forests",762,3.00218272101145
+"Upper Gangetic Plains moist deciduous forests",763,1.05894205821123
+"Upper Midwest US forest-savanna transition",764,3.06789680518265
+"Urals montane forest and taiga",765,1.64620205337754
+"Uruguayan savanna",766,2.71382368973967
+"Ussuri broadleaf and mixed forests",767,2.08552642094198
+"Valdivian temperate forests",768,2.81909946711931
+"Vanuatu rain forests",769,3.03412273704107
+"Venezuelan Andes montane forests",770,3.76829368618187
+"Veracruz dry forests",771,2.98965079137992
+"Veracruz moist forests",772,2.87064883779158
+"Veracruz montane forests",773,2.91201180430084
+"Victoria Plains tropical savanna",774,1.91693078339478
+"Vogelkop-Aru lowland rain forests",775,4.13982969377666
+"Vogelkop montane rain forests",776,4.2060228798854
+"Wasatch and Uinta montane forests",777,2.41298985647148
+"Watson Highlands taiga",778,0.784741307331435
+"West Sahara desert",779,-0.035543277888458
+"West Saharan montane xeric woodlands",780,0.0823301514042148
+"West Siberian taiga",781,1.24175460987456
+"West Sudanian savanna",782,0.885068187281528
+"Western Australian Mulga shrublands",783,1.02065387271679
+"Western Congolian swamp forests",784,0.353993503352529
+"Western Ecuador moist forests",785,1.61905710945639
+"Western European broadleaf forests",786,2.33691664250799
+"Western Great Lakes forests",787,2.65863589760327
+"Western Guinean lowland forests",788,-0.602810976454274
+"Western Gulf coastal grasslands",789,2.81953543855901
+"Western Himalayan alpine shrub and meadows",790,1.68204500589665
+"Western Himalayan broadleaf forests",791,2.22295063382383
+"Western Himalayan subalpine conifer forests",792,2.0721609037739
+"Western Java montane rain forests",793,1.84231150337042
+"Western Java rain forests",794,1.8297589849621
+"Western shortgrass prairie",796,2.03811211895464
+"Western Siberian hemiboreal forests",797,1.97039257241087
+"Westland temperate forests",798,2.92610534359058
+"Willamette Valley oak savanna",799,4.36846550403486
+"Windward Islands moist forests",800,1.99240539198421
+"Wrangel Island Arctic desert",801,-0.485377927319135
+"Wyoming Basin shrub steppe",802,1.61631446211846
+"Xingu-Tocantins-Araguaia moist forests",803,3.66730081576434
+"Yamal-Gydan tundra",804,-0.0904575520791858
+"Yapen rain forests",806,4.42438550989839
+"Yarlung Zanbo arid steppe",807,1.34259170030904
+"Yellow Sea saline meadow",808,1.20877279680191
+"Yucatán dry forests",809,2.47786084669482
+"Yucatán moist forests",810,2.63570573799733
+"Yunnan Plateau subtropical evergreen forests",811,2.11011336457414
+"Zagros Mountains forest steppe",812,1.60488881354278
+"Zambezian-Limpopo mixed woodlands",813,2.4768724209414
+"Zambezian Baikiaea woodlands",814,2.32064208537758
+"Zambezian coastal flooded savanna",815,2.12900002259769
+"Dry miombo woodlands",816,2.02709419159436
+"Zambezian evergreen dry forests",817,2.17700353126079
+"Zambezian flooded grasslands",818,2.07555149362847
+"Zambezian mopane woodlands",819,2.47794413711992
+"Brazilian Atlantic dry forests",820,2.7579139818189
+"Northern Cordillera forests",821,1.18621978928392
+"Victoria Basin forest-savanna",823,1.3989810819149
+"Western Congolian forest-savanna",824,0.72331629018183
+"East African montane moorlands",825,2.27121527834918
+"Queen Charlotte Islands conifer forests",826,3.03893208612349
+"Northern Pacific Alaskan coastal forests",827,2.35387728613581
+"Northwest Territories taiga",828,0.226082963697568
+"Southwest Arabian coastal xeric shrublands",829,0.981120166089835
+"Arabian-Persian Gulf coastal plain desert",830,0.695035057538745
+"South Arabian plains and plateau desert",831,0.595007357444992
+"Arabian desert",832,0.54491281744585
+"Bahamian pineyards",833,2.51078284521512
+"Kamchatka tundra",835,0.862922606189755
+"Tocantins/Pindare moist forests",836,3.49812738805455
+"Kalaallit Nunaat Arctic steppe",837,-0.410918609811858
+"North Cascades conifer forests",838,3.05259615282773
+"Northern Rockies conifer forests",839,2.53959368368306
+"Southwest Arabian montane woodlands and grasslands",841,1.09173690242668
+"South Arabian fog woodlands, shrublands, and dune",842,0.852465759274842
+"Trinidad and Tobago dry forest",843,2.4379215346006
+"Lesser Antillean dry forests",844,2.03442086986203
+"North Atlantic moist mixed forests",845,2.59516415454447
+"Sulawesi lowland rain forests",848,2.50804814375686
