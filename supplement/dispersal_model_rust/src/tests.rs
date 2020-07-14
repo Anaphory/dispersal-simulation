@@ -32,6 +32,8 @@ pub fn test_decide_on_moving() {
         boundary_east: -148.571541,
         boundary_south: 56.028198,
         boundary_north: 74.52671,
+
+        dispersal_graph: petgraph::csr::Csr::new(),
     };
 
     let mini_family = Family {
@@ -114,6 +116,8 @@ pub fn test_decide_on_moving_is_uniform() {
         boundary_east: -148.571541,
         boundary_south: 56.028198,
         boundary_north: 74.52671,
+
+        dispersal_graph: petgraph::csr::Csr::new(),
     };
 
     let mini_family = Family {
@@ -185,6 +189,8 @@ pub fn test_resources_from_patch() {
         boundary_east: -148.571541,
         boundary_south: 56.028198,
         boundary_north: 74.52671,
+        
+        dispersal_graph: petgraph::csr::Csr::new(),
     };
     assert_eq!(
         submodels::ecology::resources_from_patch(&patch1, 2., 0., true, &mini_param),

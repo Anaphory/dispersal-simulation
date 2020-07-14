@@ -32,7 +32,7 @@ results that can be compared to that history.
 // order, or attached to things that are only accidentally coming afterwards.
 
 // Load useful modules
-use std::f64::consts::PI;
+use std::cmp::{min, max};
 
 use rand::prelude::*;
 use rayon::prelude::*;
@@ -90,6 +90,8 @@ pub struct Family {
     location_history: Vec<Index>,
     /// The amount of stored resources, in kcal, the family has access to.
     stored_resources: KCal,
+    /// Adaptation to local ecoregions
+    adaptation: [f32; ecology::ATTESTED_ECOREGIONS],
 
     /// The number of seasons to wait until the next child (reset to 2 when
     /// starvation happens)
@@ -157,10 +159,10 @@ type Index = usize;
 pub struct Patch {
     /// The resources currently available (not necessarily accessible, see XXX)
     /// in this patch, in kcal / season.
-    resources: KCal,
+    resources: [KCal; ecology::ATTESTED_ECOREGIONS],
     /// The maximum possible resources available in a time step, also in kcal /
     /// season.
-    max_resources: KCal,
+    max_resources: [KCal; ecology::ATTESTED_ECOREGIONS],
 }
 
 /**
@@ -238,7 +240,7 @@ fn step_part_1(
             &mut family.stored_resources,
             p,
         ) {
-            family.seasons_till_next_child = greater_of_two(family.seasons_till_next_child, 2)
+            family.seasons_till_next_child = max(family.seasons_till_next_child, 2)
         }
 
         submodels::family_lifecycle::maybe_grow(family);
@@ -252,9 +254,9 @@ fn step_part_1(
 
     if t % 20 == 0 {
         let l_c = cultures_by_location.clone();
-        thread::spawn(|| observation::print_gd_cd(l_c));
+        observation::print_gd_cd(l_c, p);
         let l_c = cultures_by_location.clone();
-        thread::spawn(|| observation::print_population_by_location(l_c));
+        observation::print_population_by_location(l_c, p);
     }
 
     let mut rng = rand::thread_rng();
@@ -267,7 +269,7 @@ fn step_part_1(
             continue;
         }
 
-        let nearby = sensing::nearby_locations(family.location);
+        let nearby = sensing::nearby_locations(family.location, p);
 
         match submodels::family_lifecycle::maybe_procreate(&mut family) {
             None => {}
@@ -341,39 +343,68 @@ fn step_part_2(
     families_by_location: &mut HashMap<Index, Vec<Family>>,
     patches: &mut HashMap<Index, Patch>,
     p: &Parameters,
-) -> Option<()>
-{
+) -> Option<()> {
     for (patch_id, families) in families_by_location {
         assert!(families.len() > 0);
-        let mut patch = patches.entry(*patch_id).or_insert(Patch {
-            // TODO Should we actually panic in this case? After all, some
-            // family moved to a patch that doesn't exist, how did they even
-            // find it?
-            resources: 0.0,
-            max_resources: 0.0,
-        });
-        let mut resource_reduction: KCal = 0.0;
-        let (mut cooperatives, sum_labor) =
-            collectives::cooperatives(families.iter_mut().collect(), p)?;
+        let mut patch = match patches.get_mut(patch_id) {
+            None => { continue },
+            Some(p) => { p }
+        };
 
-        for mut cooperating_families in cooperatives.iter_mut() {
-            resource_reduction += submodels::ecology::extract_resources(
-                &mut patch,
-                &mut cooperating_families,
-                sum_labor,
-                p,
-            );
-        }
 
-        for cooperating_families in cooperatives {
-            let families = cooperating_families.families;
-            crate::submodels::culture::adjust(families, p.culture_dimensionality, p.culture_mutation_rate);
+        let fam: Vec<&mut Family> = families.iter_mut().collect();
+
+        let k = collectives::cooperatives(fam, p)?;
+
+        for i in 0..ecology::ATTESTED_ECOREGIONS {
+            let mut resource_reduction = 0.0;
+
+            let cooperatives = &k.0;
+            let sum_labor = k.1;
+
+            for mut cooperating_families in cooperatives {
+                let r = submodels::ecology::extract_resources(
+                    &patch.resources[i],
+                    &mut cooperating_families,
+                    sum_labor,
+                    p,
+                );
+                for f in &mut cooperating_families.families {
+                    if r > 0. {
+                        f.adaptation[i] += 0.1;
+                    }
+                    f.adaptation[i] *= 0.8;
+                }
+                resource_reduction += r
+            }
+
+            submodels::ecology::exploit(&mut patch.resources[i], resource_reduction);
         }
-        submodels::ecology::exploit(&mut patch, resource_reduction);
+        for cooperating_families in k.0 {
+            for f in &mut cooperating_families.families {
+                submodels::culture::mutate_culture(
+                    &mut f.seasons_till_next_mutation,
+                    &mut f.culture, p.culture_dimensionality, p.culture_mutation_rate);
+            }
+            let family: Option<&&mut Family> = cooperating_families.families.choose(&mut rand::thread_rng());
+            match family {
+                None => { continue }
+                Some(f) => {
+                    let target: Culture = f.culture;
+                    for f2 in &mut cooperating_families.families {
+                        f2.culture = target;
+                    }
+                }
+            }
+        }
     }
 
     for mut patch in patches.values_mut() {
-        submodels::ecology::recover(&mut patch, p.resource_recovery, p.accessible_resources);
+        submodels::ecology::recover(
+            &mut patch.resources,
+            &patch.max_resources,
+            p.resource_recovery,
+            p.accessible_resources);
     }
     Some(())
 }
@@ -494,11 +525,14 @@ mod emergence {
     pub fn cultural_distance_by_geographical_distance(
         cultures_by_location: &HashMap<Index, HashMap<Culture, usize>>,
         max_geo_distance: i32,
+        p: &Parameters,
     ) -> HashMap<i32, HashMap<u32, usize>> {
         let mut gd_cd: HashMap<i32, HashMap<u32, usize>> = HashMap::new();
         for (l1, cs1) in cultures_by_location {
+            let l1h3 = p.dispersal_graph[*l1].0;
             for (l2, cs2) in cultures_by_location {
-                let gd = hexgrid::hex_distance(*l1, *l2);
+                let l2h3 = p.dispersal_graph[*l2].0;
+                let gd = hexgrid::hex_distance(l1h3, l2h3);
                 if gd > max_geo_distance {
                     continue;
                 }
@@ -620,6 +654,7 @@ mod adaptation {
         }
         let mut max_gain: KCal = prediction::expected_resources_from_patch(
             family.effective_size as f32,
+            &family.adaptation,
             patch,
             cooperators as f32,
             competitors as f32,
@@ -632,7 +667,10 @@ mod adaptation {
             max_gain + p.time_step_energy_use * p.evidence_needed
         };
 
-        objectives::best_location(family.effective_size, &mut max_gain, kd, p, threshold)
+        objectives::best_location(
+            family.effective_size,
+            &family.adaptation,
+            &mut max_gain, kd, p, threshold)
             .or(Some(target))
     }
 }
@@ -660,6 +698,7 @@ mod objectives {
     // `expected_resources_from_patch`, drawing at random between equal options.
     pub fn best_location(
         size: usize,
+        adaptation: &[f32; ecology::ATTESTED_ECOREGIONS],
         max_gain: &mut KCal,
         kd: std::slice::Iter<(Index, &Patch, usize, usize)>,
         p: &Parameters,
@@ -676,6 +715,7 @@ mod objectives {
         for (coords, patch, cooperators, competitors) in kd {
             let expected_gain = prediction::expected_resources_from_patch(
                 size as f32,
+                adaptation,
                 patch,
                 *cooperators as f32,
                 *competitors as f32,
@@ -724,7 +764,7 @@ mod learning {
     ) -> Vec<Index> {
         let mut result = vec![];
         for location in nearby {
-            if history[0..smaller_of_two(8, history.len())].contains(&location) {
+            if history[0..min(8, history.len())].contains(&location) {
                 result.push(*location);
                 continue;
             }
@@ -765,22 +805,28 @@ mod prediction {
     use crate::*;
 
     pub fn expected_resources_from_patch(
-        my_effective_size: f32,
+        my_size: f32,
+        adaptation: &[f32; ecology::ATTESTED_ECOREGIONS],
         patch: &Patch,
         cooperators: f32,
         competitors: f32,
         p: &Parameters,
     ) -> KCal
     {
-        assert!(my_effective_size + cooperators > 0.);
-        submodels::ecology::resources_from_patch(
-            patch,
-            my_effective_size + cooperators,
-            competitors,
-            true,
-            p,
-        ) * my_effective_size
-            / (my_effective_size + cooperators)
+        assert!(my_size + cooperators > 0.);
+        (0..ecology::ATTESTED_ECOREGIONS).map(
+            |i| {
+                let my_effective_size = my_size * (adaptation[i] + 0.5);
+                submodels::ecology::resources_from_patch(
+                    &patch.resources[i],
+                    my_effective_size + cooperators,
+                    competitors,
+                    true,
+                    p
+                ) * my_effective_size / (my_effective_size + cooperators)
+            }
+        )
+            .sum::<KCal>()
     }
 }
 
@@ -841,12 +887,19 @@ mod sensing {
         let mut rng = rand::thread_rng();
         let NORM = 60.*60.*8.; // 8 hours
         let neighbors = movementgraph::bounded_dijkstra(
+            &p.dispersal_graph,
             location,
-            60.*60.*12.*10.,
-            p.dispersal_graph.edges)
+            60.*60.*12.*8.,
+            |e| *petgraph::csr::EdgeReference::weight(&e)
+        )
             .iter()
-            .filter(|&(_, v)| rng.gen::<f64>() < 1./(2. + v / NORM))
-            .map(|(n, _)| *n)
+            .filter_map(
+                |(n, v)|
+                if rng.gen::<f64>() < 1./(2. + v / NORM){
+                    Some(*n)
+                } else {
+                    None
+                })
             .collect();
         neighbors
     }
@@ -909,13 +962,13 @@ mod interaction {
     pub fn split_resources(
         my_relative_returns: KCal,
         others_relative_returns: KCal,
-        total_resources_available: KCal,
+        total_resources_available: &KCal,
     ) -> KCal {
         assert!(my_relative_returns + others_relative_returns > 0.);
         let my_part = my_relative_returns / (my_relative_returns + others_relative_returns)
-            * smaller_of_two(
+            * KCal::min(
                 my_relative_returns + others_relative_returns,
-                total_resources_available,
+                *total_resources_available,
             );
         assert!(my_part.is_finite());
         my_part
@@ -1021,7 +1074,7 @@ mod collectives {
         for group in groups.iter_mut() {
             group.total_efficiency = group.total_efficiency
                 + dist.sample(&mut rng) * p.payoff_std / group.total_efficiency.powf(0.5);
-            group.total_efficiency = greater_of_two(group.total_efficiency, 0.);
+            group.total_efficiency = f32::max(group.total_efficiency, 0.);
             sum_labor += group.total_efficiency;
         }
         Some((groups, sum_labor))
@@ -1047,13 +1100,14 @@ mod observation {
     */
     pub fn print_population_by_location(
         cultures_by_location: HashMap<Index, HashMap<Culture, usize>>,
+        p: &Parameters,
     ) {
         println!(
             "POPULATION: {:?}",
             cultures_by_location
                 .par_iter()
                 .map(|(k, v)| {
-                    let g = hexgrid::geo_coordinates(*k);
+                    let g = hexgrid::geo_coordinates(p.dispersal_graph[*k].0);
                     (g.lon, g.lat, v.iter().map(|(_, c)| c).sum())
                 })
                 .collect::<Vec<(f64, f64, usize)>>()
@@ -1067,9 +1121,11 @@ mod observation {
     computational effort and high autocorrelation of the outcomes, we collect
     this data only about once per generation, i.e. every 60 time steps.
     */
-    pub fn print_gd_cd(cultures_by_location: HashMap<Index, HashMap<Culture, usize>>) {
+    pub fn print_gd_cd(
+        cultures_by_location: HashMap<Index, HashMap<Culture, usize>>,
+        p: &Parameters) {
         let gd_cd: HashMap<i32, HashMap<u32, usize>> =
-            emergence::cultural_distance_by_geographical_distance(&cultures_by_location, 5 * 5 * 2);
+            emergence::cultural_distance_by_geographical_distance(&cultures_by_location, 5 * 5 * 2, p);
         println!("GD_CD: {:?}", gd_cd)
     }
 }
@@ -1091,12 +1147,36 @@ mod observation {
 */
 mod hexgrid;
 
+fn very_coarse_dist(x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
+    (x1 - x2).abs() + (y1 - y2).abs()
+}
+
 fn initialization(precipitation: &Vec<u16>, width: usize, p: &Parameters) -> Option<State>
 {
-    let start1: hexgrid::Index = hexgrid::closest_grid_point(-159.873, 65.613)?;
-    let start2: hexgrid::Index = hexgrid::closest_grid_point(-158.2718, 60.8071)?;
+    let graph = &p.dispersal_graph;
 
+    let mut start1: Index = 0;
+    let mut start2: Index = 0;
+    let mut start1d = very_coarse_dist(graph[0].1, graph[0].2, -159.873, 65.613);
+    let mut start2d = very_coarse_dist(graph[0].1, graph[0].2, -158.2718, 60.8071);
+
+    for i in 0..graph.node_count() {
+        let longitude = graph[i].1;
+        let latitude = graph[i].2;
+        let d1 = very_coarse_dist(longitude, latitude, -159.873, 65.613);
+        let d2 = very_coarse_dist(longitude, latitude, -158.2718, 60.8071);
+        if d1 < start1d {
+            start1 = i;
+            start1d = d1;
+        }
+        if d2 < start2d {
+            start2 = i;
+            start2d = d2;
+        }
+    }
     let area: f32 = libh3::hex_area_km_2(5) as f32;
+
+    println!("Starts: {:}, {:}", start1, start2);
 
     let mut patches: HashMap<Index, Option<Patch>> = HashMap::new();
     let mut new_patches: std::collections::BinaryHeap<Index> =
@@ -1111,38 +1191,39 @@ fn initialization(precipitation: &Vec<u16>, width: usize, p: &Parameters) -> Opt
         if patches.contains_key(&next) {
             continue;
         }
-        let geo = hexgrid::geo_coordinates(next);
-        let latitude = geo.lat * 180. / PI;
-        let longitude = geo.lon * 180. / PI;
+        let geo = &graph[next];
+        let longitude = geo.1;
+        let latitude = geo.2;
+        let ecoregions = &geo.3;
+
         if p.boundary_west < longitude
             && longitude < p.boundary_east
             && p.boundary_south < latitude
             && latitude < p.boundary_north
         {
-            let patch = ecology::patch_from_coordinates(geo, precipitation, width);
+            let patch = ecology::patch_from_ecoregions(
+                ecoregions, &p.time_step_energy_use);
             match patch {
                 None => {
                     patches.insert(next, None);
                     continue;
                 }
                 Some(resources) => {
+                    println!("Resources at {:} ({:}, {:}): {:?}", next, longitude, latitude, resources.iter().sum::<f32>());
                     patches.insert(
                         next,
                         Some(Patch {
-                            resources: resources
-                                * p.time_step_energy_use
-                                * area
-                                * p.accessible_resources,
-                            max_resources: resources * p.time_step_energy_use * area,
+                            resources: resources,
+                            max_resources: resources,
                         }),
                     );
                 }
             };
-            for q in hexgrid::nearby_locations(next) {
-                if patches.contains_key(&q) {
+            for q in graph.neighbors_slice(next) {
+                if patches.contains_key(q) {
                     continue;
                 }
-                new_patches.push(q);
+                new_patches.push(*q);
             }
         } else {
             patches.insert(next, None);
@@ -1159,6 +1240,7 @@ fn initialization(precipitation: &Vec<u16>, width: usize, p: &Parameters) -> Opt
         number_offspring: 0,
         seasons_till_next_mutation: None,
         stored_resources: 1_600_000.,
+        adaptation: [0.0; ecology::ATTESTED_ECOREGIONS],
     };
     let f2 = Family {
         descendence: String::from("F"),
@@ -1171,6 +1253,7 @@ fn initialization(precipitation: &Vec<u16>, width: usize, p: &Parameters) -> Opt
         number_offspring: 0,
         seasons_till_next_mutation: None,
         stored_resources: 1_600_000.,
+        adaptation: [0.0; ecology::ATTESTED_ECOREGIONS],
     };
     // let families: HashMap<Index, Vec<Family>> = HashMap::new();
     // families.insert(start1, vec![f1]);
@@ -1208,53 +1291,41 @@ mod input {
 */
 mod submodels {
     pub mod culture {
-        use crate::{Culture, Family};
+        use crate::Culture;
         use rand::prelude::*;
 
         pub fn distance(c1: Culture, c2: Culture) -> u32 {
             (c1 ^ c2).count_ones()
         }
 
-        pub fn mutate_culture(family: &mut Family, culture_dimensionality: u8, culture_mutation_rate: f64)
+        pub fn mutate_culture(
+            family_seasons_till_next_mutation: &mut Option<u32>,
+            family_culture: &mut Culture,
+            culture_dimensionality: u8, culture_mutation_rate: f64)
         {
-            match family.seasons_till_next_mutation {
+            match family_seasons_till_next_mutation {
                 None => {
-                    family.seasons_till_next_mutation =
+                    *family_seasons_till_next_mutation =
                         Some(random::<f64>().log(1. - culture_mutation_rate) as u32);
-                    mutate_culture(family, culture_dimensionality, culture_mutation_rate);
+                    mutate_culture(family_seasons_till_next_mutation,
+                                   family_culture, culture_dimensionality, culture_mutation_rate);
                 }
                 Some(0) => {
                     let i: u8 = rand::thread_rng().gen_range(0, culture_dimensionality);
-                    family.culture ^= 1 << i;
-                    family.seasons_till_next_mutation =
+                    *family_culture ^= 1 << i;
+                    *family_seasons_till_next_mutation =
                         Some(random::<f64>().log(1. - culture_mutation_rate) as u32);
                 }
                 Some(k) => {
-                    family.seasons_till_next_mutation = Some(k - 1);
+                    *family_seasons_till_next_mutation = Some(*k - 1);
                 }
             }
         }
 
-        pub fn adjust(mut cooperating_families: Vec<&mut Family>, culture_dimensionality: u8, culture_mutation_rate: f64)
-        {
-            for f in &mut cooperating_families {
-                mutate_culture(f, culture_dimensionality, culture_mutation_rate);
-            }
-            let family: Option<&&mut Family> = cooperating_families.choose(&mut rand::thread_rng());
-            match family {
-                None => {}
-                Some(f) => {
-                    let target: Culture = f.culture;
-                    for f2 in cooperating_families {
-                        f2.culture = target;
-                    }
-                }
-            }
-        }
     }
 
     pub mod family_lifecycle {
-        use crate::{Family, KCal, Parameters, hexgrid};
+        use crate::{Family, KCal, Parameters};
 
         pub fn resources_at_season_end(resources: KCal, size: usize, p: &Parameters) -> KCal
         {
@@ -1282,6 +1353,7 @@ mod submodels {
                     number_offspring: 0,
                     seasons_till_next_mutation: None,
                     stored_resources: 0.,
+                    adaptation: family.adaptation,
                 })
             }
         }
@@ -1315,10 +1387,10 @@ mod submodels {
     }
 
     pub mod ecology {
-        use crate::{collectives, interaction, KCal, Parameters, Patch, hexgrid};
+        use crate::{collectives, interaction, KCal, Parameters, Patch, ecology};
 
         pub fn resources_from_patch(
-            patch: &Patch,
+            patch_resources: &KCal,
             labor: f32,
             others_labor: f32,
             _estimate: bool,
@@ -1339,32 +1411,50 @@ mod submodels {
                 0.
             };
             interaction::split_resources(
-                my_relative_returns,
-                others_relative_returns,
-                patch.resources,
-            )
+                    my_relative_returns,
+                    others_relative_returns,
+                    patch_resources)
         }
 
-        pub fn exploit(patch: &mut Patch, resource_reduction: KCal) {
-            patch.resources -= resource_reduction;
-            if patch.resources < 0. {
-                patch.resources = 0.;
+        pub fn exploit(resources: &mut KCal, resource_reduction: KCal) {
+            *resources -= resource_reduction;
+            if *resources < 0. {
+                *resources = 0.;
             }
         }
 
-        pub fn recover(patch: &mut Patch, resource_recovery: f32, accessible_resources: f32) {
-            if patch.resources < patch.max_resources * accessible_resources {
-                let underlying_resources =
-                    patch.resources + (1. - accessible_resources) * patch.max_resources;
-                patch.resources += underlying_resources
-                    * resource_recovery
-                    * (1. - underlying_resources / patch.max_resources);
+        /** Recover a patch, mutating its resources
+
+        The recovery assumes exponential (or geometric, it's a discrete-time
+        model) growth of resources in a patch up to a given maximum.
+
+        The patch's `max_resouces` represents the maximum available for human
+        extraction. This is a proportion `accessible_resources` of the total
+        primary production in that spot.
+
+        For example, consider a patch with max_resources 
+
+        */
+        pub fn recover(
+            patch_resources: &mut [KCal],
+            patch_max_resources: &[KCal],
+            resource_recovery: f32,
+            accessible_resources: f32)
+        {
+            for i in 0..patch_max_resources.len() {
+                if patch_resources[i] < patch_max_resources[i] {
+                    let inaccessible = patch_max_resources[i] * (1. - accessible_resources) / accessible_resources;
+                    let underlying_resources = patch_resources[i] + inaccessible;
+                    patch_resources[i] += underlying_resources
+                        * resource_recovery
+                        * (1. - underlying_resources * accessible_resources/ patch_max_resources[i]);
+                }
+                assert!(patch_resources[i].is_normal());
             }
-            assert!(patch.resources.is_normal());
         }
 
         pub fn extract_resources(
-            patch: &mut Patch,
+            patch: &KCal,
             group: &mut collectives::Cooperative,
             total_labor_here: f32,
             p: &Parameters,
@@ -1374,7 +1464,7 @@ mod submodels {
 
             assert!(labor > 0.);
             let resources_extracted =
-                resources_from_patch(&patch, labor, total_labor_here - labor, false, &p);
+                resources_from_patch(patch, labor, total_labor_here - labor, false, &p);
             for family in group.families.iter_mut() {
                 family.stored_resources +=
                     resources_extracted * family.effective_size as f32 / labor as f32;
@@ -1407,109 +1497,87 @@ mod submodels {
             pub boundary_south: f64,
             pub boundary_north: f64,
 
-            pub dispersal_graph: petgraph::csr::Csr<(hexgrid::Index, f64, f64, HashMap<i32, f64>), f64, petgraph::Directed, usize>,
+            pub dispersal_graph: petgraph::csr::Csr<(hexgrid::Index, f64, f64, HashMap<usize, f64>), f64, petgraph::Directed, usize>,
         }
     }
 }
 
-fn main() -> Result<(), i8> {
+fn main() -> Result<(), String> {
     let try_conn = rusqlite::Connection::open_with_flags(
         "/home/gereon/Public/settlement-of-americas/supplement/distances/plot.sqlite",
         rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY);
     let conn: rusqlite::Connection;
     match try_conn {
         Err(e) => {
-            return Err(1);
+            return Err(e.to_string());
         }
         Ok(k) => {
             conn = k;
         }
     }
 
-    let try_stmt = conn.prepare("SELECT hexbin1, hexbin2, distance FROM dist WHERE hexbin1 = ?");
-    let mut stmt: rusqlite::Statement;
-    match try_stmt {
-        Err(e) => {
-            return Err(2);
-        }
-        Ok(k) => {
-            stmt = k;
-        }
-    }
-
-    let from_db = |h: &Index| {
-        let result = match stmt.query_map(
-            rusqlite::params![*h as i64],
-            |row| Ok((row.get::<usize, i64>(1)? as u64, row.get::<usize, f64>(2)?))
-        ) {
-            Ok(k) => {
-                k.filter_map(Result::ok).collect()
-            }
-            Err(e) => {
-                vec![]
-            }
-        };
-        result
-    };
-
-    use crate::hexgrid;
-
     let mut graph: petgraph::csr::Csr<
-            (Index, f64, f64, HashMap<_, _>),
+            (_, f64, f64, HashMap<_, _>),
         f64,
         petgraph::Directed,
         usize> = petgraph::csr::Csr::new();
 
-        let mut nodes_stmt;
-        match conn.prepare("SELECT hexbin, vlongitude, vlatitude FROM hex") {
-            Err(e) => { return Err(3); }
-            Ok(k) => { nodes_stmt = k; }
-        }
-        let mut eco_stmt;
-        match conn.prepare("SELECT ecoregion, count FROM eco WHERE hexbin = ?") {
-            Err(e) => { return Err(3); }
-            Ok(k) => { eco_stmt = k; }
-        }
-        let mut dist_stmt;
-        match conn.prepare("SELECT distance FROM dist WHERE hexbin1 = ? AND hexbin2 = ? ORDER BY distance LIMIT 1") {
-            Err(e) => { return Err(3); }
-            Ok(k) => { dist_stmt = k; }
-        }
+    let boundary_west = -168.571_541;
+    let boundary_east = -34.535_395;
+    let boundary_south = -56.028_198;
+    let boundary_north = 74.52671;
 
-        nodes_stmt.query_map(rusqlite::NO_PARAMS, |node| {
-            let hexbin: i32 = node.get(0)?;
-            let vlongitude: f64 = node.get(1)?;
-            let vlatitude: f64 = node.get(2)?;
-            let mut ecos: HashMap<_, _> = HashMap::new();
-            eco_stmt.query_map(rusqlite::params![hexbin], |eco| {
-                ecos.insert(eco.get(0)?, eco.get(1)?);
-                Ok(())
-            });
-            ecos.remove(&999);
-            if ecos.len() == 0 {
-                return Ok(())
-            }
-            graph.add_node((hexbin as hexgrid::Index, vlongitude, vlatitude, ecos));
-            Ok(())
-        });
+    let mut nodes_stmt;
+    match conn.prepare("SELECT hexbin, vlongitude, vlatitude FROM hex NATURAL INNER JOIN (SELECT hexbin FROM eco WHERE ecoregion != 999 GROUP BY hexbin) WHERE ? < vlongitude AND vlongitude < ? AND ? < vlatitude AND vlatitude < ?") {
+        Err(e) => { return Err(e.to_string()); }
+        Ok(k) => { nodes_stmt = k; }
+    }
 
-        for i in 0..graph.node_count() {
-            let hexbin1 = graph[i].0;
-            for j in 0..graph.node_count() {
-                if i == j {
-                    continue;
-                }
-                let hexbin2 = graph[j].0;
-                dist_stmt.query_map(
-                    rusqlite::params![hexbin1 as i32, hexbin2 as i32],
-                    |dist| {
-                        graph.add_edge(i, j, dist.get(0)?);
-                        Ok(())
-                    }
-                );
-            }
-        }
+    let mut eco_stmt;
+    match conn.prepare("SELECT ecoregion, frequency FROM eco WHERE hexbin = ? AND ecoregion != 999") {
+        Err(e) => { return Err(e.to_string()); }
+        Ok(k) => { eco_stmt = k; }
+    }
+    let mut dist_stmt;
+    match conn.prepare("SELECT hexbin1, hexbin2, min(distance) FROM dist GROUP BY hexbin1, hexbin2") {
+        Err(_) => { return Err("Could not prepare dist statement".to_string()); }
+        Ok(k) => { dist_stmt = k; }
+    }
 
+    let SQUARE_OF_15_ARCSEC = (111.319_f64 / 60. / 4.).powi(2); //km², at the equator.
+
+    let mut h3_to_graph = HashMap::new();
+    for (i, (hexbin, longitude, latitude)) in nodes_stmt.query_map(
+        rusqlite::params![
+            boundary_west, boundary_east, boundary_south, boundary_north
+        ], |node| {
+            Ok((node.get::<_, i64>(0)?, node.get(1)?, node.get(2)?))
+        }).unwrap().flatten().enumerate() {
+        let ecos: HashMap<_, _> =
+            eco_stmt.query_map(
+                rusqlite::params![hexbin], |eco| {
+                    // The areas are already scaled by the cosine of latitude,
+                    // so this converts them into km².
+                    Ok((eco.get::<_, i64>(0)? as usize, eco.get::<_, f64>(1)? * SQUARE_OF_15_ARCSEC))
+                })
+            .unwrap()
+            .flatten()
+            .collect();
+        assert!(ecos.len() > 0);
+        graph.add_node(
+            (hexbin as hexgrid::Index, longitude, latitude, ecos));
+        h3_to_graph.insert(hexbin, i);
+    }
+
+    for (a1, a2, d) in dist_stmt.query_map(
+        rusqlite::NO_PARAMS,
+        |dist| Ok((dist.get(0)?, dist.get(1)?, dist.get(2)?)))
+        .unwrap().flatten().filter_map(|(i, j, d)|
+            Some((*h3_to_graph.get(&i)?, *h3_to_graph.get(&j)?, d)))
+    {
+        graph.add_edge(a1, a2, d);
+    }
+    println!("{:}", graph.edge_count());
 
     let mut p = Parameters {
         attention_probability: 0.1,

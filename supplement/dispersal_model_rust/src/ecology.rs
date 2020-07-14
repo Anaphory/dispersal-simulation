@@ -1,6 +1,6 @@
-use crate::hexgrid;
 use crate::KCal;
 use std::f64::consts::PI;
+use std::collections::HashMap;
 
 pub fn load_precipitation_tif() -> Option<(Vec<u16>, u32)> {
     // TODO: How do I specify data paths?
@@ -19,12 +19,13 @@ pub fn load_precipitation_tif() -> Option<(Vec<u16>, u32)> {
 }
 
 pub fn patch_from_coordinates(
-    coordinates: hexgrid::GeoCoord,
+    (longitude, latitude): (f64, f64),
     image_pixels: &Vec<u16>,
     pixels_width: usize,
 ) -> Option<KCal> {
-    let column = ((coordinates.lon + PI) / PI / 2. * pixels_width as f64).round() as usize;
-    let row = ((-coordinates.lat + PI / 2.) / PI * (image_pixels.len() / pixels_width) as f64)
+    let column = ((longitude + 180.) / 360. * pixels_width as f64)
+        .round() as usize;
+    let row = ((-latitude + 90.) / 180. * (image_pixels.len() / pixels_width) as f64)
         .round() as usize;
     let index = row * pixels_width + column;
     let precipitation = image_pixels.get(index)?;

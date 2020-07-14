@@ -80,17 +80,18 @@ impl<K: PartialOrd, T> Ord for MinScored<K, T> {
     }
 }
 
-pub fn bounded_dijkstra<N, F, K>(
-    start: N,
+pub fn bounded_dijkstra<G, F, K>(
+    graph: G,
+    start: G::NodeId,
     max_distance: K,
-    edge_cost: F
-) -> HashMap<N, K>
-where
-    N: Eq + Hash + Copy,
-    F: Fn(&N) -> Result<Vec<(N, K)>>,
-    K: Measure + Copy,
+    mut edge_cost: F
+) -> HashMap<G::NodeId, K>
+where G: IntoEdges + Visitable,
+      G::NodeId: Eq + Hash,
+      F: FnMut(G::EdgeRef) -> K,
+      K: Measure + Copy,
 {
-    let mut visited: HashSet<N> = HashSet::new();
+    let mut visited = graph.visit_map();
     let mut scores = HashMap::new();
     //let mut predecessor = HashMap::new();
     let mut visit_next = BinaryHeap::new();
@@ -99,30 +100,30 @@ where
     visit_next.push(MinScored(zero_score, start));
     while let Some(MinScored(node_score, node)) = visit_next.pop() {
         if visited.is_visited(&node) {
-            continue;
+            continue
         }
         if max_distance < node_score {
             break;
         }
-        for (next, cost) in edge_cost(&node).unwrap_or(vec![]) {
+        for edge in graph.edges(node) {
+            let next = edge.target();
             if visited.is_visited(&next) {
-                continue;
+                continue
             }
-            let next_score = node_score + cost;
+            let mut next_score = node_score + edge_cost(edge);
             match scores.entry(next) {
-                Occupied(ent) => {
-                    if next_score < *ent.get() {
-                        *ent.into_mut() = next_score;
-                        visit_next.push(MinScored(next_score, next));
-                        //predecessor.insert(next.clone(), node.clone());
-                    }
-                }
+                Occupied(ent) => if next_score < *ent.get() {
+                    *ent.into_mut() = next_score;
+                    //predecessor.insert(next.clone(), node.clone());
+                } else {
+                    next_score = *ent.get();
+                },
                 Vacant(ent) => {
                     ent.insert(next_score);
-                    visit_next.push(MinScored(next_score, next));
                     //predecessor.insert(next.clone(), node.clone());
                 }
             }
+            visit_next.push(MinScored(next_score, next));
         }
         visited.visit(node);
     }
