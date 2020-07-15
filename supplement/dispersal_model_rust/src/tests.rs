@@ -3,16 +3,13 @@ use crate::*;
 #[test]
 pub fn test_decide_on_moving() {
     let patch1 = Patch {
-        resources: 10.,
-        max_resources: 10.,
+        resources: vec![(0, (10., 10.))].drain(..).collect(),
     };
     let patch2 = Patch {
-        resources: 100.,
-        max_resources: 100.,
+        resources: vec![(0, (100., 100.))].drain(..).collect(),
     };
     let _patch3 = Patch {
-        resources: 100000.,
-        max_resources: 100000.,
+        resources: vec![(0, (10000., 10000.))].drain(..).collect(),
     };
     let mini_param = Parameters {
         attention_probability: 0.1,
@@ -46,6 +43,7 @@ pub fn test_decide_on_moving() {
         seasons_till_next_child: 0,
         seasons_till_next_mutation: None,
         stored_resources: 1.,
+        adaptation: ecology::Ecovector::default()
     };
     assert_eq!(
         adaptation::decide_on_moving(
@@ -86,18 +84,9 @@ pub fn test_decide_on_moving() {
 
 #[test]
 pub fn test_decide_on_moving_is_uniform() {
-    let patch1 = Patch {
-        resources: 10.,
-        max_resources: 10.,
-    };
-    let patch2 = Patch {
-        resources: 100.,
-        max_resources: 100.,
-    };
-    let patch3 = Patch {
-        resources: 100000.,
-        max_resources: 100000.,
-    };
+    let patch1 = Patch {resources: vec![(0, (10., 10.))].drain(..).collect()};
+    let patch2 = Patch {resources: vec![(0, (100., 100.))].drain(..).collect()};
+    let patch3 = Patch {resources: vec![(0, (10000., 10000.))].drain(..).collect()};
     let mini_param = Parameters {
         attention_probability: 0.1,
         time_step_energy_use: 10.,
@@ -130,6 +119,7 @@ pub fn test_decide_on_moving_is_uniform() {
         seasons_till_next_child: 0,
         seasons_till_next_mutation: None,
         stored_resources: 1.,
+        adaptation: ecology::Ecovector::default()
     };
 
     let mut c = [0, 0, 0, 0, 0];
@@ -157,71 +147,3 @@ pub fn test_decide_on_moving_is_uniform() {
     assert!((c[4] - 100i8).abs() < 15);
 }
 
-#[test]
-pub fn test_resources_from_patch() {
-    let patch1 = Patch {
-        resources: 10.,
-        max_resources: 10.,
-    };
-    let patch2 = Patch {
-        resources: 100.,
-        max_resources: 100.,
-    };
-    let patch3 = Patch {
-        resources: 100000.,
-        max_resources: 100000.,
-    };
-    let mut mini_param = Parameters {
-        attention_probability: 0.1,
-        time_step_energy_use: 10.,
-        storage_loss: 0.25,
-        resource_recovery: 0.20,
-        culture_mutation_rate: 6e-3,
-        culture_dimensionality: 20,
-        cooperation_threshold: 6,
-        cooperation_gain: 0.0,
-        accessible_resources: 1.0,
-        evidence_needed: 0.3,
-        payoff_std: 0.1,
-
-        // Some part of Western Alaska
-        boundary_west: -168.571541,
-        boundary_east: -148.571541,
-        boundary_south: 56.028198,
-        boundary_north: 74.52671,
-        
-        dispersal_graph: petgraph::csr::Csr::new(),
-    };
-    assert_eq!(
-        submodels::ecology::resources_from_patch(&patch1, 2., 0., true, &mini_param),
-        10.
-    );
-    assert_eq!(
-        submodels::ecology::resources_from_patch(&patch2, 2., 0., true, &mini_param),
-        22.
-    );
-    assert_eq!(
-        submodels::ecology::resources_from_patch(&patch3, 2., 0., true, &mini_param),
-        22.
-    );
-    assert!(
-        (submodels::ecology::resources_from_patch(&patch2, 3., 7., true, &mini_param) - 30.).abs()
-            < 0.001
-    );
-    mini_param.cooperation_gain = 0.5;
-    assert!(
-        (submodels::ecology::resources_from_patch(&patch3, 25., 0., true, &mini_param)
-            - 1.5 * 25. * 10.)
-            .abs()
-            < 5.
-    );
-
-    assert!(
-        submodels::ecology::resources_from_patch(&patch3, 5., 20., false, &mini_param)
-            + submodels::ecology::resources_from_patch(&patch3, 5., 20., false, &mini_param)
-            + submodels::ecology::resources_from_patch(&patch3, 5., 20., false, &mini_param)
-            + submodels::ecology::resources_from_patch(&patch3, 5., 20., false, &mini_param)
-            + submodels::ecology::resources_from_patch(&patch3, 5., 20., false, &mini_param)
-            < submodels::ecology::resources_from_patch(&patch3, 25., 0., false, &mini_param)
-    )
-}

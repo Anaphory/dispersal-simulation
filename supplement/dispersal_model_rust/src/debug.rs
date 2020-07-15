@@ -1,8 +1,8 @@
 impl std::fmt::Debug for crate::Patch {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Patch")
-            .field("r", &self.resources.iter().sum::<f32>())
-            .field("/", &self.max_resources.iter().sum::<f32>())
+            //.field("r", &self.resources.iter().sum::<f32>())
+            //.field("/", &self.resources.iter().sum::<f32>())
             .finish()
     }
 }

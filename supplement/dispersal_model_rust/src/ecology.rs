@@ -45,7 +45,7 @@ pub const ATTESTED_ECOREGIONS: usize = 303;
 pub fn patch_from_ecoregions(
     ecoregions: &HashMap<usize, f64>,
     time_step_energy_use: &KCal
-) -> Option<[f32; ATTESTED_ECOREGIONS]> {
+) -> HashMap<usize, (KCal, KCal)> {
     let logpopdensity: HashMap<_, KCal> = vec![
         (2, 4.0974917821114), // Admiralty Islands lowland rain forests
         (3, 2.13331596527082), // Aegean and Western Turkey sclerophyllous and mixed forests
@@ -841,46 +841,45 @@ pub fn patch_from_ecoregions(
         (848, 2.50804814375686), // Sulawesi lowland rain forests
     ].drain(..).collect();
 
-    let r = |i| logpopdensity.get(&i).unwrap_or(&0.0)
-        * *ecoregions.get(&i).unwrap_or(&0.0) as KCal
-        * time_step_energy_use;
-
-    Some([r(5), r(10), r(11), r(13), r(16), r(17), r(22), r(23), r(33), r(34),
-          r(35), r(37), r(39), r(40), r(41), r(43), r(44), r(47), r(48), r(50),
-          r(55), r(57), r(58), r(59), r(60), r(61), r(63), r(67), r(68), r(69),
-          r(70), r(71), r(72), r(74), r(76), r(77), r(83), r(84), r(86), r(87),
-          r(89), r(90), r(91), r(92), r(94), r(95), r(96), r(102), r(104),
-          r(111), r(112), r(113), r(115), r(119), r(120), r(121), r(122),
-          r(125), r(126), r(127), r(128), r(129), r(133), r(135), r(140),
-          r(143), r(144), r(150), r(151), r(154), r(162), r(163), r(164),
-          r(165), r(166), r(168), r(169), r(171), r(172), r(173), r(174),
-          r(175), r(177), r(180), r(181), r(182), r(183), r(184), r(186),
-          r(191), r(192), r(193), r(194), r(195), r(196), r(201), r(207),
-          r(208), r(215), r(227), r(228), r(229), r(231), r(232), r(234),
-          r(244), r(245), r(246), r(254), r(257), r(263), r(266), r(271),
-          r(272), r(274), r(282), r(283), r(288), r(289), r(290), r(291),
-          r(292), r(293), r(294), r(299), r(300), r(301), r(311), r(312),
-          r(317), r(318), r(319), r(326), r(327), r(331), r(337), r(338),
-          r(339), r(340), r(344), r(345), r(346), r(349), r(350), r(351),
-          r(352), r(356), r(358), r(377), r(384), r(386), r(387), r(390),
-          r(393), r(406), r(408), r(409), r(410), r(411), r(415), r(419),
-          r(420), r(421), r(422), r(427), r(435), r(436), r(438), r(439),
-          r(440), r(441), r(445), r(446), r(449), r(451), r(452), r(453),
-          r(457), r(465), r(468), r(469), r(476), r(485), r(486), r(500),
-          r(504), r(507), r(509), r(510), r(515), r(518), r(520), r(528),
-          r(537), r(539), r(540), r(543), r(544), r(546), r(547), r(548),
-          r(551), r(553), r(555), r(556), r(557), r(558), r(559), r(561),
-          r(562), r(566), r(567), r(568), r(569), r(572), r(576), r(577),
-          r(578), r(579), r(580), r(598), r(605), r(606), r(607), r(608),
-          r(609), r(618), r(619), r(623), r(625), r(626), r(627), r(628),
-          r(629), r(630), r(631), r(632), r(633), r(635), r(636), r(637),
-          r(640), r(643), r(644), r(645), r(648), r(655), r(665), r(666),
-          r(673), r(674), r(676), r(677), r(679), r(680), r(683), r(686),
-          r(690), r(724), r(725), r(726), r(727), r(732), r(735), r(748),
-          r(751), r(754), r(759), r(761), r(762), r(764), r(766), r(768),
-          r(770), r(771), r(772), r(773), r(777), r(778), r(785), r(787),
-          r(789), r(796), r(799), r(800), r(802), r(803), r(809), r(810),
-          r(820), r(821), r(826), r(827), r(828), r(833), r(836), r(837),
-          r(838), r(839), r(840), r(843), r(844), r(999),])
-
+    ecoregions.iter().map(
+        |(&i, amount)| {
+            let r = logpopdensity.get(&i).unwrap_or(&0.0)
+                * *amount as KCal
+                * time_step_energy_use;
+            (i, (r, r))
+        }).collect()
 }
+
+#[derive(Clone, Copy)]
+pub struct Ecovector {
+    entries: [f32; ATTESTED_ECOREGIONS]
+}
+
+use std::ops::{Mul, Index};
+
+impl Mul<f32> for Ecovector {
+    type Output = Self;
+
+    fn mul(self, rhs: f32) -> Self::Output {
+        let mut result = [0.; ATTESTED_ECOREGIONS];
+        for i in 0..ATTESTED_ECOREGIONS {
+            result[i] = self.entries[i] * rhs;
+        }
+        Ecovector { entries: result }
+    }
+}
+
+impl Index<usize> for Ecovector {
+    type Output = f32;
+
+    fn index(&self, index: usize) -> &f32 {
+        &self.entries[index]
+    }
+}
+
+impl Default for Ecovector {
+    fn default() -> Self {
+        Ecovector { entries: [0.0; ATTESTED_ECOREGIONS] }
+    }
+}
+

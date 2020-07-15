@@ -37,6 +37,7 @@ use std::cmp::{min, max};
 use rand::prelude::*;
 use rayon::prelude::*;
 use std::collections::HashMap;
+use rand_distr::StandardNormal;
 
 mod util;
 
@@ -91,7 +92,7 @@ pub struct Family {
     /// The amount of stored resources, in kcal, the family has access to.
     stored_resources: KCal,
     /// Adaptation to local ecoregions
-    adaptation: [f32; ecology::ATTESTED_ECOREGIONS],
+    adaptation: ecology::Ecovector,
 
     /// The number of seasons to wait until the next child (reset to 2 when
     /// starvation happens)
@@ -157,12 +158,10 @@ fundamentally reasonable dynamics.
 type Index = usize;
 
 pub struct Patch {
-    /// The resources currently available (not necessarily accessible, see XXX)
-    /// in this patch, in kcal / season.
-    resources: [KCal; ecology::ATTESTED_ECOREGIONS],
-    /// The maximum possible resources available in a time step, also in kcal /
-    /// season.
-    max_resources: [KCal; ecology::ATTESTED_ECOREGIONS],
+    /// For every local ecoregion, the tuple of resources currently accessible
+    /// in this patch, plus the maximum possible resources available in a time
+    /// step, both in kcal / season.
+    resources: HashMap<usize, (KCal, KCal)>,
 }
 
 /**
@@ -342,71 +341,50 @@ concludes a time step.
 fn step_part_2(
     families_by_location: &mut HashMap<Index, Vec<Family>>,
     patches: &mut HashMap<Index, Patch>,
-    p: &Parameters,
-) -> Option<()> {
+    p: &Parameters,)
+{
+
+    let mut rng = rand::thread_rng();
+
     for (patch_id, families) in families_by_location {
         assert!(families.len() > 0);
-        let mut patch = match patches.get_mut(patch_id) {
+
+        let patch = match patches.get_mut(patch_id) {
             None => { continue },
             Some(p) => { p }
         };
 
+        let mut groups = collectives::cooperatives(
+            families.iter_mut().collect(), p);
 
-        let fam: Vec<&mut Family> = families.iter_mut().collect();
-
-        let k = collectives::cooperatives(fam, p)?;
-
-        for i in 0..ecology::ATTESTED_ECOREGIONS {
-            let mut resource_reduction = 0.0;
-
-            let cooperatives = &k.0;
-            let sum_labor = k.1;
-
-            for mut cooperating_families in cooperatives {
-                let r = submodels::ecology::extract_resources(
-                    &patch.resources[i],
-                    &mut cooperating_families,
-                    sum_labor,
-                    p,
-                );
-                for f in &mut cooperating_families.families {
-                    if r > 0. {
-                        f.adaptation[i] += 0.1;
-                    }
-                    f.adaptation[i] *= 0.8;
-                }
-                resource_reduction += r
-            }
-
-            submodels::ecology::exploit(&mut patch.resources[i], resource_reduction);
-        }
-        for cooperating_families in k.0 {
-            for f in &mut cooperating_families.families {
-                submodels::culture::mutate_culture(
-                    &mut f.seasons_till_next_mutation,
-                    &mut f.culture, p.culture_dimensionality, p.culture_mutation_rate);
-            }
-            let family: Option<&&mut Family> = cooperating_families.families.choose(&mut rand::thread_rng());
-            match family {
-                None => { continue }
-                Some(f) => {
-                    let target: Culture = f.culture;
-                    for f2 in &mut cooperating_families.families {
-                        f2.culture = target;
-                    }
+        for (i, (res, res_max)) in patch.resources.iter_mut() {
+            let mut sum_extracted = 0.0;
+            let actual_contributions: Vec<(_, f32, f32)> = groups.iter_mut().map(|group| {
+                let mut raw_contribution = 0.0;
+                let families: Vec<(&mut f32, f32)> = group.families.iter_mut().map(|family| {
+                    let contribution = family.effective_size as f32 * family.adaptation[*i];
+                    raw_contribution += contribution;
+                    (&mut family.stored_resources, contribution)
+                }).collect();
+                let actual_contribution: f32 =
+                    raw_contribution +
+                    p.payoff_std * rng.sample::<f32, _>(StandardNormal) * raw_contribution.powf(0.5);
+                sum_extracted += actual_contribution;
+                (families, raw_contribution, actual_contribution)
+            }).collect();
+            let actual_payout = f32::min(*res, sum_extracted);
+            *res -= actual_payout;
+            for (families, raw_contribution, actual_contribution) in actual_contributions {
+                let actual_extracted = actual_payout * actual_contribution / sum_extracted;
+                for (family_res, contribution) in families {
+                    let actual_returns = actual_extracted * contribution / raw_contribution;
+                    *family_res += actual_returns;
                 }
             }
+            submodels::ecology::recover(
+                res, res_max, p.resource_recovery, p.accessible_resources);
         }
     }
-
-    for mut patch in patches.values_mut() {
-        submodels::ecology::recover(
-            &mut patch.resources,
-            &patch.max_resources,
-            p.resource_recovery,
-            p.accessible_resources);
-    }
-    Some(())
 }
 
 /**
@@ -619,59 +597,45 @@ success: A certain minimum of gathered resources is necessary to procreate, but
 extremely large amounts gathered soon do not increase the immediate rate of
 procreation and can in extreme cases (overexploitation of local resources) even
 be detrimental in the long run.
+
+Agents also adapt to local environment: TODO
 */
+pub struct Knowledge<'a> {
+    location: &'a Index,
+    environment: &'a Patch,
+    cultures: Vec<Culture>,
+    mean_payoff: Option<KCal>,
+    min_payoff: Option<KCal>
+}
+
+
 mod adaptation {
     use crate::*;
 
-    pub fn decide_on_moving<'a>(
+    pub fn decide_on_moving<'a, KD>(
         family: &'a Family,
-        known_destinations: Vec<(Index, &Patch, usize, usize)>,
+        kd: KD,
         avoid_stay: bool,
         p: &Parameters,
     ) -> Option<Index>
+    where
+        KD: Iterator<Item = &'a Knowledge<'a>>
     {
-        let mut kd = known_destinations.iter();
-        let (mut target, mut patch, mut cooperators, mut competitors): (
-            Index,
-            &Patch,
-            usize,
-            usize,
-        );
-        {
-            let (t, p, c, d) = kd.next()?;
-            target = *t;
-            patch = p;
-            // This is the patch that contains the family, correct fo that.
-            cooperators = *c - family.effective_size;
-            competitors = *d;
-        }
-        if avoid_stay {
-            let (t, p, c, d) = kd.next()?;
-            target = *t;
-            patch = p;
-            cooperators = *c;
-            competitors = *d;
-        }
-        let mut max_gain: KCal = prediction::expected_resources_from_patch(
-            family.effective_size as f32,
-            &family.adaptation,
-            patch,
-            cooperators as f32,
-            competitors as f32,
-            p,
-        );
-
         let threshold = if avoid_stay {
             0.
         } else {
-            max_gain + p.time_step_energy_use * p.evidence_needed
+            family.last_season_payoff + p.time_step_energy_use * p.evidence_needed
         };
 
         objectives::best_location(
+            family.culture,
             family.effective_size,
             &family.adaptation,
-            &mut max_gain, kd, p, threshold)
-            .or(Some(target))
+            kd.filter(|k| !avoid_stay || (*k.location != family.location)),
+            p,
+            threshold
+            )
+            .or(Some(family.location))
     }
 }
 
@@ -696,14 +660,16 @@ mod objectives {
     */
     // That is, this function omputes the argmax of
     // `expected_resources_from_patch`, drawing at random between equal options.
-    pub fn best_location(
+    pub fn best_location<'a, KD>(
+        culture: Culture,
         size: usize,
-        adaptation: &[f32; ecology::ATTESTED_ECOREGIONS],
-        max_gain: &mut KCal,
-        kd: std::slice::Iter<(Index, &Patch, usize, usize)>,
+        adaptation: &ecology::Ecovector,
+        kd: KD,
         p: &Parameters,
         threshold: KCal,
     ) -> Option<Index>
+    where
+        KD: Iterator<Item = &'a Knowledge<'a>>
     {
         let mut rng = rand::thread_rng();
 
@@ -712,20 +678,24 @@ mod objectives {
         // encountered so far.
         let mut c = 0;
         let mut target: Option<Index> = None;
-        for (coords, patch, cooperators, competitors) in kd {
-            let expected_gain = prediction::expected_resources_from_patch(
-                size as f32,
-                adaptation,
-                patch,
-                *cooperators as f32,
-                *competitors as f32,
-                p,
-            );
-            if expected_gain >= *max_gain {
+        let s = size as f32;
+        let mut max_gain = 0.0;
+
+        for knowledge in kd {
+            let mut expected_gain: KCal;
+            if knowledge.cultures.iter().any(|c| emergence::similar_culture(*c, culture, p.cooperation_threshold)) {
+                expected_gain = knowledge.mean_payoff.unwrap();
+            } else if !knowledge.cultures.is_empty() {
+                expected_gain = knowledge.mean_payoff.unwrap();
+            } else {
+                expected_gain = 0.0 // TODO: Actually estimate
+            }
+
+            if expected_gain >= max_gain {
                 if expected_gain < threshold {
                     continue;
                 }
-                if (expected_gain - *max_gain).abs() < std::f32::EPSILON {
+                if (expected_gain - max_gain).abs() < std::f32::EPSILON {
                     c += 1;
                     if rng.gen_range(0, c + 1) < c {
                         continue;
@@ -733,8 +703,8 @@ mod objectives {
                 } else {
                     c = 0
                 }
-                target = Some(*coords);
-                *max_gain = expected_gain;
+                target = Some(*knowledge.location);
+                max_gain = expected_gain;
             }
         }
         target
@@ -806,7 +776,7 @@ mod prediction {
 
     pub fn expected_resources_from_patch(
         my_size: f32,
-        adaptation: &[f32; ecology::ATTESTED_ECOREGIONS],
+        adaptation: &ecology::Ecovector,
         patch: &Patch,
         cooperators: f32,
         competitors: f32,
@@ -818,7 +788,7 @@ mod prediction {
             |i| {
                 let my_effective_size = my_size * (adaptation[i] + 0.5);
                 submodels::ecology::resources_from_patch(
-                    &patch.resources[i],
+                    &patch.resources[&i].0,
                     my_effective_size + cooperators,
                     competitors,
                     true,
@@ -1027,17 +997,15 @@ mod collectives {
     use crate::*;
     pub struct Cooperative<'a> {
         pub families: Vec<&'a mut Family>,
-        pub total_efficiency: f32,
     }
 
     pub fn cooperatives<'a>(
-        families_in_this_location: Vec<&'a mut Family>,
+        mut families_in_this_location: Vec<&'a mut Family>,
         p: &Parameters,
-    ) -> Option<(Vec<Cooperative<'a>>, f32)>
-    {
+    ) -> Vec<Cooperative<'a>> {
         let mut groups: Vec<Cooperative> = vec![];
 
-        for family in families_in_this_location {
+        for family in families_in_this_location.drain(..) {
             let mut joined_group: Option<&mut Cooperative> = None;
             for group in groups.iter_mut() {
                 let mut join = true;
@@ -1055,29 +1023,17 @@ mod collectives {
             let size = family.effective_size as f32;
             match joined_group {
                 None => {
-                    groups.push(Cooperative {
+                    let group = Cooperative {
                         families: vec![family],
-                        total_efficiency: size,
-                    });
+                    };
+                    groups.push(group);
                 }
                 Some(group) => {
                     group.families.push(family);
-                    group.total_efficiency += size;
                 }
             }
         }
-
-        let mut rng = rand::thread_rng();
-        use rand_distr::Normal;
-        let dist = Normal::new(0., 1.).ok()?;
-        let mut sum_labor = 0.;
-        for group in groups.iter_mut() {
-            group.total_efficiency = group.total_efficiency
-                + dist.sample(&mut rng) * p.payoff_std / group.total_efficiency.powf(0.5);
-            group.total_efficiency = f32::max(group.total_efficiency, 0.);
-            sum_labor += group.total_efficiency;
-        }
-        Some((groups, sum_labor))
+        groups
     }
 }
 
@@ -1201,24 +1157,15 @@ fn initialization(precipitation: &Vec<u16>, width: usize, p: &Parameters) -> Opt
             && p.boundary_south < latitude
             && latitude < p.boundary_north
         {
-            let patch = ecology::patch_from_ecoregions(
+            let resources = ecology::patch_from_ecoregions(
                 ecoregions, &p.time_step_energy_use);
-            match patch {
-                None => {
-                    patches.insert(next, None);
-                    continue;
-                }
-                Some(resources) => {
-                    println!("Resources at {:} ({:}, {:}): {:?}", next, longitude, latitude, resources.iter().sum::<f32>());
-                    patches.insert(
-                        next,
-                        Some(Patch {
-                            resources: resources,
-                            max_resources: resources,
-                        }),
-                    );
-                }
-            };
+            if resources.is_empty() { continue };
+            println!("Resources at {:} ({:}, {:}): {:?}",
+                     next, longitude, latitude, resources);
+            patches.insert(
+                next,
+                Some(Patch { resources: resources }),
+            );
             for q in graph.neighbors_slice(next) {
                 if patches.contains_key(q) {
                     continue;
@@ -1240,7 +1187,7 @@ fn initialization(precipitation: &Vec<u16>, width: usize, p: &Parameters) -> Opt
         number_offspring: 0,
         seasons_till_next_mutation: None,
         stored_resources: 1_600_000.,
-        adaptation: [0.0; ecology::ATTESTED_ECOREGIONS],
+        adaptation: ecology::Ecovector::default(),
     };
     let f2 = Family {
         descendence: String::from("F"),
@@ -1253,7 +1200,7 @@ fn initialization(precipitation: &Vec<u16>, width: usize, p: &Parameters) -> Opt
         number_offspring: 0,
         seasons_till_next_mutation: None,
         stored_resources: 1_600_000.,
-        adaptation: [0.0; ecology::ATTESTED_ECOREGIONS],
+        adaptation: ecology::Ecovector::default(),
     };
     // let families: HashMap<Index, Vec<Family>> = HashMap::new();
     // families.insert(start1, vec![f1]);
@@ -1289,7 +1236,7 @@ mod input {
 > dimensions, and reference values? How were submodels designed or chosen, and
 > how were they parameterized and then tested?
 */
-mod submodels {
+pub mod submodels {
     pub mod culture {
         use crate::Culture;
         use rand::prelude::*;
@@ -1389,40 +1336,6 @@ mod submodels {
     pub mod ecology {
         use crate::{collectives, interaction, KCal, Parameters, Patch, ecology};
 
-        pub fn resources_from_patch(
-            patch_resources: &KCal,
-            labor: f32,
-            others_labor: f32,
-            _estimate: bool,
-            p: &Parameters,
-        ) -> KCal
-        {
-            let my_relative_returns: f32 = p.time_step_energy_use
-                * labor
-                * interaction::effective_labor_through_cooperation(labor, p.cooperation_gain);
-            let others_relative_returns = if others_labor > 0. {
-                p.time_step_energy_use
-                    * others_labor
-                    * interaction::effective_labor_through_cooperation(
-                        others_labor,
-                        p.cooperation_gain,
-                    )
-            } else {
-                0.
-            };
-            interaction::split_resources(
-                    my_relative_returns,
-                    others_relative_returns,
-                    patch_resources)
-        }
-
-        pub fn exploit(resources: &mut KCal, resource_reduction: KCal) {
-            *resources -= resource_reduction;
-            if *resources < 0. {
-                *resources = 0.;
-            }
-        }
-
         /** Recover a patch, mutating its resources
 
         The recovery assumes exponential (or geometric, it's a discrete-time
@@ -1432,45 +1345,35 @@ mod submodels {
         extraction. This is a proportion `accessible_resources` of the total
         primary production in that spot.
 
-        For example, consider a patch with max_resources 
+        For example, consider a patch with max_resources 2 kcal and current
+        resources 1 kcal, where a quarter of the resources are accessible. This
+        means that another 6 kcal is present, but inaccessible, for a total of
+        7/8. The recovery is proportional to the current resources (i.e. 7 kcal)
+        the ‘space left to grow’ (i.e. 1/8). With a resource recovery of 0.5,
+        this means that this patch would recover by 7/16, so to 1.4375 available
+        resources.
+
+        ```
+        let mut resources = 1.0;
+        recover(&mut resources, 2.0, 0.5, 0.25);
+        assert!(resources == 1.4375);
+        ```
 
         */
         pub fn recover(
-            patch_resources: &mut [KCal],
-            patch_max_resources: &[KCal],
+            patch_resources: &mut KCal,
+            patch_max_resources: &KCal,
             resource_recovery: f32,
             accessible_resources: f32)
         {
-            for i in 0..patch_max_resources.len() {
-                if patch_resources[i] < patch_max_resources[i] {
-                    let inaccessible = patch_max_resources[i] * (1. - accessible_resources) / accessible_resources;
-                    let underlying_resources = patch_resources[i] + inaccessible;
-                    patch_resources[i] += underlying_resources
-                        * resource_recovery
-                        * (1. - underlying_resources * accessible_resources/ patch_max_resources[i]);
-                }
-                assert!(patch_resources[i].is_normal());
+            if *patch_resources < *patch_max_resources {
+                let inaccessible = patch_max_resources * (1. - accessible_resources) / accessible_resources;
+                let underlying_resources = *patch_resources + inaccessible;
+                *patch_resources += underlying_resources
+                    * resource_recovery
+                    * (1. - underlying_resources * accessible_resources/ patch_max_resources);
             }
-        }
-
-        pub fn extract_resources(
-            patch: &KCal,
-            group: &mut collectives::Cooperative,
-            total_labor_here: f32,
-            p: &Parameters,
-        ) -> KCal
-        {
-            let labor: f32 = group.total_efficiency;
-
-            assert!(labor > 0.);
-            let resources_extracted =
-                resources_from_patch(patch, labor, total_labor_here - labor, false, &p);
-            for family in group.families.iter_mut() {
-                family.stored_resources +=
-                    resources_extracted * family.effective_size as f32 / labor as f32;
-            }
-            // This function really does not belong here
-            resources_extracted
+            assert!(patch_resources.is_normal());
         }
     }
 
