@@ -20,7 +20,7 @@ pub fn edge_costs_from_db(h: &hexgrid::Index) -> Result<Vec<(hexgrid::Index, f64
         |row| Ok((row.get::<usize, i64>(1)? as u64, row.get::<usize, f64>(2)?))
     ) {
         Ok(k) => {
-            Ok(k.filter_map(Result::ok).collect())
+            Ok(k.flatten().collect())
         }
         Err(e) => {
             Err(e)

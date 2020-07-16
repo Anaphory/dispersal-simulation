@@ -836,7 +836,7 @@ mod sensing {
         p: &Parameters,
     ) -> Vec<Index> {
         let mut rng = rand::thread_rng();
-        let neighbors = movementgraph::bounded_dijkstra(
+        movementgraph::bounded_dijkstra(
             &p.dispersal_graph,
             location,
             60.*60.*12.*8.,
@@ -850,8 +850,7 @@ mod sensing {
                 } else {
                     None
                 })
-            .collect();
-        neighbors
+            .collect()
     }
 }
 
