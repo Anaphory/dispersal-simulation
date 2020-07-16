@@ -20,11 +20,11 @@ extension to more concrete research questions in mind. In the current, first
 stage, the purpose of the model is to investigate how languages disperse and
 split, driven only by the necessary interactions between humans.
 
-The summary statistics of this phylogeny (in particular diversification
-rates) are to be compared to values known from language evolution. The model
-is structured to be easily applied to study the history of the settlement of
-the Americas at a later time. It would requires paleoclimate data to produce
-results that can be compared to that history.
+The summary statistics of this phylogeny (in particular diversification rates)
+are to be compared to values known from language evolution. The model is
+structured to be easily applied to study the history of the settlement of the
+Americas at a later time. It would require paleoclimate data and interpretations
+of past ecoregions to produce results that can be compared to that history.
 */
 
 // TODO: Dear Rustacean, I know that my use of documentation comments is
@@ -32,19 +32,14 @@ results that can be compared to that history.
 // order, or attached to things that are only accidentally coming afterwards.
 
 // Load useful modules
-use std::cmp::{min, max};
 
 use rand::prelude::*;
 use rayon::prelude::*;
-use std::collections::HashMap;
+use std::collections::{HashMap,BTreeSet};
 use rand_distr::StandardNormal;
 
-mod util;
-
 mod debug;
-mod ecology;
-mod tests;
-mod movementgraph;
+pub mod ecology;
 
 use submodels::parameters::Parameters;
 
@@ -57,28 +52,69 @@ discrete time. One time step is supposed to model a season with a duration of
 half a year.
  */
 
-type HalfYears = u32;
+pub type HalfYears = u32;
 
 /**
 Whereever possible, resources are measured in kcal (in SI units: 1 kcal = 4.184 kJ)
  */
 
-type KCal = f32;
-
-/** Area is in km², and this is how to translate arc seconds into that unit. */
-const ARCMIN: f64 = 111.319_f64 / 60.; //km², at the equator.
-const SQUARE_OF_15_ARCSEC: f64 = ARCMIN * ARCMIN / 16.;
-
-
-// Maybe KCal should be a finite f32? I bet there is a crate for that…
+pub type KCal = f32;
 
 /**
-## 2.1 Families
+## 2.1 Grid and Patches
+
+The geography of the simulation is described by a directed weighted graph. Each
+node is a hexagon from a hexagonal equal-area discrete global grid, each edge
+has a weight representing the travel time (by foot, or by simple boat along
+rivers and coasts) in seconds. Each node has an arbitrary unique numerical
+identifier. This movement graph is constructed before the initialization from
+pre-processed real geographical data.
+ */
+
+pub mod movementgraph;
+pub type NodeId = usize;
+
+/*
+Each contains one or more ecoregions, according to the geographical distribution
+of ecoregions in the real world. For each ecoregion, the patch has a maximum and
+current availability of resources, measured in kcal available over the course of
+half a year. These numbers are estimated from population densities following
+[@tallavaara2018resource] in conjunction with the ecoregion-covered hex areas in
+km².
+
+(In the database containing the pre-processed real-world data, the hex area is
+given in cosine-rescaled 15" squares, and multiplicative constants are used to
+translate those numbers into km².)
+ */
+
+const ARCMIN: f64 = 111.319_f64 / 60.; //km, at the equator.
+pub const SQUARE_OF_15_ARCSEC: f64 = ARCMIN * ARCMIN / 16.;
+
+/**
+In the current state of the model, the resource maximum is constant throughout
+the simulation, but future work might add seasonality (with every other time
+step corresponding to the more plentiful half of the year and the others to the
+scarcer half) or random variation (eg. estimated from the observed random
+variation of resources within that ecoregion). By nature, the simulation invites
+the extension to include paleoclimate data, but that only becomes relevant once
+it shows fundamentally reasonable dynamics.
+ */
+
+pub struct Patch {
+    /// For every local ecoregion, the tuple of resources currently accessible
+    /// in this patch, and the maximum possible resources available in a time
+    /// step, both in kcal / season.
+    resources: HashMap<usize, (KCal, KCal)>,
+}
+
+/**
+## 2.2 Families
 
 The main decision-making agents of the simulation are families. Families can
 migrate between cells and form links to other families in the context of
 cooperation to extract resources.
  */
+
 pub struct Family {
     /// The agent's history of decendence, also serving as unique ID.
     descendence: String,
@@ -89,23 +125,25 @@ pub struct Family {
     /// The family's shared culture.
     culture: Culture,
     /// The current location of the agent.
-    location: Index,
+    location: NodeId,
     /// The previous locations of the agent. This is useful for some bits of
     /// analysis, but agents are also guaranteed to have knowledge about their
-    /// recent locations within range, where other knowledge depends on random
-    /// factors. For those locatins, they also know the payoff they gained, so
-    /// we keep them both together in this place.
-    location_history: Vec<(Index, KCal)>,
-    /// The amount of stored resources, in kcal, the family has access to.
+    /// recent locations, while knowlede beyond their own history depends on
+    /// random factors. For their historical locations, the family also knows
+    /// the payoff they gained there, so we keep these two bits of information
+    /// together in this place.
+    location_history: Vec<(NodeId, KCal)>,
+    /// The amount of stored resources, in kcal, the family has access to
+    /// without going foraging.
     stored_resources: KCal,
-    /// Adaptation to local ecoregions
+    /// Adaptation to local ecoregions is represented as a vector with values
+    /// between 0.0 (completely unknown) and 1.0 (perfectly familiar) for any
+    /// ecoregion the family might encounter.
     adaptation: ecology::Ecovector,
-    /// A memory of the payoff last season, visible to other families.
-    last_season_payoff: KCal,
-
     /// The number of seasons to wait until the next child (reset to 2 when
     /// starvation happens)
     seasons_till_next_child: HalfYears,
+
     /// For bookkeeping purposes (eg. generating descendant's ‘descendence’
     /// values), keep track of the number of offspring families this family has
     /// spawned so far.
@@ -126,17 +164,17 @@ impl PartialEq for Family {
 
 /**
 Families in the same location with compatible cultures can cooperate to improve
-their chances at extracting resources. (Following XXX, cooperation could also
+their success at extracting resources. (Following XXX, cooperation could also
 mean sharing resources between different families. To simplify the model, this
-implementation does not contain that effect.) The cooperative # groups formed by
+implementation does not contain that effect.) The cooperative groups formed by
 cooperating families are higher-level agents created ad-hoc in each time step.
 They do not persist or have effect beyond a single time step. Resource
-exploitation happens at the level of the cooperative group and is distributed
-to the individual families after the fact.
+exploitation happens at the level of the cooperative group and is distributed to
+the individual families after the fact.
  */
 
 /**
-## 2.2 Cultures
+## 2.3 Cultures
 
 Every family has a culture. These are very abstract and vastly simplified, due
 to the lack of quantitative data on cultural evolution in a framework comparable
@@ -150,30 +188,6 @@ faster to use in computations and more efficient to store.
 type Culture = u64;
 
 /**
-## 2.3 Grid and Patches
-
-The geography of the simulation is described by a hexagonal equal-area discrete
-global grid. The grid logic is implemented in Uber's H3 library (XXX) and
-exposed to the simulation by the `hexgrid` module. Each individual grid cell
-contains exactly one patch. Each of these patches has a maximum and current
-availability of resources, measured in kcal available over the course of half a
-year. In the current state of the model, the resource maximum is constant
-throughout the simulation, but future work might add seasonality (with every
-other time step corresponding to the more plentiful half of the year and the
-others to the scarcer half). By nature, the simulation invites the extension to
-include paleoclimate data, but that only becomes relevant once it shows
-fundamentally reasonable dynamics.
- */
-type Index = usize;
-
-pub struct Patch {
-    /// For every local ecoregion, the tuple of resources currently accessible
-    /// in this patch, plus the maximum possible resources available in a time
-    /// step, both in kcal / season.
-    resources: HashMap<usize, (KCal, KCal)>,
-}
-
-/**
 ## 2.4 State
 
 The associations between gridcells and patches and between gridcells and the
@@ -182,11 +196,11 @@ model state. The state also tracks the time, measured in time steps
 corresponding to half a year each, since the start of the simulation, and stores
 a copy of the model parameters.
  */
-struct State {
+pub struct State {
     /// The patches of the model, indexed by their address according to the H3
     /// discrete global grid system. This set is fixed, although the properties
     /// of the patches may change with time.
-    patches: HashMap<Index, Patch>,
+    patches: HashMap<NodeId, Patch>,
     /// The agents (families) currently active in the simulation. This vector
     /// changes over time as new families are added and old families die out.
     families: Vec<Family>,
@@ -214,15 +228,15 @@ The structure of a single time step consist of two parts, as follows.
  */
 fn step(
     families: &mut Vec<Family>,
-    patches: &mut HashMap<Index, Patch>,
-    knowledge: Vec<Knowledge>,
+    patches: &mut HashMap<NodeId, Patch>,
+    knowledge: HashMap<NodeId, Knowledge>,
     p: &Parameters,
     t: HalfYears,
-) -> Option<(HashMap<Index, Vec<Family>>, Vec<Knowledge>)>
+) -> (HashMap<NodeId, Vec<Family>>, HashMap<NodeId, Knowledge>)
 {
-    let mut families_by_location = step_part_1(families, patches, knowledge, p, t)?;
+    let mut families_by_location = step_part_1(families, patches, knowledge, p, t);
     let new_knowledge = step_part_2(&mut families_by_location, patches, p);
-    Some((families_by_location, new_knowledge))
+    (families_by_location, new_knowledge)
 }
 
 /**
@@ -235,16 +249,16 @@ it can happen entirely in parallel.
 
 fn step_part_1(
     families: &mut Vec<Family>,
-    _patches: &HashMap<Index, Patch>,
-    knowledge: Vec<Knowledge>,
+    patches: &mut HashMap<NodeId, Patch>,
+    knowledge: HashMap<NodeId, Knowledge>,
     p: &Parameters,
     t: HalfYears,
-) -> Option<HashMap<Index, Vec<Family>>>
+) -> HashMap<NodeId, Vec<Family>>
 {
-    let mut families_by_location: HashMap<Index, Vec<Family>> = HashMap::new();
+    let mut families_by_location: HashMap<NodeId, Vec<Family>> = HashMap::new();
     {
         // For reporting only
-        let mut cultures_by_location: HashMap<Index, HashMap<Culture, usize>> = HashMap::new();
+        let mut cultures_by_location: HashMap<NodeId, HashMap<Culture, usize>> = HashMap::new();
 
         for family in families.iter_mut() {
             if submodels::family_lifecycle::use_resources_and_maybe_shrink(
@@ -252,7 +266,7 @@ fn step_part_1(
                 &mut family.stored_resources,
                 p,
             ) {
-                family.seasons_till_next_child = max(family.seasons_till_next_child, 2)
+                family.seasons_till_next_child = std::cmp::max(family.seasons_till_next_child, 2)
             }
 
             submodels::family_lifecycle::maybe_grow(family);
@@ -293,7 +307,12 @@ fn step_part_1(
             Some(descendant) => {
                 let d = adaptation::decide_on_moving(
                     &descendant,
-                    knowledge.iter().filter(|p| nearby.contains(&p.location)),
+                    nearby.iter().filter_map(
+                        |i| if *i == family.location {
+                            None
+                        } else {
+                            Some((*i, patches.get(i)?, knowledge.get(i)))
+                        }),
                     true, p);
                 let destination = d.unwrap_or(family.location);
 
@@ -305,7 +324,10 @@ fn step_part_1(
         }
         let d = adaptation::decide_on_moving(
             &family,
-            knowledge.iter().filter(|p| nearby.contains(&p.location)),
+            nearby.iter().filter_map(
+                |i|
+                Some((*i, patches.get(i)?, knowledge.get(i)))
+            ),
             false, p);
 
         // Update cultures_by_location
@@ -315,7 +337,7 @@ fn step_part_1(
             .or_insert(vec![])
             .push(family);
     }
-    Some(families_by_location)
+    families_by_location
 }
 
 /**
@@ -327,17 +349,16 @@ patches recover advance to the next season according to Submodule 7.6. This
 concludes a time step.
  */
 fn step_part_2(
-    families_by_location: &mut HashMap<Index, Vec<Family>>,
-    patches: &mut HashMap<Index, Patch>,
-    p: &Parameters) -> Vec<Knowledge>
+    families_by_location: &mut HashMap<NodeId, Vec<Family>>,
+    patches: &mut HashMap<NodeId, Patch>,
+    p: &Parameters) -> HashMap<NodeId, Knowledge>
 {
     let mut rng = rand::thread_rng();
-    let mut knowledge = vec![];
+    let mut knowledge = HashMap::new();
 
     for (patch_id, families) in families_by_location {
-        let min_normalized_payoff = 0.0;
-        let sum_normalized_payoff = 0.0;
-        let mut cultures = vec![];
+        let mut sum_normalized_payoff = 0.0;
+        let mut cultures: BTreeSet<Culture> = BTreeSet::new();
 
         assert!(!families.is_empty());
 
@@ -348,13 +369,20 @@ fn step_part_2(
 
         let mut groups = collectives::cooperatives(
             families.iter_mut().collect(), p);
+        let n_groups = groups.len() as KCal;
 
+        let mut unextracted = 0.0;
         for (i, (res, res_max)) in patch.resources.iter_mut() {
             let mut sum_extracted = 0.0;
             let actual_contributions: Vec<(_, f32, f32)> = groups.iter_mut().map(|group| {
                 let mut raw_contribution = 0.0;
+                let target_culture = group.culture;
+                cultures.insert(target_culture);
                 let families: Vec<(&mut f32, f32)> = group.families.iter_mut().map(|family| {
-                    cultures.push(family.culture);
+                    submodels::culture::mutate_culture(
+                        &mut family.seasons_till_next_mutation,
+                        &mut family.culture, target_culture,
+                        p.culture_dimensionality, p.culture_mutation_rate);
                     let contribution = family.effective_size as f32 * family.adaptation[*i];
                     raw_contribution += contribution;
                     (&mut family.stored_resources, contribution)
@@ -370,9 +398,11 @@ fn step_part_2(
                 (families, raw_contribution, actual_contribution)
             }).collect();
             let actual_payout = f32::min(*res, sum_extracted);
+            unextracted += *res - actual_payout;
             *res -= actual_payout;
             for (families, raw_contribution, actual_contribution) in actual_contributions {
                 let actual_extracted = actual_payout * actual_contribution / sum_extracted;
+                sum_normalized_payoff += actual_extracted / raw_contribution;
                 for (family_res, contribution) in families {
                     let actual_returns = actual_extracted * contribution / raw_contribution;
                     *family_res += actual_returns;
@@ -381,11 +411,10 @@ fn step_part_2(
             submodels::ecology::recover(
                 res, res_max, p.resource_recovery, p.accessible_resources);
         }
-        knowledge.push(Knowledge {
-            location: *patch_id,
-            cultures,
-            mean_payoff: sum_normalized_payoff,
-            min_payoff: min_normalized_payoff,
+        knowledge.insert(*patch_id, Knowledge {
+            local_cultures: cultures,
+            normalized_payoff: sum_normalized_payoff / n_groups,
+            leftover: unextracted,
         });
     }
     knowledge
@@ -445,8 +474,6 @@ visible as model parameters that I use differently from them. My patch topology
 is different, what else?
  */
 
-mod crema2014simulaton {}
-
 /**
 One of the deviations from Crema's model, and also from PSMED, is the geography
 underlying the simulation. Crema and Barceló use a quadratic grid with arbitrary
@@ -505,7 +532,7 @@ mod emergence {
     being larger in more marginal environments where migration is more frequent.
     */
     pub fn cultural_distance_by_geographical_distance(
-        cultures_by_location: &HashMap<Index, HashMap<Culture, usize>>,
+        cultures_by_location: &HashMap<NodeId, HashMap<Culture, usize>>,
         max_geo_distance: i32,
         p: &Parameters,
     ) -> HashMap<i32, HashMap<u32, usize>> {
@@ -558,9 +585,6 @@ mod emergence {
     neighbour agents (k)”), so it is not clear whether we should expect them for
     our model.
      */
-    fn crema_fission_fusion_analysis() {
-        // TODO: write this
-    }
 
     /**
     > Are there other results that are more tightly imposed by model rules and
@@ -604,13 +628,12 @@ be detrimental in the long run.
 
 Agents also adapt to local environment: TODO
 */
-pub struct Knowledge {
-    location: Index,
-    cultures: Vec<Culture>,
-    mean_payoff: KCal,
-    min_payoff: KCal,
-}
 
+pub struct Knowledge {
+    local_cultures: BTreeSet<Culture>,
+    normalized_payoff: KCal,
+    leftover: KCal,
+}
 
 mod adaptation {
     use crate::*;
@@ -620,25 +643,33 @@ mod adaptation {
         kd: KD,
         avoid_stay: bool,
         p: &Parameters,
-    ) -> Option<Index>
+    ) -> Option<NodeId>
     where
-        KD: Iterator<Item = &'a Knowledge>
+        KD: Iterator<Item = (NodeId, &'a Patch, Option<&'a Knowledge>)>,
     {
         let threshold = if avoid_stay {
             0.
         } else {
-            family.last_season_payoff + p.time_step_energy_use * p.evidence_needed
+            p.time_step_energy_use * p.evidence_needed +
+                match family.location_history.last() {
+                    None => 0.0,
+                    Some((_, k)) => *k
+                }
         };
 
         objectives::best_location(
-            family.culture,
-            family.effective_size,
-            &family.adaptation,
-            kd.filter(|k| !avoid_stay || (k.location != family.location)),
-            p,
+            family.location_history.iter().map(|(i, j)| (*i, *j)).chain(kd.map(
+                |(i, l, k)| (i, match k {
+                    None => l.resources.values().map(|(res, _)| res).sum(),
+                    Some(k) => if k.local_cultures.iter().any(
+                        |c| emergence::similar_culture(
+                            *c, family.culture, p.cooperation_threshold)) {
+                        k.normalized_payoff
+                    } else {
+                        k.leftover
+                    }}))),
             threshold
-            )
-            .or(Some(family.location))
+        ).or(Some(family.location))
     }
 }
 
@@ -658,55 +689,42 @@ mod objectives {
 
     /**
     Agents choose a best location to move to, where ‘best’ means a maximum
-    expected resource gain. If multiple locations are equally good (up to
-    floating point accuracy), take one of those at random.
+    expected resource gain. If multiple locations are equally good, take one of those at random.
     */
     // That is, this function omputes the argmax of
     // `expected_resources_from_patch`, drawing at random between equal options.
-    pub fn best_location<'a, KD>(
-        culture: Culture,
-        size: usize,
-        _adaptation: &ecology::Ecovector,
-        kd: KD,
-        p: &Parameters,
-        threshold: KCal,
-    ) -> Option<Index>
+    pub fn best_location<Pair, N, I>(
+        kd: Pair,
+        threshold: N,
+    ) -> Option<I>
     where
-        KD: Iterator<Item = &'a Knowledge>
+        Pair: Iterator<Item = (I, N)>,
+        N: PartialOrd + Default,
+        I: Default
     {
         let mut rng = rand::thread_rng();
 
-        // This variable `c` is used to randomly draw between several
-        // equally-optimal options. It counts the number of best options
+        // This variable `n_best_before` is used to randomly draw between
+        // several equally-optimal options. It counts the number of best options
         // encountered so far.
-        let mut c = 0;
-        let mut target: Option<Index> = None;
-        let _s = size as f32;
-        let mut max_gain = 0.0;
+        let mut n_best_before = 0;
+        let mut target: Option<I> = None;
+        let mut max_gain = N::default();
 
-        for knowledge in kd {
-            let expected_gain: KCal;
-            if knowledge.cultures.iter().any(|c| emergence::similar_culture(*c, culture, p.cooperation_threshold)) {
-                expected_gain = knowledge.mean_payoff;
-            } else if !knowledge.cultures.is_empty() {
-                expected_gain = knowledge.min_payoff;
-            } else {
-                expected_gain = 0.0 // TODO: Actually estimate
-            }
-
+        for (location, expected_gain) in kd {
             if expected_gain >= max_gain {
                 if expected_gain < threshold {
                     continue;
                 }
-                if (expected_gain - max_gain).abs() < std::f32::EPSILON {
-                    c += 1;
-                    if rng.gen_range(0, c + 1) < c {
+                if expected_gain == max_gain {
+                    n_best_before += 1;
+                    if rng.gen_range(0, n_best_before + 1) < n_best_before {
                         continue;
                     }
                 } else {
-                    c = 0
+                    n_best_before = 0
                 }
-                target = Some(knowledge.location);
+                target = Some(location);
                 max_gain = expected_gain;
             }
         }
@@ -728,26 +746,6 @@ TODO: Put that 4 in a static variable and put a doctest here that confirms it.
  */
 
 mod learning {
-    use crate::*;
-
-    pub fn known_location(
-        history: &[Index],
-        nearby: &[Index],
-        attention_probability: f32,
-    ) -> Vec<Index> {
-        let mut result = vec![];
-        for location in nearby {
-            if history[0..min(8, history.len())].contains(&location) {
-                result.push(*location);
-                continue;
-            }
-            if sensing::attention(attention_probability) {
-                result.push(*location);
-                continue;
-            }
-        }
-        result
-    }
 }
 
 /**
@@ -800,46 +798,18 @@ const NORM: f64 = 60.*60.*8.; // 8 hours
 mod sensing {
     use crate::*;
 
-    pub fn attention(attention_probability: f32) -> bool {
-        random::<f32>() < attention_probability
-    }
-
-    pub fn scout<'a>(
-        location: Index,
-        reference_culture: Culture,
-        patches: &'a HashMap<Index, Patch>,
-        cultures_by_location: &HashMap<Index, HashMap<Culture, usize>>,
-        p: &Parameters,
-    ) -> Option<(Index, &'a Patch, usize, usize)>
-    {
-        let cultures = match cultures_by_location.get(&location) {
-            None => return Some((location, patches.get(&location)?, 0, 0)),
-            Some(c) => c,
-        };
-        let mut cooper: usize = 0;
-        let mut compet: usize = 0;
-        for (culture, count) in cultures {
-            if emergence::similar_culture(reference_culture, *culture, p.cooperation_threshold) {
-                cooper += count;
-            } else {
-                compet += count;
-            }
-        }
-        Some((location, patches.get(&location)?, cooper, compet))
-    }
-
     /// Individuals know about nearby locations. The exploration is not
     /// explicitly modelled.
 
     pub fn nearby_locations(
-        location: Index,
+        location: NodeId,
         p: &Parameters,
-    ) -> Vec<Index> {
+    ) -> Vec<NodeId> {
         let mut rng = rand::thread_rng();
         movementgraph::bounded_dijkstra(
             &p.dispersal_graph,
             location,
-            60.*60.*12.*8.,
+            NORM * 12., //4 complete days, or 12 days of travel
             |e| *petgraph::csr::EdgeReference::weight(&e)
         )
             .iter()
@@ -870,7 +840,6 @@ bigger group of cooperators competing with a smaller cooperative get an
 over-proportional part of the total extracted, measured by their effective size.
  */
 mod interaction {
-    use crate::*;
     /**
     A single human can forage a certain amount, but by the assumptions of the model,
     two cooperating foragers gain more resources together than they would
@@ -925,12 +894,14 @@ mod collectives {
     use crate::*;
     pub struct Cooperative<'a> {
         pub families: Vec<&'a mut Family>,
+        pub culture: Culture,
     }
 
     pub fn cooperatives<'a>(
         mut families_in_this_location: Vec<&'a mut Family>,
         p: &Parameters,
     ) -> Vec<Cooperative<'a>> {
+        let mut rng = rand::thread_rng();
         let mut groups: Vec<Cooperative> = vec![];
 
         for family in families_in_this_location.drain(..) {
@@ -952,11 +923,15 @@ mod collectives {
             match joined_group {
                 None => {
                     let group = Cooperative {
+                        culture: family.culture,
                         families: vec![family],
                     };
                     groups.push(group);
                 }
                 Some(group) => {
+                    if rng.gen_range(0, group.families.len()) == group.families.len() {
+                        group.culture = family.culture
+                    }
                     group.families.push(family);
                 }
             }
@@ -983,7 +958,7 @@ mod observation {
     sizes, for each spot in each time step.
     */
     pub fn print_population_by_location(
-        cultures_by_location: HashMap<Index, HashMap<Culture, usize>>,
+        cultures_by_location: HashMap<NodeId, HashMap<Culture, usize>>,
         p: &Parameters,
     ) {
         println!(
@@ -1006,7 +981,7 @@ mod observation {
     this data only about once per generation, i.e. every 60 time steps.
     */
     pub fn print_gd_cd(
-        cultures_by_location: HashMap<Index, HashMap<Culture, usize>>,
+        cultures_by_location: HashMap<NodeId, HashMap<Culture, usize>>,
         p: &Parameters) {
         let gd_cd: HashMap<i32, HashMap<u32, usize>> =
             emergence::cultural_distance_by_geographical_distance(&cultures_by_location, 5 * 5 * 2, p);
@@ -1029,18 +1004,19 @@ mod observation {
 > Are the initial values chosen arbitrarily or based on data? References to
 > those data should be provided.
 */
-mod hexgrid;
+pub mod hexgrid;
 
 fn very_coarse_dist(x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
     (x1 - x2).abs() + (y1 - y2).abs()
 }
 
-fn initialization(_precipitation: &[u16], _width: usize, p: &Parameters) -> Option<State>
+pub fn initialization(
+    p: &Parameters) -> Option<State>
 {
     let graph = &p.dispersal_graph;
 
-    let mut start1: Index = 0;
-    let mut start2: Index = 0;
+    let mut start1: NodeId = 0;
+    let mut start2: NodeId = 0;
     let mut start1d = very_coarse_dist(graph[0].1, graph[0].2, -159.873, 65.613);
     let mut start2d = very_coarse_dist(graph[0].1, graph[0].2, -158.2718, 60.8071);
 
@@ -1062,8 +1038,8 @@ fn initialization(_precipitation: &[u16], _width: usize, p: &Parameters) -> Opti
 
     println!("Starts: {:}, {:}", start1, start2);
 
-    let mut patches: HashMap<Index, Option<Patch>> = HashMap::new();
-    let mut new_patches: std::collections::BinaryHeap<Index> =
+    let mut patches: HashMap<NodeId, Option<Patch>> = HashMap::new();
+    let mut new_patches: std::collections::BinaryHeap<NodeId> =
         std::collections::BinaryHeap::new();
     new_patches.push(start1);
     new_patches.push(start2);
@@ -1080,28 +1056,18 @@ fn initialization(_precipitation: &[u16], _width: usize, p: &Parameters) -> Opti
         let latitude = geo.2;
         let ecoregions = &geo.3;
 
-        if p.boundary_west < longitude
-            && longitude < p.boundary_east
-            && p.boundary_south < latitude
-            && latitude < p.boundary_north
-        {
-            let resources = ecology::patch_from_ecoregions(
-                ecoregions, &p.time_step_energy_use);
-            if resources.is_empty() { continue };
-            println!("Resources at {:} ({:}, {:}): {:?}",
-                     next, longitude, latitude, resources);
-            patches.insert(
-                next,
-                Some(Patch { resources }),
-            );
-            for q in graph.neighbors_slice(next) {
-                if patches.contains_key(q) {
-                    continue;
-                }
-                new_patches.push(*q);
+        println!("Resources at {:} ({:}, {:}): {:?}",
+                 next, longitude, latitude, ecoregions);
+        patches.insert(
+            next,
+            Some(Patch { resources: ecoregions.iter().map(
+                |(&i, &j)| (i, (j * p.time_step_energy_use, j * p.time_step_energy_use))).collect() }),
+        );
+        for q in graph.neighbors_slice(next) {
+            if patches.contains_key(q) {
+                continue;
             }
-        } else {
-            patches.insert(next, None);
+            new_patches.push(*q);
         }
     }
     let f1 = Family {
@@ -1116,7 +1082,6 @@ fn initialization(_precipitation: &[u16], _width: usize, p: &Parameters) -> Opti
         seasons_till_next_mutation: None,
         stored_resources: 1_600_000.,
         adaptation: ecology::Ecovector::default(),
-        last_season_payoff: 0.0,
     };
     let f2 = Family {
         descendence: String::from("F"),
@@ -1130,9 +1095,8 @@ fn initialization(_precipitation: &[u16], _width: usize, p: &Parameters) -> Opti
         seasons_till_next_mutation: None,
         stored_resources: 1_600_000.,
         adaptation: ecology::Ecovector::default(),
-        last_season_payoff: 0.0,
     };
-    // let families: HashMap<Index, Vec<Family>> = HashMap::new();
+    // let families: HashMap<NodeId, Vec<Family>> = HashMap::new();
     // families.insert(start1, vec![f1]);
     // families.insert(start2, vec![f2]);
     Some(State {
@@ -1177,22 +1141,24 @@ pub mod submodels {
 
         pub fn mutate_culture(
             family_seasons_till_next_mutation: &mut Option<u32>,
-            family_culture: &mut Culture,
+            family_culture: &mut Culture, target_culture: Culture,
             culture_dimensionality: u8, culture_mutation_rate: f64)
         {
+            *family_culture = target_culture;
             match family_seasons_till_next_mutation {
                 None => {
                     *family_seasons_till_next_mutation =
                         Some(random::<f64>().log(1. - culture_mutation_rate) as u32);
                     mutate_culture(family_seasons_till_next_mutation,
-                                   family_culture, culture_dimensionality, culture_mutation_rate);
-                }
+                                   family_culture, target_culture,
+                                   culture_dimensionality, culture_mutation_rate);
+                },
                 Some(0) => {
                     let i: u8 = rand::thread_rng().gen_range(0, culture_dimensionality);
                     *family_culture ^= 1 << i;
                     *family_seasons_till_next_mutation =
                         Some(random::<f64>().log(1. - culture_mutation_rate) as u32);
-                }
+                },
                 Some(k) => {
                     *family_seasons_till_next_mutation = Some(*k - 1);
                 }
@@ -1231,7 +1197,6 @@ pub mod submodels {
                     seasons_till_next_mutation: None,
                     stored_resources: 0.,
                     adaptation: family.adaptation,
-                    last_season_payoff: family.last_season_payoff,
                 })
             }
         }
@@ -1265,9 +1230,10 @@ pub mod submodels {
     }
 
     pub mod ecology {
-        use crate::{collectives, interaction, KCal, Parameters, Patch, ecology};
+        use crate::KCal;
 
-        /** Recover a patch, mutating its resources
+        /**
+        Recover a patch, mutating its resources
 
         The recovery assumes exponential (or geometric, it's a discrete-time
         model) growth of resources in a patch up to a given maximum.
@@ -1284,10 +1250,11 @@ pub mod submodels {
         this means that this patch would recover by 7/16, so to 1.4375 available
         resources.
 
-        ```
+        ```rust
+        # use model::submodels::ecology::recover;
         let mut resources = 1.0;
-        recover(&mut resources, 2.0, 0.5, 0.25);
-        assert!(resources == 1.4375);
+        recover(&mut resources, &2.0, 0.5, 0.25);
+        assert_eq!(resources, 1.4375);
         ```
 
         */
@@ -1304,7 +1271,13 @@ pub mod submodels {
                     * resource_recovery
                     * (1. - underlying_resources * accessible_resources/ patch_max_resources);
             }
-            assert!(patch_resources.is_normal());
+            assert!(patch_resources.is_normal(),
+                    "The recovery of {} from {} towards {} ({}% of total) was not finite",
+                    resource_recovery,
+                    *patch_resources,
+                    *patch_max_resources,
+                    accessible_resources * 100.
+            );
         }
     }
 
@@ -1325,178 +1298,20 @@ pub mod submodels {
             pub evidence_needed: f32,
             pub payoff_std: f32,
 
-            pub boundary_west: f64,
-            pub boundary_east: f64,
-            pub boundary_south: f64,
-            pub boundary_north: f64,
-
             pub dispersal_graph: MovementGraph,
         }
     }
 }
 
-fn main() -> Result<(), String> {
-    let try_conn = rusqlite::Connection::open_with_flags(
-        "/home/gereon/Public/settlement-of-americas/supplement/distances/plot.sqlite",
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY);
-    let conn: rusqlite::Connection;
-    match try_conn {
-        Err(e) => {
-            return Err(e.to_string());
-        }
-        Ok(k) => {
-            conn = k;
-        }
-    }
 
-    let mut graph: petgraph::csr::Csr<
-            (_, f64, f64, HashMap<_, _>),
-        f64,
-        petgraph::Directed,
-        usize> = petgraph::csr::Csr::new();
-
-    let boundary_west = -168.571_541;
-    let boundary_east = -34.535_395;
-    let boundary_south = -56.028_198;
-    let boundary_north = 74.52671;
-
-    let mut nodes_stmt;
-    match conn.prepare("SELECT hexbin, vlongitude, vlatitude FROM hex NATURAL INNER JOIN (SELECT hexbin FROM eco WHERE ecoregion != 999 GROUP BY hexbin) WHERE ? < vlongitude AND vlongitude < ? AND ? < vlatitude AND vlatitude < ?") {
-        Err(e) => { return Err(e.to_string()); }
-        Ok(k) => { nodes_stmt = k; }
-    }
-
-    let mut eco_stmt;
-    match conn.prepare("SELECT ecoregion, frequency FROM eco WHERE hexbin = ? AND ecoregion != 999") {
-        Err(e) => { return Err(e.to_string()); }
-        Ok(k) => { eco_stmt = k; }
-    }
-    let mut dist_stmt;
-    match conn.prepare("SELECT hexbin1, hexbin2, min(distance) FROM dist GROUP BY hexbin1, hexbin2") {
-        Err(_) => { return Err("Could not prepare dist statement".to_string()); }
-        Ok(k) => { dist_stmt = k; }
-    }
-
-    let mut h3_to_graph = HashMap::new();
-    let mut expand_attested = HashMap::new();
-    for (i, (hexbin, longitude, latitude)) in nodes_stmt.query_map(
-        rusqlite::params![
-            boundary_west, boundary_east, boundary_south, boundary_north
-        ], |node| {
-            Ok((node.get::<_, i64>(0)?, node.get(1)?, node.get(2)?))
-        }).unwrap().flatten().enumerate() {
-        let ecos: HashMap<_, _> =
-            eco_stmt.query_map(
-                rusqlite::params![hexbin], |eco| {
-                    // The areas are already scaled by the cosine of latitude,
-                    // so this converts them into km².
-                    let len = expand_attested.len();
-                    Ok((
-                        *(expand_attested.entry(eco.get::<_, i64>(0)?).or_insert(len)),
-                        eco.get::<_, f64>(1)? * SQUARE_OF_15_ARCSEC))
-                })
-            .unwrap()
-            .flatten()
-            .collect();
-        assert!(!ecos.is_empty());
-        graph.add_node(
-            (hexbin as hexgrid::Index, longitude, latitude, ecos));
-        h3_to_graph.insert(hexbin, i);
-    }
-    assert!(expand_attested.len() <= ecology::ATTESTED_ECOREGIONS);
-
-    for (a1, a2, d) in dist_stmt.query_map(
-        rusqlite::NO_PARAMS,
-        |dist| Ok((dist.get(0)?, dist.get(1)?, dist.get(2)?)))
-        .unwrap().flatten().filter_map(|(i, j, d)|
-            Some((*h3_to_graph.get(&i)?, *h3_to_graph.get(&j)?, d)))
-    {
-        graph.add_edge(a1, a2, d);
-    }
-    println!("{:}", graph.edge_count());
-
-    let mut p = Parameters {
-        attention_probability: 0.1,
-        time_step_energy_use: 2263. as KCal * 365.242_2 / 2.,
-        storage_loss: 0.33,
-        resource_recovery: 0.20,
-        culture_mutation_rate: 6e-3,
-        culture_dimensionality: 20,
-        cooperation_threshold: 6,
-        cooperation_gain: 0.5,
-        accessible_resources: 0.2,
-        evidence_needed: 0.3,
-        payoff_std: 0.1,
-
-        boundary_west: -168.571_541,
-        boundary_east: -34.535_395,
-        boundary_south: -56.028_198,
-        boundary_north: 74.52671,
-
-        dispersal_graph: graph,
-    };
-    let mut max_t: HalfYears = 20000;
-    parse_args(&mut p, &mut max_t);
-    run(p, max_t);
-    Ok(())
-}
-
-fn parse_args(p: &mut Parameters, max_t: &mut HalfYears)
-{
-    let mut parser = argparse::ArgumentParser::new();
-    parser.set_description("Run a dispersal simulation");
-    // TODO: Attach an ArgumentParser to the parameters object, so parameters can be set from the CLI.
-    parser.refer(&mut p.attention_probability).add_option(
-        &["--attention-probability"],
-        argparse::Store,
-        "attention probability",
-    );
-    parser.refer(&mut p.culture_mutation_rate).add_option(
-        &["--culture-mutation-rate"],
-        argparse::Store,
-        "culture mutation rate",
-    );
-    parser.refer(&mut p.culture_dimensionality).add_option(
-        &["--culture-dimensionality"],
-        argparse::Store,
-        "culture dimensionality",
-    );
-    parser.refer(&mut p.cooperation_threshold).add_option(
-        &["--cooperation-threshold"],
-        argparse::Store,
-        "threshold under which cooperation happens",
-    );
-    parser.refer(&mut p.cooperation_gain).add_option(
-        &["--cooperation-gain"],
-        argparse::Store,
-        "exponent in benefits from cooperation",
-    );
-    parser.refer(max_t).add_option(
-        &["--steps"],
-        argparse::Store,
-        "number of half years to simulate",
-    );
-    parser.parse_args_or_exit();
-}
-
-fn run(p: Parameters, max_t: HalfYears) -> Option<()> {
-    println!("# Initialization ...");
-    // FIXME: There is something messed up in lat/long -> image pixels. It works
-    // currently, but the names point out that I misunderstood something, eg.
-    // with the layout of the tiff in memory or similar.
-
-    let (vec, width) = ecology::load_precipitation_tif()?;
-    println!("Loaded precipitation data");
-    let mut s: State = initialization(&vec, width as usize, &p)?;
-    println!("Initialized");
-
-    let mut knowledge = vec![];
+pub fn run(mut s: State, p: Parameters, max_t: HalfYears) {
+    let mut knowledge = HashMap::new();
     loop {
-        let (families_by_location, k) = step(&mut s.families, &mut s.patches, knowledge, &p, s.t)?;
+        let (families_by_location, k) = step(&mut s.families, &mut s.patches, knowledge, &p, s.t);
         knowledge = k;
         for (location, families) in families_by_location {
             for mut family in families {
-                family.location_history.push((family.location, family.last_season_payoff));
+                family.location_history.push((family.location, family.stored_resources));
                 family.location = location;
                 s.families.push(family);
             }
@@ -1508,8 +1323,7 @@ fn run(p: Parameters, max_t: HalfYears) -> Option<()> {
         s.t += 1;
         if s.t > max_t {
             println!("Ended");
-            return None;
+            break
         }
     }
-    Some(())
 }

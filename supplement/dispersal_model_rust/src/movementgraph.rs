@@ -1,33 +1,13 @@
-use petgraph::visit::{EdgeRef, IntoEdges, IntoNeighbors, VisitMap, Visitable, IntoEdgeReferences, Data, GraphRef, GraphBase};
+use petgraph::visit::{EdgeRef, IntoEdges, VisitMap, Visitable};
 use std::hash::Hash;
 use petgraph::algo::Measure;
 use std::collections::{BinaryHeap, HashMap};
 use std::collections::hash_map::Entry::{Occupied, Vacant};
 use std::cmp::Ordering;
-use rusqlite::{params, Connection, Result, OpenFlags};
+use crate::KCal;
 use crate::hexgrid;
 
-pub type MovementGraph = petgraph::csr::Csr<(hexgrid::Index, f64, f64, HashMap<usize, f64>), f64, petgraph::Directed, usize>;
-
-pub fn edge_costs_from_db(h: &hexgrid::Index) -> Result<Vec<(hexgrid::Index, f64)>> {
-    let conn = Connection::open_with_flags(
-        "/home/gereon/Public/settlement-of-americas/supplement/distances/plot.sqlite",
-        OpenFlags::SQLITE_OPEN_READ_ONLY)?;
-
-    let mut stmt = conn.prepare("SELECT hexbin1, hexbin2, distance FROM dist WHERE hexbin1 = ?")?;
-    let result = match stmt.query_map(
-        params![*h as i64],
-        |row| Ok((row.get::<usize, i64>(1)? as u64, row.get::<usize, f64>(2)?))
-    ) {
-        Ok(k) => {
-            Ok(k.flatten().collect())
-        }
-        Err(e) => {
-            Err(e)
-        }
-    };
-    result
-}
+pub type MovementGraph = petgraph::csr::Csr<(hexgrid::Index, f64, f64, HashMap<usize, KCal>), f64, petgraph::Directed, usize>;
 
 // From petgraph
 

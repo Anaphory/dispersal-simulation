@@ -18,30 +18,9 @@ pub fn load_precipitation_tif() -> Option<(Vec<u16>, u32)> {
     Some((vec, width))
 }
 
-pub fn patch_from_coordinates(
-    (longitude, latitude): (f64, f64),
-    image_pixels: &[u16],
-    pixels_width: usize,
-) -> Option<KCal> {
-    let column = ((longitude + 180.) / 360. * pixels_width as f64)
-        .round() as usize;
-    let row = ((-latitude + 90.) / 180. * (image_pixels.len() / pixels_width) as f64)
-        .round() as usize;
-    let index = row * pixels_width + column;
-    let precipitation = image_pixels.get(index)?;
-
-    if *precipitation == 0 {
-        None
-    } else {
-        let alpha = (10.0_f32).powf(-8.07);
-        let beta: f32 = 2.64;
-        // FIXME: 4 is an arbitrary factor
-        Some(4. * alpha * (*precipitation as f32).powf(beta))
-    }
-}
-
 pub const ATTESTED_ECOREGIONS: usize = 303;
 
+#[allow(clippy::excessive_precision)]
 pub fn patch_from_ecoregions(
     ecoregions: &HashMap<usize, f64>,
     time_step_energy_use: &KCal
@@ -844,8 +823,7 @@ pub fn patch_from_ecoregions(
     ecoregions.iter().map(
         |(&i, amount)| {
             let r = logpopdensity.get(&i).unwrap_or(&0.0)
-                * *amount as KCal
-                * time_step_energy_use;
+                * *amount as KCal;
             (i, (r, r))
         }).collect()
 }
