@@ -64,6 +64,12 @@ Whereever possible, resources are measured in kcal (in SI units: 1 kcal = 4.184 
  */
 
 type KCal = f32;
+
+/** Area is in km², and this is how to translate arc seconds into that unit. */
+const ARCMIN: f64 = (111.319_f64 / 60.); //km², at the equator.
+const SQUARE_OF_15_ARCSEC: f64 = ARCMIN * ARCMIN / 16.;
+
+
 // Maybe KCal should be a finite f32? I bet there is a crate for that…
 
 /**
@@ -87,12 +93,15 @@ pub struct Family {
     /// The previous locations of the agent. This is useful for some bits of
     /// analysis, but agents are also guaranteed to have knowledge about their
     /// recent locations within range, where other knowledge depends on random
-    /// factors.
-    location_history: Vec<Index>,
+    /// factors. For those locatins, they also know the payoff they gained, so
+    /// we keep them both together in this place.
+    location_history: Vec<(Index, KCal)>,
     /// The amount of stored resources, in kcal, the family has access to.
     stored_resources: KCal,
     /// Adaptation to local ecoregions
     adaptation: ecology::Ecovector,
+    /// A memory of the payoff last season, visible to other families.
+    last_season_payoff: KCal,
 
     /// The number of seasons to wait until the next child (reset to 2 when
     /// starvation happens)
@@ -206,13 +215,14 @@ The structure of a single time step consist of two parts, as follows.
 fn step(
     families: &mut Vec<Family>,
     patches: &mut HashMap<Index, Patch>,
+    knowledge: Vec<Knowledge>,
     p: &Parameters,
     t: HalfYears,
-) -> Option<HashMap<Index, Vec<Family>>>
+) -> Option<(HashMap<Index, Vec<Family>>, Vec<Knowledge>)>
 {
-    let mut families_by_location = step_part_1(families, patches, p, t)?;
-    step_part_2(&mut families_by_location, patches, p);
-    Some(families_by_location)
+    let mut families_by_location = step_part_1(families, patches, knowledge, p, t)?;
+    let new_knowledge = step_part_2(&mut families_by_location, patches, p);
+    Some((families_by_location, new_knowledge))
 }
 
 /**
@@ -226,36 +236,40 @@ use std::thread;
 fn step_part_1(
     families: &mut Vec<Family>,
     patches: &HashMap<Index, Patch>,
+    knowledge: Vec<Knowledge>,
     p: &Parameters,
     t: HalfYears,
 ) -> Option<HashMap<Index, Vec<Family>>>
 {
     let mut families_by_location: HashMap<Index, Vec<Family>> = HashMap::new();
-    let mut cultures_by_location: HashMap<Index, HashMap<Culture, usize>> = HashMap::new();
+    {
+        // For reporting only
+        let mut cultures_by_location: HashMap<Index, HashMap<Culture, usize>> = HashMap::new();
 
-    for family in families.iter_mut() {
-        if submodels::family_lifecycle::use_resources_and_maybe_shrink(
-            &mut family.effective_size,
-            &mut family.stored_resources,
-            p,
-        ) {
-            family.seasons_till_next_child = max(family.seasons_till_next_child, 2)
+        for family in families.iter_mut() {
+            if submodels::family_lifecycle::use_resources_and_maybe_shrink(
+                &mut family.effective_size,
+                &mut family.stored_resources,
+                p,
+            ) {
+                family.seasons_till_next_child = max(family.seasons_till_next_child, 2)
+            }
+
+            submodels::family_lifecycle::maybe_grow(family);
+
+            let cultures = cultures_by_location
+                .entry(family.location)
+                .or_insert_with(HashMap::new);
+            let counter = cultures.entry(family.culture).or_insert(0);
+            *counter += family.effective_size;
         }
 
-        submodels::family_lifecycle::maybe_grow(family);
-
-        let cultures = cultures_by_location
-            .entry(family.location)
-            .or_insert_with(HashMap::new);
-        let counter = cultures.entry(family.culture).or_insert(0);
-        *counter += family.effective_size;
-    }
-
-    if t % 20 == 0 {
-        let l_c = cultures_by_location.clone();
-        observation::print_gd_cd(l_c, p);
-        let l_c = cultures_by_location.clone();
-        observation::print_population_by_location(l_c, p);
+        if t % 20 == 0 {
+            let l_c = cultures_by_location.clone();
+            observation::print_gd_cd(l_c, p);
+            let l_c = cultures_by_location.clone();
+            observation::print_population_by_location(l_c, p);
+        }
     }
 
     let mut rng = rand::thread_rng();
@@ -277,27 +291,11 @@ fn step_part_1(
             // taken from del Castillo (2013). Also, a descendant family
             // will move directly before their progenitor.
             Some(descendant) => {
-                let observed = sensing::observe_neighbors(
+                let d = adaptation::decide_on_moving(
                     &descendant,
-                    patches,
-                    &cultures_by_location,
-                    &nearby,
-                    p,
-                );
-                let d = adaptation::decide_on_moving(&descendant, observed, true, p);
+                    knowledge.iter().filter(|p| nearby.contains(&p.location)),
+                    true, p);
                 let destination = d.unwrap_or(family.location);
-
-                // Update cultures_by_location
-                let old_count = cultures_by_location
-                    .get_mut(&family.location)?
-                    .get_mut(&family.culture)?;
-                *old_count -= descendant.effective_size;
-                let new_count = cultures_by_location
-                    .entry(family.location)
-                    .or_insert_with(HashMap::new)
-                    .entry(family.culture)
-                    .or_insert(0);
-                *new_count += descendant.effective_size;
 
                 families_by_location
                     .entry(destination)
@@ -305,22 +303,12 @@ fn step_part_1(
                     .push(descendant);
             }
         }
-        let observed =
-            sensing::observe_neighbors(&family, patches, &cultures_by_location, &nearby, p);
-        let d = adaptation::decide_on_moving(&family, observed, false, p);
+        let d = adaptation::decide_on_moving(
+            &family,
+            knowledge.iter().filter(|p| nearby.contains(&p.location)),
+            false, p);
 
         // Update cultures_by_location
-        let old_count = cultures_by_location
-            .get_mut(&family.location)?
-            .get_mut(&family.culture)?;
-        *old_count -= family.effective_size;
-        let new_count = cultures_by_location
-            .entry(family.location)
-            .or_insert_with(HashMap::new)
-            .entry(family.culture)
-            .or_insert(0);
-        *new_count += family.effective_size;
-
         let destination = d.unwrap_or(family.location);
         families_by_location
             .entry(destination)
@@ -341,12 +329,16 @@ concludes a time step.
 fn step_part_2(
     families_by_location: &mut HashMap<Index, Vec<Family>>,
     patches: &mut HashMap<Index, Patch>,
-    p: &Parameters,)
+    p: &Parameters) -> Vec<Knowledge>
 {
-
     let mut rng = rand::thread_rng();
+    let mut knowledge = vec![];
 
     for (patch_id, families) in families_by_location {
+        let mut min_normalized_payoff = 0.0;
+        let mut sum_normalized_payoff = 0.0;
+        let mut cultures = vec![];
+
         assert!(families.len() > 0);
 
         let patch = match patches.get_mut(patch_id) {
@@ -362,6 +354,7 @@ fn step_part_2(
             let actual_contributions: Vec<(_, f32, f32)> = groups.iter_mut().map(|group| {
                 let mut raw_contribution = 0.0;
                 let families: Vec<(&mut f32, f32)> = group.families.iter_mut().map(|family| {
+                    cultures.push(family.culture);
                     let contribution = family.effective_size as f32 * family.adaptation[*i];
                     raw_contribution += contribution;
                     (&mut family.stored_resources, contribution)
@@ -384,7 +377,14 @@ fn step_part_2(
             submodels::ecology::recover(
                 res, res_max, p.resource_recovery, p.accessible_resources);
         }
+        knowledge.push(Knowledge {
+            location: *patch_id,
+            cultures: cultures,
+            mean_payoff: sum_normalized_payoff,
+            min_payoff: min_normalized_payoff,
+        });
     }
+    knowledge
 }
 
 /**
@@ -600,12 +600,11 @@ be detrimental in the long run.
 
 Agents also adapt to local environment: TODO
 */
-pub struct Knowledge<'a> {
-    location: &'a Index,
-    environment: &'a Patch,
+pub struct Knowledge {
+    location: Index,
     cultures: Vec<Culture>,
-    mean_payoff: Option<KCal>,
-    min_payoff: Option<KCal>
+    mean_payoff: KCal,
+    min_payoff: KCal,
 }
 
 
@@ -619,7 +618,7 @@ mod adaptation {
         p: &Parameters,
     ) -> Option<Index>
     where
-        KD: Iterator<Item = &'a Knowledge<'a>>
+        KD: Iterator<Item = &'a Knowledge>
     {
         let threshold = if avoid_stay {
             0.
@@ -631,7 +630,7 @@ mod adaptation {
             family.culture,
             family.effective_size,
             &family.adaptation,
-            kd.filter(|k| !avoid_stay || (*k.location != family.location)),
+            kd.filter(|k| !avoid_stay || (k.location != family.location)),
             p,
             threshold
             )
@@ -669,7 +668,7 @@ mod objectives {
         threshold: KCal,
     ) -> Option<Index>
     where
-        KD: Iterator<Item = &'a Knowledge<'a>>
+        KD: Iterator<Item = &'a Knowledge>
     {
         let mut rng = rand::thread_rng();
 
@@ -684,9 +683,9 @@ mod objectives {
         for knowledge in kd {
             let mut expected_gain: KCal;
             if knowledge.cultures.iter().any(|c| emergence::similar_culture(*c, culture, p.cooperation_threshold)) {
-                expected_gain = knowledge.mean_payoff.unwrap();
+                expected_gain = knowledge.mean_payoff;
             } else if !knowledge.cultures.is_empty() {
-                expected_gain = knowledge.mean_payoff.unwrap();
+                expected_gain = knowledge.min_payoff;
             } else {
                 expected_gain = 0.0 // TODO: Actually estimate
             }
@@ -703,7 +702,7 @@ mod objectives {
                 } else {
                     c = 0
                 }
-                target = Some(*knowledge.location);
+                target = Some(knowledge.location);
                 max_gain = expected_gain;
             }
         }
@@ -774,30 +773,6 @@ split, or other effects to themselves or others in future time steps.
 mod prediction {
     use crate::*;
 
-    pub fn expected_resources_from_patch(
-        my_size: f32,
-        adaptation: &ecology::Ecovector,
-        patch: &Patch,
-        cooperators: f32,
-        competitors: f32,
-        p: &Parameters,
-    ) -> KCal
-    {
-        assert!(my_size + cooperators > 0.);
-        (0..ecology::ATTESTED_ECOREGIONS).map(
-            |i| {
-                let my_effective_size = my_size * (adaptation[i] + 0.5);
-                submodels::ecology::resources_from_patch(
-                    &patch.resources[&i].0,
-                    my_effective_size + cooperators,
-                    competitors,
-                    true,
-                    p
-                ) * my_effective_size / (my_effective_size + cooperators)
-            }
-        )
-            .sum::<KCal>()
-    }
 }
 
 /**
@@ -815,6 +790,8 @@ mod prediction {
 > individuals simply assumed to know these variables?
 
  */
+
+const NORM: f64 = 60.*60.*8.; // 8 hours
 
 mod sensing {
     use crate::*;
@@ -855,7 +832,6 @@ mod sensing {
         p: &Parameters,
     ) -> Vec<Index> {
         let mut rng = rand::thread_rng();
-        let NORM = 60.*60.*8.; // 8 hours
         let neighbors = movementgraph::bounded_dijkstra(
             &p.dispersal_graph,
             location,
@@ -872,43 +848,6 @@ mod sensing {
                 })
             .collect();
         neighbors
-    }
-
-    pub fn observe_neighbors<'a>(
-        family: &'a Family,
-        patches: &'a HashMap<Index, Patch>,
-        cultures_by_location: &HashMap<Index, HashMap<Culture, usize>>,
-        neighbors: &Vec<Index>,
-        p: &Parameters,
-    ) -> Vec<(Index, &'a Patch, usize, usize)>
-    {
-        let mut result: Vec<(Index, &'a Patch, usize, usize)> = vec![];
-        match scout(
-            family.location,
-            family.culture,
-            patches,
-            cultures_by_location,
-            p,
-        ) {
-            None => {}
-            Some((location, patch, cooperators, competitors)) => {
-                result.push((location, patch, cooperators, competitors))
-            }
-        }
-        for location in
-            learning::known_location(&family.location_history, neighbors, p.attention_probability)
-        {
-            if location == family.location {
-                continue;
-            }
-            match scout(location, family.culture, patches, cultures_by_location, p) {
-                None => {}
-                Some((location, patch, cooperators, competitors)) => {
-                    result.push((location, patch, cooperators, competitors));
-                }
-            }
-        }
-        result
     }
 }
 
@@ -1188,6 +1127,7 @@ fn initialization(precipitation: &Vec<u16>, width: usize, p: &Parameters) -> Opt
         seasons_till_next_mutation: None,
         stored_resources: 1_600_000.,
         adaptation: ecology::Ecovector::default(),
+        last_season_payoff: 0.0,
     };
     let f2 = Family {
         descendence: String::from("F"),
@@ -1201,6 +1141,7 @@ fn initialization(precipitation: &Vec<u16>, width: usize, p: &Parameters) -> Opt
         seasons_till_next_mutation: None,
         stored_resources: 1_600_000.,
         adaptation: ecology::Ecovector::default(),
+        last_season_payoff: 0.0,
     };
     // let families: HashMap<Index, Vec<Family>> = HashMap::new();
     // families.insert(start1, vec![f1]);
@@ -1301,6 +1242,7 @@ pub mod submodels {
                     seasons_till_next_mutation: None,
                     stored_resources: 0.,
                     adaptation: family.adaptation,
+                    last_season_payoff: family.last_season_payoff,
                 })
             }
         }
@@ -1447,9 +1389,8 @@ fn main() -> Result<(), String> {
         Ok(k) => { dist_stmt = k; }
     }
 
-    let SQUARE_OF_15_ARCSEC = (111.319_f64 / 60. / 4.).powi(2); //km², at the equator.
-
     let mut h3_to_graph = HashMap::new();
+    let mut expand_attested = HashMap::new();
     for (i, (hexbin, longitude, latitude)) in nodes_stmt.query_map(
         rusqlite::params![
             boundary_west, boundary_east, boundary_south, boundary_north
@@ -1461,7 +1402,10 @@ fn main() -> Result<(), String> {
                 rusqlite::params![hexbin], |eco| {
                     // The areas are already scaled by the cosine of latitude,
                     // so this converts them into km².
-                    Ok((eco.get::<_, i64>(0)? as usize, eco.get::<_, f64>(1)? * SQUARE_OF_15_ARCSEC))
+                    let len = expand_attested.len();
+                    Ok((
+                        *(expand_attested.entry(eco.get::<_, i64>(0)?).or_insert(len)),
+                        eco.get::<_, f64>(1)? * SQUARE_OF_15_ARCSEC))
                 })
             .unwrap()
             .flatten()
@@ -1471,6 +1415,7 @@ fn main() -> Result<(), String> {
             (hexbin as hexgrid::Index, longitude, latitude, ecos));
         h3_to_graph.insert(hexbin, i);
     }
+    assert!(expand_attested.len() <= ecology::ATTESTED_ECOREGIONS);
 
     for (a1, a2, d) in dist_stmt.query_map(
         rusqlite::NO_PARAMS,
@@ -1546,8 +1491,7 @@ fn parse_args(p: &mut Parameters, max_t: &mut HalfYears)
     parser.parse_args_or_exit();
 }
 
-fn run(p: Parameters, max_t: HalfYears) -> Option<()>
-{
+fn run(p: Parameters, max_t: HalfYears) -> Option<()> {
     println!("# Initialization ...");
     // FIXME: There is something messed up in lat/long -> image pixels. It works
     // currently, but the names point out that I misunderstood something, eg.
@@ -1558,11 +1502,13 @@ fn run(p: Parameters, max_t: HalfYears) -> Option<()>
     let mut s: State = initialization(&vec, width as usize, &p)?;
     println!("Initialized");
 
+    let mut knowledge = vec![];
     loop {
-        let families_by_location = step(&mut s.families, &mut s.patches, &p, s.t)?;
+        let (families_by_location, k) = step(&mut s.families, &mut s.patches, knowledge, &p, s.t)?;
+        knowledge = k;
         for (location, families) in families_by_location {
             for mut family in families {
-                family.location_history.push(family.location);
+                family.location_history.push((family.location, family.last_season_payoff));
                 family.location = location;
                 s.families.push(family);
             }
