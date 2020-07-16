@@ -863,25 +863,11 @@ mod sensing {
 Agents compete for limited resources. There is a maximum of resources that can
 be extracted from a patch, and the extracted resources are distributed among all
 agents in that patch. This distribution is not completely even: Members of a
-bigger group of cooperators competing with a smaller cooperative gets an
+bigger group of cooperators competing with a smaller cooperative get an
 over-proportional part of the total extracted, measured by their effective size.
  */
 mod interaction {
     use crate::*;
-    pub fn split_resources(
-        my_relative_returns: KCal,
-        others_relative_returns: KCal,
-        total_resources_available: &KCal,
-    ) -> KCal {
-        assert!(my_relative_returns + others_relative_returns > 0.);
-        let my_part = my_relative_returns / (my_relative_returns + others_relative_returns)
-            * KCal::min(
-                my_relative_returns + others_relative_returns,
-                *total_resources_available,
-            );
-        assert!(my_part.is_finite());
-        my_part
-    }
     /**
     A single human can forage a certain amount, but by the assumptions of the model,
     two cooperating foragers gain more resources together than they would
