@@ -1,5 +1,5 @@
 use crate::KCal;
-use std::f64::consts::PI;
+
 use std::collections::HashMap;
 
 pub fn load_precipitation_tif() -> Option<(Vec<u16>, u32)> {
@@ -20,7 +20,7 @@ pub fn load_precipitation_tif() -> Option<(Vec<u16>, u32)> {
 
 pub fn patch_from_coordinates(
     (longitude, latitude): (f64, f64),
-    image_pixels: &Vec<u16>,
+    image_pixels: &[u16],
     pixels_width: usize,
 ) -> Option<KCal> {
     let column = ((longitude + 180.) / 360. * pixels_width as f64)
@@ -862,8 +862,8 @@ impl Mul<f32> for Ecovector {
 
     fn mul(self, rhs: f32) -> Self::Output {
         let mut result = [0.; ATTESTED_ECOREGIONS];
-        for i in 0..ATTESTED_ECOREGIONS {
-            result[i] = self.entries[i] * rhs;
+        for (i, item) in self.entries.iter().enumerate() {
+            result[i] = item * rhs;
         }
         Ecovector { entries: result }
     }

@@ -1,11 +1,13 @@
 use petgraph::visit::{EdgeRef, IntoEdges, IntoNeighbors, VisitMap, Visitable, IntoEdgeReferences, Data, GraphRef, GraphBase};
 use std::hash::Hash;
 use petgraph::algo::Measure;
-use std::collections::{BinaryHeap, HashMap, HashSet};
+use std::collections::{BinaryHeap, HashMap};
 use std::collections::hash_map::Entry::{Occupied, Vacant};
 use std::cmp::Ordering;
 use rusqlite::{params, Connection, Result, OpenFlags};
 use crate::hexgrid;
+
+pub type MovementGraph = petgraph::csr::Csr<(hexgrid::Index, f64, f64, HashMap<usize, f64>), f64, petgraph::Directed, usize>;
 
 pub fn edge_costs_from_db(h: &hexgrid::Index) -> Result<Vec<(hexgrid::Index, f64)>> {
     let conn = Connection::open_with_flags(

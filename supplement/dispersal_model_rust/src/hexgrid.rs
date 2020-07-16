@@ -15,11 +15,8 @@ pub fn hex_distance(i1: Index, i2: Index) -> i32 {
     match GD_CACHE.read().unwrap().get(&(i1, i2)) {
         None => {
             let d = libh3::h3_distance(i1, i2).unwrap_or(-1);
-            match GD_CACHE.try_write() {
-                Ok(mut l) => {
-                    l.entry((i1, i2)).or_insert(d);
-                }
-                Err(_) => {}
+            if let Ok(mut l) = GD_CACHE.try_write() {
+                l.entry((i1, i2)).or_insert(d);
             }
             d
         }

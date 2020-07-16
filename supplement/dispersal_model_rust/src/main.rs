@@ -66,7 +66,7 @@ Whereever possible, resources are measured in kcal (in SI units: 1 kcal = 4.184 
 type KCal = f32;
 
 /** Area is in km², and this is how to translate arc seconds into that unit. */
-const ARCMIN: f64 = (111.319_f64 / 60.); //km², at the equator.
+const ARCMIN: f64 = 111.319_f64 / 60.; //km², at the equator.
 const SQUARE_OF_15_ARCSEC: f64 = ARCMIN * ARCMIN / 16.;
 
 
@@ -232,10 +232,10 @@ grouped by their location after potential moves. Because the movement of a
 family depends on the distribution of othe families at he start of the season,
 it can happen entirely in parallel.
  */
-use std::thread;
+
 fn step_part_1(
     families: &mut Vec<Family>,
-    patches: &HashMap<Index, Patch>,
+    _patches: &HashMap<Index, Patch>,
     knowledge: Vec<Knowledge>,
     p: &Parameters,
     t: HalfYears,
@@ -267,7 +267,7 @@ fn step_part_1(
         if t % 20 == 0 {
             let l_c = cultures_by_location.clone();
             observation::print_gd_cd(l_c, p);
-            let l_c = cultures_by_location.clone();
+            let l_c = cultures_by_location;
             observation::print_population_by_location(l_c, p);
         }
     }
@@ -335,11 +335,11 @@ fn step_part_2(
     let mut knowledge = vec![];
 
     for (patch_id, families) in families_by_location {
-        let mut min_normalized_payoff = 0.0;
-        let mut sum_normalized_payoff = 0.0;
+        let min_normalized_payoff = 0.0;
+        let sum_normalized_payoff = 0.0;
         let mut cultures = vec![];
 
-        assert!(families.len() > 0);
+        assert!(!families.is_empty());
 
         let patch = match patches.get_mut(patch_id) {
             None => { continue },
@@ -360,8 +360,12 @@ fn step_part_2(
                     (&mut family.stored_resources, contribution)
                 }).collect();
                 let actual_contribution: f32 =
-                    raw_contribution +
-                    p.payoff_std * rng.sample::<f32, _>(StandardNormal) * raw_contribution.powf(0.5);
+                    interaction::effective_labor_through_cooperation(
+                        raw_contribution +
+                            (p.payoff_std *
+                             rng.sample::<f32, _>(StandardNormal) *
+                             raw_contribution.powf(0.5)),
+                        p.cooperation_gain);
                 sum_extracted += actual_contribution;
                 (families, raw_contribution, actual_contribution)
             }).collect();
@@ -379,7 +383,7 @@ fn step_part_2(
         }
         knowledge.push(Knowledge {
             location: *patch_id,
-            cultures: cultures,
+            cultures,
             mean_payoff: sum_normalized_payoff,
             min_payoff: min_normalized_payoff,
         });
@@ -662,7 +666,7 @@ mod objectives {
     pub fn best_location<'a, KD>(
         culture: Culture,
         size: usize,
-        adaptation: &ecology::Ecovector,
+        _adaptation: &ecology::Ecovector,
         kd: KD,
         p: &Parameters,
         threshold: KCal,
@@ -677,11 +681,11 @@ mod objectives {
         // encountered so far.
         let mut c = 0;
         let mut target: Option<Index> = None;
-        let s = size as f32;
+        let _s = size as f32;
         let mut max_gain = 0.0;
 
         for knowledge in kd {
-            let mut expected_gain: KCal;
+            let expected_gain: KCal;
             if knowledge.cultures.iter().any(|c| emergence::similar_culture(*c, culture, p.cooperation_threshold)) {
                 expected_gain = knowledge.mean_payoff;
             } else if !knowledge.cultures.is_empty() {
@@ -727,8 +731,8 @@ mod learning {
     use crate::*;
 
     pub fn known_location(
-        history: &Vec<Index>,
-        nearby: &Vec<Index>,
+        history: &[Index],
+        nearby: &[Index],
         attention_probability: f32,
     ) -> Vec<Index> {
         let mut result = vec![];
@@ -771,7 +775,7 @@ account for the following moves of other agents, and even less so for growth,
 split, or other effects to themselves or others in future time steps.
  */
 mod prediction {
-    use crate::*;
+    
 
 }
 
@@ -945,7 +949,7 @@ mod collectives {
                     break;
                 }
             }
-            let size = family.effective_size as f32;
+            let _size = family.effective_size as f32;
             match joined_group {
                 None => {
                     let group = Cooperative {
@@ -1032,7 +1036,7 @@ fn very_coarse_dist(x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
     (x1 - x2).abs() + (y1 - y2).abs()
 }
 
-fn initialization(precipitation: &Vec<u16>, width: usize, p: &Parameters) -> Option<State>
+fn initialization(_precipitation: &[u16], _width: usize, p: &Parameters) -> Option<State>
 {
     let graph = &p.dispersal_graph;
 
@@ -1055,7 +1059,7 @@ fn initialization(precipitation: &Vec<u16>, width: usize, p: &Parameters) -> Opt
             start2d = d2;
         }
     }
-    let area: f32 = libh3::hex_area_km_2(5) as f32;
+    let _area: f32 = libh3::hex_area_km_2(5) as f32;
 
     println!("Starts: {:}, {:}", start1, start2);
 
@@ -1089,7 +1093,7 @@ fn initialization(precipitation: &Vec<u16>, width: usize, p: &Parameters) -> Opt
                      next, longitude, latitude, resources);
             patches.insert(
                 next,
-                Some(Patch { resources: resources }),
+                Some(Patch { resources }),
             );
             for q in graph.neighbors_slice(next) {
                 if patches.contains_key(q) {
@@ -1307,8 +1311,7 @@ pub mod submodels {
 
     pub mod parameters {
         use crate::KCal;
-        use std::collections::HashMap;
-        use crate::hexgrid;
+        use crate::movementgraph::MovementGraph;
 
         pub struct Parameters {
             pub attention_probability: f32,
@@ -1328,7 +1331,7 @@ pub mod submodels {
             pub boundary_south: f64,
             pub boundary_north: f64,
 
-            pub dispersal_graph: petgraph::csr::Csr<(hexgrid::Index, f64, f64, HashMap<usize, f64>), f64, petgraph::Directed, usize>,
+            pub dispersal_graph: MovementGraph,
         }
     }
 }
@@ -1396,7 +1399,7 @@ fn main() -> Result<(), String> {
             .unwrap()
             .flatten()
             .collect();
-        assert!(ecos.len() > 0);
+        assert!(!ecos.is_empty());
         graph.add_node(
             (hexbin as hexgrid::Index, longitude, latitude, ecos));
         h3_to_graph.insert(hexbin, i);
