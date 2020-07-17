@@ -18,6 +18,8 @@ def db(file: str = "sqlite:///hexbins.sqlite") -> t.Tuple[sqlalchemy.engine.Conn
         impl = sqlalchemy.Integer
 
         def process_bind_param(self, value: str, dialect: t.Any) -> sqlalchemy.Integer:
+            if type(value) != str:
+                return value
             return h3.string_to_h3(value)
 
         def process_result_value(self, value: sqlalchemy.Integer, dialect: t.Any) -> str:
@@ -46,7 +48,8 @@ def db(file: str = "sqlite:///hexbins.sqlite") -> t.Tuple[sqlalchemy.engine.Conn
             primary_key=True),
         sqlalchemy.Column('distance', sqlalchemy.Float),
         sqlalchemy.Column('flat_distance', sqlalchemy.Float),
-        sqlalchemy.Column('source', sqlalchemy.Integer),
+        sqlalchemy.Column('source', sqlalchemy.Integer,
+            primary_key=True),
     )
     eco = sqlalchemy.Table(
         'eco', metadata,

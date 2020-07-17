@@ -150,6 +150,7 @@ def run_on_one_tile(
     e: A mapping. d[h1][b] is the proportion of hex h1 covered by ecoregion b.
 
     """
+    print("Working on hex around ({:}, {:}):".format(lon, lat))
     elevation_file = gmted_tile_from_geocoordinates(lon, lat)
     m_trafo = elevation_file.transform
     height, width = elevation_file.shape
@@ -318,76 +319,6 @@ def run_on_one_tile(
                 "distance": max_dist,
                 "source": 4}))
 
-    failed: t.Set[ArrayIndex] = set()
-    finished: t.Set[ArrayIndex] = set()
-    while starts:
-        start = starts.pop(0)
-        if start not in center:
-            breakpoint()
-        print(f"Computing area around {start:}…")
-        this, neighbors1, neighbors2, neighbors3 = list(h3.k_ring_distances(start, 3))
-        neighbors: t.Set[h3.H3Index] = neighbors1 | neighbors2
-        distance_known = sqlalchemy.select([t_dist.c.hexbin2]).where(
-            (t_dist.c.hexbin1 == start) & (t_dist.c.source == 0))
-        if not neighbors - {k[0] for k in db.execute(distance_known).fetchall()}:
-            print("Already known.")
-            finished.add(start)
-            continue
-        if start in failed or start in finished:
-            continue
-
-        points = []
-        for n in neighbors2 | neighbors3:
-            try:
-                points.append(center[n])
-            except KeyError:
-                points.append(rowcol(h3.h3_to_geo(n)))
-        rmin = min(p[0] for p in points)
-        rmax = max(p[0] for p in points)
-        cmin = min(p[1] for p in points)
-        cmax = max(p[1] for p in points)
-        assert rmin >= 0
-        assert cmin >= 0
-
-        def rel_rowcol(latlon):
-            lat, lon = latlon
-            if lon > 170:
-                lon = lon - 360
-            col, row = ~transform * (lon, lat)
-            return int(row) - rmin, int(col) - cmin
-
-        destinations = [(center[n][0] - rmin, center[n][1] - cmin)
-                        for n in neighbors
-                        if n in center]
-
-        print(f"Looking for {neighbors:}…")
-        distances = distances_from_focus(
-            (center[start][0] - rmin, center[start][1] - cmin),
-            set(destinations),
-            {(n, e): d[rmin-min(n, 0):rmax + 1 - max(0, n),
-                       cmin-min(e, 0):cmax + 1 - max(0, e)]
-             for (n, e), d in distance_by_direction.items()},
-            pred=None
-        )
-
-        # For debugging: Output the results
-        print({t: distances[d] for t, d in zip(neighbors, destinations)})
-
-        for n, d in zip(neighbors, destinations):
-            try:
-                db.execute(t_dist.insert({
-                    "hexbin1": start,
-                    "hexbin2": n,
-                    "flat_distance": geographical_distance(start, n),
-                    "distance": distances[d],
-                    "source": 0}))
-            except sqlalchemy.exc.IntegrityError:
-                pass
-        finished.add(start)
-
-    return failed
-
-
 def geographical_distance(index1: Index, index2: Index) -> float:
     """Calculate the geodesic distance between two hex centers, in meters.
 
@@ -545,7 +476,6 @@ if __name__ == '__main__':
     tiles = [(lon, lat)
              for lon in range(165, -195, -30)
              for lat in range(-60, 90, 20)]
-    tiles.sort(key=lambda _: numpy.random.random())
     for lon, lat in tiles:
         try:
             run_on_one_tile(lon, lat, engine, t_hex, t_dist)

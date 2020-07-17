@@ -141,16 +141,14 @@ def find_hexes_crossed(
 
 
 
-engine, tables = db('sqlite:///run.sqlite')
-t_hex = tables["hex"]
-t_reach = tables["reach"]
-t_flows = tables["flows"]
 
 downstream_from_navigable = set()
 
+# Somewhere, I found speeds of 4.5 knots for kayak cruising. That's 8.334 km/h, but the database stores data in seconds.
+KAYAK_SPEED = 8.334 / 3600
 
 def estimate_flow_speed(discharge, slope):
-    """Estimate the flow speed, in km/h from discharge and slope
+    """Estimate the flow speed, in km/s from discharge and slope
 
     This is a very rough estimate, following [@schulze2005simulating]. They
     suggest to at least estimate the widely varying river roughness n, but we
@@ -168,9 +166,16 @@ def estimate_flow_speed(discharge, slope):
     d = 0.349 * discharge ** 0.341
     r = d * w / (2 * d + w)
     v = 1/n * r ** (2/3) * slope ** 0.5
-    return v * 3.6
+    return v / 1000
 
 if __name__ == "__main__":
+    import sys
+    engine, tables = db(sys.argv[1])
+    t_hex = tables["hex"]
+    t_reach = tables["reach"]
+    t_flows = tables["flows"]
+    t_dist = tables["dist"]
+
     for r, reach in enumerate(RIVERS.shp.iterShapeRecords()):
         data = reach.record
         reach_id = int(data[0])
@@ -184,7 +189,7 @@ if __name__ == "__main__":
         # [@rood2006instream,@zinke2018comparing] it seems that reaches with a flow
         # lower than 5m³/s are not navigable even by professional extreme sport
         # athletes, and generally even that number seems to be an outlier with
-        # options starting at 8m³/s, so we take that as the cutoff.
+        # opinions starting at 8m³/s, so we take that as the cutoff.
         #
         # [@zinke2018comparing] further plots wild water kayaking run slopes vs.
         # difficulty. All of these are below 10%, so we assume that reaches above
@@ -196,30 +201,47 @@ if __name__ == "__main__":
         # so
         # slope = stream power / discharge / (1000 * 9.81) > 10% = 0.1
         if reach_id not in downstream_from_navigable and (
-                data[3] < 0.9030899869919434 or data[11] / 10 ** data[3] > 981.0):
+                data[3] < 0.9030899869919434 or # log(8.)/log(10.)
+                data[11] / (10 ** data[3]) > 981.0):
             continue
-        if data[1] < reach_id:
-            print(data[1])
         downstream_from_navigable.add(data[1])
         downstream_from_navigable.discard(reach_id)
         v = estimate_flow_speed(discharge = 10 ** data[3], slope = data[11] / 10 ** data[3] / (9810))
+
+        downstream = data[1]
         try:
-            engine.execute(t_reach.insert(
-                {"reach_id": reach_id, "record_index": r,
-                "next_down": data[1],
-                # Somewhere, I found speeds of 4.5 knots for kayak cruising.
-                "travel_downstream": data[2] / (8.334 + v),
-                "travel_upstream": data[2] / max(8.334 - v, 0.3)}))
+            engine.execute(t_hex.insert(
+                {"hexbin": reach_id,
+                 "vlongitude": points[0][0],
+                 "vlatitude": points[0][1],
+                }))
         except sqlalchemy.exc.IntegrityError:
-            engine.execute(t_reach.update(
-                { "record_index": r,
-                  "next_down": data[1],
-                  # Somewhere, I found speeds of 4.5 knots for kayak cruising.
-                  "travel_downstream": data[2] / (8.334 + v),
-                  "travel_upstream": data[2] / max(8.334 - v, 0.3)}).where(
-                      "reach_id" == reach_id,
-                  ))
-            continue
+            pass
+        if downstream == 0:
+            downstream = -reach_id
+            try:
+                engine.execute(t_hex.insert(
+                    {"hexbin": downstream,
+                     "vlongitude": points[-1][0],
+                     "vlatitude": points[-1][1],
+                    }))
+            except sqlalchemy.exc.IntegrityError:
+                pass
+
+        try:
+            engine.execute(t_dist.insert(
+                {"hexbin1": reach_id, "hexbin2": downstream, "source": 9, "flat_distance": data[2] / 1000., "distance": data[2] / (KAYAK_SPEED + v)}))
+        except sqlalchemy.exc.IntegrityError:
+            engine.execute(t_dist.update().values(**
+                {"source": 9, "flat_distance": data[2] / 1000.,
+                  "distance": data[2] / (KAYAK_SPEED + v)}).where((t_dist.c.hexbin1 == reach_id) & (t_dist.c.hexbin2 == downstream)))
+        try:
+            engine.execute(t_dist.insert(
+                {"hexbin1": downstream, "hexbin2": reach_id, "source": 9, "flat_distance": data[2] / 1000., "distance": data[2] / max(KAYAK_SPEED - v, 0.3)}))
+        except sqlalchemy.exc.IntegrityError:
+            engine.execute(t_dist.update().values(**
+                { "source": 9, "flat_distance": data[2] / 1000.,
+                  "distance": data[2] / max(KAYAK_SPEED - v, 0.3)}).where((t_dist.c.hexbin2 == reach_id) & (t_dist.c.hexbin1 == downstream)))
 
         hexes: t.Dict[h3.H3Index, t.Tuple[float, float]] = {}
         length = 0.0
@@ -246,12 +268,31 @@ if __name__ == "__main__":
                 # Probably near poles or date line.
                 continue
             length = length_after
-    
+
         for hex, (st, ed) in hexes.items():
+            internal_distances = engine.execute(sqlalchemy.select([t_dist.c.distance]).where((t_dist.c.hexbin1==hex) & (t_dist.c.hexbin2==hex))).fetchall()
+            source = 10
+            if not internal_distances:
+                internal_distances = engine.execute(sqlalchemy.select([t_dist.c.distance]).where((t_dist.c.hexbin1==hex) | (t_dist.c.hexbin2==hex))).fetchall()
+                source = 11
+            if not internal_distances:
+                internal_distances = [(5*3600,)]
+                source = 12
+            PEN = min(internal_distances)[0]
             try:
-                engine.execute(t_hex.insert({"hexbin": hex}))
+                engine.execute(t_dist.insert({"hexbin1": reach_id, "hexbin2": hex, "source": source, "distance": PEN + st * data[2] / (KAYAK_SPEED + v)}))
             except sqlalchemy.exc.IntegrityError:
                 pass
-            engine.execute(t_flows.insert(
-                {"reach_id": reach_id, "hexbin": hex, "start": st/length, "end": ed/length}))
-    print(reach_id)
+            try:
+                engine.execute(t_dist.insert({"hexbin1": hex, "hexbin2": reach_id, "source": source, "distance": PEN + st * data[2] / max(KAYAK_SPEED - v, 0.3)}))
+            except sqlalchemy.exc.IntegrityError:
+                pass
+            try:
+                engine.execute(t_dist.insert({"hexbin1": hex, "hexbin2": downstream, "source": source, "distance": PEN + (1-ed) * data[2] / (KAYAK_SPEED + v)}))
+            except sqlalchemy.exc.IntegrityError:
+                pass
+            try:
+                engine.execute(t_dist.insert({"hexbin1": downstream, "hexbin2": hex, "source": source, "distance": PEN + (1-ed) * data[2] / max(KAYAK_SPEED - v, 0.3)}))
+            except sqlalchemy.exc.IntegrityError:
+                pass
+        print(reach_id)

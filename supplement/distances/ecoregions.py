@@ -3,10 +3,27 @@ import typing as t
 from pathlib import Path
 
 import numpy
+import sqlalchemy
+from sqlalchemy.sql import func
 
+import rasterio
 import shapefile
+from h3 import h3
 import shapely.geometry as sgeom
 from shapely.prepared import prep
+
+from database import db
+from raster_data import ecoregion_tile_from_geocoordinates
+
+RESOLUTION: int = 5
+AREA: float = h3.hex_area(RESOLUTION, "km^2")
+
+# The resolution of our hexes should be about 450 km² following Gavin (2017)
+assert h3.hex_area(RESOLUTION - 1, "km^2") > 450 > AREA
+
+
+ARCMIN: float = 111.319 / 60. # km, at the equator.
+SQUARE_OF_15_ARCSEC: float = (ARCMIN / 4.) ** 2 # km², at the equator
 
 
 class Ecoregions:
@@ -123,3 +140,86 @@ TC = numpy.array([
     terrain_coefficients[biomes.get(b, "N/A")]
     for b in range(1000)])
 
+
+
+def hex_ecoregions(
+        ecoregions: numpy.array,
+        transform: rasterio.Affine
+) -> t.Dict[h3.H3Index, t.Counter[int]]:
+    c: t.Dict[h3.H3Index, t.Counter[int]] = t.DefaultDict(t.Counter)
+    for y, row in enumerate(ecoregions):
+        (_, lat) = transform * (0, y)
+        area = numpy.cos(lat * numpy.pi / 180) * SQUARE_OF_15_ARCSEC
+        for x, eco in enumerate(row):
+            (lon, lat) = transform * (x, y)
+            index: h3.H3Index = h3.geo_to_h3(lat, lon, RESOLUTION)
+            c[index][int(eco)] += area # eco is a numpy type that sqlalchemy does not understand as int
+    return c
+
+
+def store_ecocount_in_db(ecoregions: numpy.array, transform: rasterio.Affine, engine: sqlalchemy.engine.Connectable, t_eco: sqlalchemy.Table, t_hex: sqlalchemy.Table) -> None:
+    for h, eco_count in hex_ecoregions(ecoregions, transform).items():
+        lat, lon = h3.h3_to_geo(h)
+        try:
+            engine.execute(t_hex.insert({"hexbin": h,
+                                   "longitude": lon,
+                                   "latitude": lat}))
+        except sqlalchemy.exc.IntegrityError:
+            pass
+        for id, freq in eco_count.items():
+            try:
+                engine.execute(t_eco.insert({"hexbin": h,
+                                       "ecoregion": id,
+                                       "frequency": freq}))
+            except sqlalchemy.exc.IntegrityError:
+                elsewhere = engine.execute(
+                    sqlalchemy.select([t_eco.c.frequency]).where(
+                        (t_eco.c.hexbin == h) & (t_eco.c.ecoregion == id))
+                ).fetchone()[0]
+                engine.execute(
+                    t_eco.update().where((t_eco.c.hexbin == h) & (t_eco.c.ecoregion == id)).values({"frequency": elsewhere + freq}))
+
+
+def analyze_all_hexes():
+    for lon in range(-165, 165, 30):
+        for lat in range(-80, 80, 20):
+            try:
+                ecoraster = ecoregion_tile_from_geocoordinates(lon, lat)
+            except rasterio.RasterioIOError:
+                continue
+            print(f"loading ecoregions and hexes around {lon}, {lat}…")
+            store_ecocount_in_db(ecoraster.read(1), ecoraster.transform, engine, t_eco, t_hex)
+    print("hexes loaded")
+
+
+if __name__ == "__main__":
+    import sqlalchemy
+    import sys
+    engine, tables = db(sys.argv[1])
+    t_hex = tables["hex"]
+    t_dist = tables["dist"]
+    t_eco = tables["eco"]
+
+    try:
+        analyze_all_hexes()
+        engine.execute(
+            t_hex.update().values(
+                {'habitable': True, 'vlatitude': None, 'vlongitude': None}
+            ).where(
+                t_hex.c.hexbin.in_(
+                    sqlalchemy.select([t_eco.c.hexbin]
+                    ).where(
+                        t_eco.c.ecoregion != 999))))
+
+    finally:
+        from matplotlib import pyplot as plt
+        print("End, showing areas:")
+        items = engine.execute(sqlalchemy.select([func.sum(t_eco.c.frequency)]).group_by(t_eco.c.hexbin)).fetchall()
+        print(len(items))
+        plt.boxplot(
+            items,
+            notch=True)
+        plt.boxplot(
+            engine.execute(sqlalchemy.select([func.sum(t_eco.c.frequency)]).where(t_eco.c.ecoregion != 999).group_by(t_eco.c.hexbin)).fetchall(),
+            notch=True)
+        plt.show()
