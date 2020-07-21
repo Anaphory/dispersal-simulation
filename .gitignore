@@ -12,6 +12,7 @@ auto/
 # World Climate Data – Huge!
 supplement/worldclim/*.tif
 supplement/worldclim/readme.txt
+bio*.???
 
 # Output images
 output*.png

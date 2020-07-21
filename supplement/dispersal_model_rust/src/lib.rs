@@ -296,6 +296,7 @@ fn step_part_1(
         }
 
         let nearby = sensing::nearby_locations(family.location, p);
+        println!("{:?}", nearby);
 
         match submodels::family_lifecycle::maybe_procreate(&mut family) {
             None => {}
@@ -813,7 +814,7 @@ mod prediction {
 
  */
 
-const NORM: f64 = 8.; // hours
+const NORM: f64 = 8. * 60. * 60.; // seconds
 
 mod sensing {
     use crate::*;
@@ -834,12 +835,13 @@ mod sensing {
         )
             .iter()
             .filter_map(
-                |(n, v)|
+                |(n, v)| {
+                println!("{:}, {:}", n, v);
                 if rng.gen::<f64>() < 1./(2. + v / NORM){
                     Some((*n, *v))
                 } else {
                     None
-                })
+                }})
             .collect()
     }
 }
