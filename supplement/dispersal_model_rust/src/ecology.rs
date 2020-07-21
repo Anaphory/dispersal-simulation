@@ -14,6 +14,8 @@ pub fn load_precipitation_tif() -> Option<(Vec<u16>, u32)> {
     let vec = match outcome {
         tiff::decoder::DecodingResult::U8(v) => v.iter().map(|g| u16::from(*g)).collect(),
         tiff::decoder::DecodingResult::U16(w) => w,
+        tiff::decoder::DecodingResult::U32(v) => v.iter().map(|g| *g as u16).collect(),
+        tiff::decoder::DecodingResult::U64(v) => v.iter().map(|g| *g as u16).collect(),
     };
     Some((vec, width))
 }
