@@ -30,7 +30,7 @@ fn read_graph_from_db(
         usize> = petgraph::csr::Csr::new();
 
     let mut nodes_stmt;
-    match conn.prepare("SELECT hexbin, vlongitude, vlatitude FROM hex NATURAL INNER JOIN (SELECT hexbin FROM eco WHERE ecoregion != 999 GROUP BY hexbin) WHERE ? < vlongitude AND vlongitude < ? AND ? < vlatitude AND vlatitude < ?") {
+    match conn.prepare("SELECT hexbin, vlongitude, vlatitude FROM hex WHERE ? < vlongitude AND vlongitude < ? AND ? < vlatitude AND vlatitude < ?") { //NATURAL INNER JOIN (SELECT hexbin FROM eco WHERE ecoregion != 999 GROUP BY hexbin) ") {
         Err(e) => { return Err(e.to_string()); }
         Ok(k) => { nodes_stmt = k; }
     }
@@ -69,7 +69,7 @@ fn read_graph_from_db(
             .unwrap()
             .flatten()
             .collect();
-        assert!(!ecos.is_empty());
+        // assert!(!ecos.is_empty());
         graph.add_node(
             (hexbin as hexgrid::Index, longitude, latitude, ecos));
         h3_to_graph.insert(hexbin, i);
