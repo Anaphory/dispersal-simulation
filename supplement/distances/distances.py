@@ -534,21 +534,28 @@ def plot_distances(db: sqlalchemy.engine.Connectable, dist: sqlalchemy.Table) ->
     plt.scatter(x, y, marker='x', s=40, alpha=0.2)
 
 
+def lonlat(s: str):
+    lon, lat = s.split(",")
+    return float(lon), float(lat)
+
+
 if __name__ == '__main__':
-    # FIXME: Use Argparser instead
-    import sys
-    engine, tables = db(sys.argv[1])
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("database")
+    parser.add_argument("--tile", action="append", default=[], type=lonlat)
+    args = parser.parse_args()
+    engine, tables = db(args.database)
     t_hex = tables["hex"]
     t_dist = tables["dist"]
     t_eco = tables["eco"]
 
-    tiles = [(lon, lat)
-             for lon in range(165, -195, -30)
-             for lat in range(-60, 90, 20)]
-    tiles.sort(key=lambda _: numpy.random.random())
+    tiles = args.tile or [(lon, lat)
+             for lon in range(-165, 195, 30)
+             for lat in range(60, -90, -20)]
     for lon, lat in tiles:
         try:
             run_on_one_tile(lon, lat, engine, t_hex, t_dist)
         except rasterio.RasterioIOError:
             continue
-    plot_distances(engine, t_dist)
+

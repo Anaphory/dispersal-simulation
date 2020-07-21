@@ -38,14 +38,25 @@ def is_landlocked(xy):
 
 
 if __name__ == "__main__":
-    import sys
-    engine, tables = db(sys.argv[1])
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("database")
+    parser.add_argument("--start")
+    args = parser.parse_args()
+    engine, tables = db(args.database)
     t_hex = tables["hex"]
     t_dist = tables["dist"]
 
-    for hexbin0, lon0, lat0 in engine.execute(
-        sqlalchemy.select([t_hex.c.hexbin, t_hex.c.vlongitude, t_hex.c.vlatitude])).fetchall():
-        if is_landlocked((lon0, lat0)):
+    failed = set()
+    query = sqlalchemy.select([t_hex.c.hexbin, t_hex.c.vlongitude, t_hex.c.vlatitude])
+    if args.start:
+        query = query.where(t_hex.c.hexbin >= args.start)
+    for hexbin0, lon0, lat0 in engine.execute(query).fetchall():
+        try:
+            if is_landlocked((lon0, lat0)):
+                continue
+        except TypeError:
+            failed.add(hexbin0)
             continue
         print("Working on {:}…".format(hexbin0))
         for hexbin1, lon1, lat1 in engine.execute(
@@ -56,6 +67,8 @@ if __name__ == "__main__":
                 .where(t_hex.c.vlatitude < lat0 + 2.5)
         ).fetchall():
             d = GEODESIC.inverse((lon0, lat0), (lon1, lat1))[0, 0]
+            if is_landlocked((lon1, lat1)):
+                continue
             s = 8
             if d > 300_000: # meters
                 continue
@@ -67,6 +80,10 @@ if __name__ == "__main__":
             t = d / 1000. / KAYAK_SPEED
             if t > 8. * 60. * 24.:
                 t *= 3
-            engine.execute(t_dist.insert(
-                {"hexbin1": hexbin0, "hexbin2": hexbin1, "source": s, "distance": t, "flat_distance": d}))
+            try:
+                engine.execute(t_dist.insert(
+                    {"hexbin1": hexbin0, "hexbin2": hexbin1, "source": s, "distance": t, "flat_distance": d}))
+            except sqlalchemy.exc.IntegrityError:
+                pass
         print(hexbin0, "done")
+    print(failed)

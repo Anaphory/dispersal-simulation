@@ -50,8 +50,6 @@ class RiverNetwork:
         self.shp = self.reaches()
 
 
-RIVERS = RiverNetwork()
-
 RESOLUTION = 5
 
 
@@ -169,17 +167,23 @@ def estimate_flow_speed(discharge, slope):
     return v / 1000
 
 if __name__ == "__main__":
-    import sys
-    engine, tables = db(sys.argv[1])
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("database")
+    parser.add_argument("--start", type=int)
+    args = parser.parse_args()
+    engine, tables = db(args.database)
     t_hex = tables["hex"]
     t_reach = tables["reach"]
     t_flows = tables["flows"]
     t_dist = tables["dist"]
 
+    RIVERS = RiverNetwork()
+
     for r, reach in enumerate(RIVERS.shp.iterShapeRecords()):
         data = reach.record
         reach_id = int(data[0])
-        if reach_id < 60000000:
+        if reach_id < args.start:
             # The Americas have SA 6, NA 7, American Arctic 8, Greenland 9
             continue
 
@@ -233,15 +237,15 @@ if __name__ == "__main__":
                 {"hexbin1": reach_id, "hexbin2": downstream, "source": 9, "flat_distance": data[2] / 1000., "distance": data[2] / (KAYAK_SPEED + v)}))
         except sqlalchemy.exc.IntegrityError:
             engine.execute(t_dist.update().values(**
-                {"source": 9, "flat_distance": data[2] / 1000.,
-                  "distance": data[2] / (KAYAK_SPEED + v)}).where((t_dist.c.hexbin1 == reach_id) & (t_dist.c.hexbin2 == downstream)))
+                {"flat_distance": data[2] / 1000.,
+                  "distance": data[2] / (KAYAK_SPEED + v)}).where((t_dist.c.hexbin1 == reach_id) & (t_dist.c.hexbin2 == downstream) & (t_dist.c.source == 9)))
         try:
             engine.execute(t_dist.insert(
                 {"hexbin1": downstream, "hexbin2": reach_id, "source": 9, "flat_distance": data[2] / 1000., "distance": data[2] / max(KAYAK_SPEED - v, 0.3)}))
         except sqlalchemy.exc.IntegrityError:
             engine.execute(t_dist.update().values(**
-                { "source": 9, "flat_distance": data[2] / 1000.,
-                  "distance": data[2] / max(KAYAK_SPEED - v, 0.3)}).where((t_dist.c.hexbin2 == reach_id) & (t_dist.c.hexbin1 == downstream)))
+                {"flat_distance": data[2] / 1000.,
+                  "distance": data[2] / max(KAYAK_SPEED - v, 0.3)}).where((t_dist.c.hexbin2 == reach_id) & (t_dist.c.hexbin1 == downstream) & (t_dist.c.source == 9)))
 
         hexes: t.Dict[h3.H3Index, t.Tuple[float, float]] = {}
         length = 0.0
@@ -269,6 +273,7 @@ if __name__ == "__main__":
                 continue
             length = length_after
 
+        print(reach_id, 10 ** data[3], v * 1000, KAYAK_SPEED + v, KAYAK_SPEED - v, 0.3 / 3600)
         for hex, (st, ed) in hexes.items():
             internal_distances = engine.execute(sqlalchemy.select([t_dist.c.distance]).where((t_dist.c.hexbin1==hex) & (t_dist.c.hexbin2==hex))).fetchall()
             source = 10
@@ -284,7 +289,7 @@ if __name__ == "__main__":
             except sqlalchemy.exc.IntegrityError:
                 pass
             try:
-                engine.execute(t_dist.insert({"hexbin1": hex, "hexbin2": reach_id, "source": source, "distance": PEN + st * data[2] / max(KAYAK_SPEED - v, 0.3)}))
+                engine.execute(t_dist.insert({"hexbin1": hex, "hexbin2": reach_id, "source": source, "distance": PEN + st * data[2] / max(KAYAK_SPEED - v, 0.3 / 1000)}))
             except sqlalchemy.exc.IntegrityError:
                 pass
             try:
@@ -292,7 +297,6 @@ if __name__ == "__main__":
             except sqlalchemy.exc.IntegrityError:
                 pass
             try:
-                engine.execute(t_dist.insert({"hexbin1": downstream, "hexbin2": hex, "source": source, "distance": PEN + (1-ed) * data[2] / max(KAYAK_SPEED - v, 0.3)}))
+                engine.execute(t_dist.insert({"hexbin1": downstream, "hexbin2": hex, "source": source, "distance": PEN + (1-ed) * data[2] / max(KAYAK_SPEED - v, 0.3 / 1000)}))
             except sqlalchemy.exc.IntegrityError:
                 pass
-        print(reach_id)

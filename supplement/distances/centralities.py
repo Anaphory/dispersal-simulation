@@ -259,11 +259,11 @@ def run_on_one_tile(
                 hex.c.hexbin == hexbin
             )).fetchone()
             if not result:
-                print("Middle of nowhere.")
                 center[hexbin] = rowcol(h3.h3_to_geo(hexbin))
+                print("WHAT IS THIS??? THIS HEX ({:}, {:}) IS NOT IN THE DB!!!!".format(*center[hexbin]))
                 continue
             h, vlon, vlat, lon, lat = result
-            if vlon and vlat:
+            if vlon is not None and vlat is not None:
                 print("Known in DB.")
                 center[hexbin] = rowcol((vlat, vlon))
                 continue
@@ -272,6 +272,12 @@ def run_on_one_tile(
                 center[hexbin] = rowcol((lat, lon))
                 continue
             print("Computing centralities…")
+            engine.execute(
+                hex.update().where(
+                    hex.c.hexbin == hexbin
+                ).values({
+                    "vlatitude": 0.0,
+                    "vlongitude": 0.0}))
             rmin = min(p[0] for p in points)
             rmax = max(p[0] for p in points)
             cmin = min(p[1] for p in points)
@@ -312,12 +318,15 @@ def run_on_one_tile(
                 ).values({
                     "vlatitude": lat,
                     "vlongitude": lon}))
-            db.execute(t_dist.insert({
-                "hexbin1": hexbin,
-                "hexbin2": hexbin,
-                "flat_distance": 0.0,
-                "distance": max_dist,
-                "source": 4}))
+            try:
+                db.execute(t_dist.insert({
+                    "hexbin1": hexbin,
+                    "hexbin2": hexbin,
+                    "flat_distance": 0.0,
+                    "distance": max_dist,
+                    "source": 4}))
+            except sqlalchemy.exc.IntegrityError:
+                pass
 
 def geographical_distance(index1: Index, index2: Index) -> float:
     """Calculate the geodesic distance between two hex centers, in meters.
@@ -459,26 +468,29 @@ def distances_from_focus(
     return dist
 
 
-def plot_distances(db: sqlalchemy.engine.Connectable, dist: sqlalchemy.Table) -> None:
-    distances = sqlalchemy.select([dist.c.flat_distance, dist.c.distance])
-    x, y = zip(*db.execute(distances))
-    plt.scatter(x, y, marker='x', s=40, alpha=0.2)
+def latlon(s: str):
+    lon, lat = s.split(",")
+    return float(lon), float(lat)
 
 
 if __name__ == '__main__':
     # FIXME: Use Argparser instead
-    import sys
-    engine, tables = db(sys.argv[1])
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("database")
+    parser.add_argument("--tile", action="append", default=[], type=latlon)
+    args = parser.parse_args()
+    engine, tables = db(args.database)
+
     t_hex = tables["hex"]
     t_dist = tables["dist"]
     t_eco = tables["eco"]
 
-    tiles = [(lon, lat)
-             for lon in range(165, -195, -30)
-             for lat in range(-60, 90, 20)]
+    tiles = args.tile or [(lon, lat)
+             for lon in range(-165, 165, 30)
+             for lat in range(80, -90, -20)]
     for lon, lat in tiles:
         try:
             run_on_one_tile(lon, lat, engine, t_hex, t_dist)
         except rasterio.RasterioIOError:
             continue
-    plot_distances(engine, t_dist)

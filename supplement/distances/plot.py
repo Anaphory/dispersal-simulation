@@ -10,10 +10,9 @@ from raster_data import ecoregion_tile_from_geocoordinates
 
 
 def plot_distances(engine: sqlalchemy.engine.Connectable, dist: sqlalchemy.Table) -> None:
-    distances = sqlalchemy.select([dist.c.flat_distance, dist.c.distance]).where(
-        dist.c.source == 0)
-    x, y = zip(*engine.execute(distances))
-    plt.scatter(x, y, marker='x', s=40, alpha=0.2)
+    distances = sqlalchemy.select([dist.c.flat_distance, dist.c.distance, dist.c.source])
+    x, y, z = zip(*engine.execute(distances))
+    plt.scatter(x, y, marker='x', c=z, s=40, alpha=0.2)
 
 
 def plot_locations(engine: sqlalchemy.engine.Connectable, t_hex: sqlalchemy.Table) -> None:
@@ -49,6 +48,27 @@ def plot_sampled(engine: sqlalchemy.engine.Connectable, t_hex: sqlalchemy.Table)
     plt.imshow(-TC[er], extent=(-180, -150, 50, 70))
 
 
+def plot_areas(engine: sqlalchemy.engine.Connectable, t_eco: sqlalchemy.Table) -> None:
+    items = [
+        item[0] for item in engine.execute(
+            sqlalchemy.select([func.sum(t_eco.c.frequency)])
+            .where(t_eco.c.ecoregion != 999)
+            .group_by(t_eco.c.hexbin))
+        .fetchall()]
+    plt.boxplot(
+        items,
+        notch=True)
+    items = [
+        item[0] for item in engine.execute(
+            sqlalchemy.select([func.sum(t_eco.c.frequency)])
+            .group_by(t_eco.c.hexbin))
+        .fetchall()]
+    plt.boxplot(
+        items,
+        positions=[0],
+        notch=True)
+
+
 if __name__ == '__main__':
     # FIXME: Use Argparser instead
     import sys
@@ -56,6 +76,8 @@ if __name__ == '__main__':
     t_hex = tables["hex"]
     t_dist = tables["dist"]
     t_eco = tables["eco"]
+    plot_areas(engine, t_eco)
+    plt.show()
     plot_distances(engine, t_dist)
     plt.show()
     plot_sampled(engine, t_hex)

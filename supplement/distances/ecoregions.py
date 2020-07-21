@@ -202,24 +202,13 @@ if __name__ == "__main__":
 
     try:
         analyze_all_hexes()
+    finally:
         engine.execute(
             t_hex.update().values(
-                {'habitable': True, 'vlatitude': None, 'vlongitude': None}
+                {'habitable': True}
             ).where(
                 t_hex.c.hexbin.in_(
                     sqlalchemy.select([t_eco.c.hexbin]
                     ).where(
                         t_eco.c.ecoregion != 999))))
 
-    finally:
-        from matplotlib import pyplot as plt
-        print("End, showing areas:")
-        items = engine.execute(sqlalchemy.select([func.sum(t_eco.c.frequency)]).group_by(t_eco.c.hexbin)).fetchall()
-        print(len(items))
-        plt.boxplot(
-            items,
-            notch=True)
-        plt.boxplot(
-            engine.execute(sqlalchemy.select([func.sum(t_eco.c.frequency)]).where(t_eco.c.ecoregion != 999).group_by(t_eco.c.hexbin)).fetchall(),
-            notch=True)
-        plt.show()
