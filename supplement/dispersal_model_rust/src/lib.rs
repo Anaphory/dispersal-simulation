@@ -87,8 +87,6 @@ given in cosine-rescaled 15" squares, and multiplicative constants are used to
 translate those numbers into km².)
  */
 
-const ARCMIN: f64 = 111.319_f64 / 60.; //km, at the equator.
-pub const SQUARE_OF_15_ARCSEC: f64 = ARCMIN * ARCMIN / 16.;
 
 /**
 In the current state of the model, the resource maximum is constant throughout
@@ -261,6 +259,7 @@ fn step_part_1(
         let mut cultures_by_location: HashMap<NodeId, HashMap<Culture, usize>> = HashMap::new();
 
         for family in families.iter_mut() {
+            family.adaptation = family.adaptation * 0.95;
             if submodels::family_lifecycle::use_resources_and_maybe_shrink(
                 &mut family.effective_size,
                 &mut family.stored_resources,
@@ -308,10 +307,10 @@ fn step_part_1(
                 let d = adaptation::decide_on_moving(
                     &descendant,
                     nearby.iter().filter_map(
-                        |i| if *i == family.location {
+                        |(i, d)| if *i == family.location {
                             None
                         } else {
-                            Some((*i, patches.get(i)?, knowledge.get(i)))
+                            Some((*i, *d, patches.get(i)?, knowledge.get(i)))
                         }),
                     true, p);
                 let destination = d.unwrap_or(family.location);
@@ -325,8 +324,8 @@ fn step_part_1(
         let d = adaptation::decide_on_moving(
             &family,
             nearby.iter().filter_map(
-                |i|
-                Some((*i, patches.get(i)?, knowledge.get(i)))
+                |(i, d)|
+                Some((*i, *d, patches.get(i)?, knowledge.get(i)))
             ),
             false, p);
 
@@ -379,6 +378,7 @@ fn step_part_2(
                 let target_culture = group.culture;
                 cultures.insert(target_culture);
                 let families: Vec<(&mut f32, f32)> = group.families.iter_mut().map(|family| {
+                    family.adaptation.entries[*i] += 0.05;
                     submodels::culture::mutate_culture(
                         &mut family.seasons_till_next_mutation,
                         &mut family.culture, target_culture,
@@ -394,6 +394,7 @@ fn step_part_2(
                              rng.sample::<f32, _>(StandardNormal) *
                              raw_contribution.powf(0.5)),
                         p.cooperation_gain);
+                assert!(actual_contribution.is_normal());
                 sum_extracted += actual_contribution;
                 (families, raw_contribution, actual_contribution)
             }).collect();
@@ -548,21 +549,21 @@ mod emergence {
                 for (c1, count1) in cs1 {
                     for (c2, count2) in cs2 {
                         if l1 == l2 && c1 == c2 {
-                            let count = gd_cd
+                            *gd_cd
                                 .entry(gd)
                                 .or_insert_with(HashMap::new)
                                 .entry(0)
-                                .or_insert(0);
-                            *count += count1 * (count2 + 1) / 2;
+                                .or_insert(0)
+                                += count1 * (count2 + 1) / 2;
                             break;
                         }
                         let cd = submodels::culture::distance(*c1, *c2);
-                        let count = gd_cd
+                        *gd_cd
                             .entry(gd)
                             .or_insert_with(HashMap::new)
                             .entry(cd)
-                            .or_insert(0);
-                        *count += count1 * count2;
+                            .or_insert(0)
+                            += count1 * count2;
                     }
                 }
                 if l1 == l2 {
@@ -635,6 +636,12 @@ pub struct Knowledge {
     leftover: KCal,
 }
 
+const WALKING_TIME_PER_SEASON: f64 = 365.24219 * 0.5 * NORM;
+const COST_PER_WALKING_TIME: f64 =
+    // Triple: opportunity cost from not foraging, and cost from doing likely
+    // heavy labor instead.
+    3. / WALKING_TIME_PER_SEASON;
+
 mod adaptation {
     use crate::*;
 
@@ -645,7 +652,7 @@ mod adaptation {
         p: &Parameters,
     ) -> Option<NodeId>
     where
-        KD: Iterator<Item = (NodeId, &'a Patch, Option<&'a Knowledge>)>,
+        KD: Iterator<Item = (NodeId, f64, &'a Patch, Option<&'a Knowledge>)>,
     {
         let threshold = if avoid_stay {
             0.
@@ -659,15 +666,28 @@ mod adaptation {
 
         objectives::best_location(
             family.location_history.iter().map(|(i, j)| (*i, *j)).chain(kd.map(
-                |(i, l, k)| (i, match k {
-                    None => l.resources.values().map(|(res, _)| res).sum(),
-                    Some(k) => if k.local_cultures.iter().any(
-                        |c| emergence::similar_culture(
-                            *c, family.culture, p.cooperation_threshold)) {
-                        k.normalized_payoff
-                    } else {
-                        k.leftover
-                    }}))),
+                |(i, d, l, k)| {
+                    let movement_cost = (d * COST_PER_WALKING_TIME) as f32 * p.time_step_energy_use ;
+                    let mut tot_res = 0.;
+                    let mut family_res = 0.;
+                    let sizef = family.effective_size as f32;
+                    for (j, (res, _)) in &l.resources {
+                        tot_res += res;
+                        family_res += res * family.adaptation[*j];
+                    };
+                    (i,
+                     family_res / tot_res * match k {
+                         None =>
+                             f32::min(interaction::effective_labor_through_cooperation(sizef, p.cooperation_gain) / sizef,
+                                      l.resources.values().map(|(res, _)| res).sum()),
+                         Some(k) => if k.local_cultures.iter().any(
+                             |c| emergence::similar_culture(
+                                 *c, family.culture, p.cooperation_threshold)) {
+                             f32::min(k.normalized_payoff, k.leftover)
+                         } else {
+                             f32::min(interaction::effective_labor_through_cooperation(sizef, p.cooperation_gain) / sizef,
+                                      k.leftover)
+                         }} - movement_cost)})),
             threshold
         ).or(Some(family.location))
     }
@@ -699,8 +719,8 @@ mod objectives {
     ) -> Option<I>
     where
         Pair: Iterator<Item = (I, N)>,
-        N: PartialOrd + Default,
-        I: Default
+        N: PartialOrd + Default + std::fmt::Debug,
+        I: Default + std::fmt::Display,
     {
         let mut rng = rand::thread_rng();
 
@@ -793,7 +813,7 @@ mod prediction {
 
  */
 
-const NORM: f64 = 60.*60.*8.; // 8 hours
+const NORM: f64 = 8.; // hours
 
 mod sensing {
     use crate::*;
@@ -804,7 +824,7 @@ mod sensing {
     pub fn nearby_locations(
         location: NodeId,
         p: &Parameters,
-    ) -> Vec<NodeId> {
+    ) -> Vec<(NodeId, f64)> {
         let mut rng = rand::thread_rng();
         movementgraph::bounded_dijkstra(
             &p.dispersal_graph,
@@ -816,7 +836,7 @@ mod sensing {
             .filter_map(
                 |(n, v)|
                 if rng.gen::<f64>() < 1./(2. + v / NORM){
-                    Some(*n)
+                    Some((*n, *v))
                 } else {
                     None
                 })
@@ -858,7 +878,8 @@ mod interaction {
     */
 
     pub fn effective_labor_through_cooperation(n_cooperators: f32, cooperation_gain: f32) -> f32 {
-        1. + (n_cooperators - 1.).powf(cooperation_gain) / 10.
+        // 1. + (n_cooperators - 1.).powf(cooperation_gain) / 10.
+        n_cooperators.powf(1. + cooperation_gain)
     }
 }
 
@@ -1077,10 +1098,10 @@ pub fn initialization(
         seasons_till_next_child: 4,
         culture: 0b000_000_000_000_000,
 
-        effective_size: 2,
+        effective_size: 5,
         number_offspring: 0,
         seasons_till_next_mutation: None,
-        stored_resources: 1_600_000.,
+        stored_resources: p.time_step_energy_use * 10.,
         adaptation: ecology::Ecovector::default(),
     };
     let f2 = Family {
@@ -1090,15 +1111,13 @@ pub fn initialization(
         seasons_till_next_child: 4,
         culture: 0b111_111_111_111_111,
 
-        effective_size: 2,
+        effective_size: 5,
         number_offspring: 0,
         seasons_till_next_mutation: None,
-        stored_resources: 1_600_000.,
+        stored_resources: p.time_step_energy_use * 10.,
         adaptation: ecology::Ecovector::default(),
     };
-    // let families: HashMap<NodeId, Vec<Family>> = HashMap::new();
-    // families.insert(start1, vec![f1]);
-    // families.insert(start2, vec![f2]);
+
     Some(State {
         patches: patches
             .drain()
@@ -1107,7 +1126,10 @@ pub fn initialization(
                 Some(q) => Some((i, q)),
             })
             .collect(),
-        families: vec![f1, f2],
+        families: vec![
+            f1
+            // f2,
+        ],
         t: 0,
     })
 }
