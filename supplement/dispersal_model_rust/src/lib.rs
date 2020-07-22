@@ -29,8 +29,8 @@ evolution. The model is structured to be easily applied to study the history of
 the settlement of the Americas at a later time. It would require paleoclimate
 data and interpretations of past ecoregions to produce results that can be
 compared to that history.
-*/
 
+ */
 // TODO: Dear Rustacean, I know that my use of documentation comments is
 // hazardous, because they land in the generated documentation in a different
 // order, or attached to things that are only accidentally coming afterwards.
@@ -55,15 +55,17 @@ The model consists of agents interacting on a network of habitable patches in
 discrete time. One time step is supposed to model a season with a duration of
 half a year. Some of the underlying data is using seconds as base unit and needs
 to be translated.
- */
 
+ */
 pub type HalfYears = u32;
 const SECONDS_PER_TIME_STEP: f64 = 365.24219 * 0.5 * 24. * 60. * 60.;
 
 /**
-Whereever possible, resources are measured in kcal (in SI units: 1 kcal = 4.184 kJ)
- */
+Whereever possible, resources are measured in kcal (in SI units: 1 kcal = 4.184
+kJ) TODO: This is not the case any more, I have switched to population size as
+the main unit of measurement.
 
+ */
 pub type KCal = f32;
 
 /**
@@ -75,12 +77,12 @@ has a weight representing the travel time (by foot, or by simple boat along
 rivers and coasts) in seconds. Each node has an arbitrary unique numerical
 identifier. This movement graph is constructed before the initialization from
 pre-processed real geographical data.
- */
 
+ */
 pub mod movementgraph;
 pub type NodeId = usize;
 
-/*
+/**
 Each node contains one or more ecoregions, according to the geographical
 distribution of ecoregions in the real world. For each ecoregion, the patch has
 a maximum and current availability of resources, measured in kcal available over
@@ -100,7 +102,6 @@ fundamentally reasonable dynamics.
 
 https://www.nature.com/articles/s41597-020-0552-1
  */
-
 pub struct Patch {
     /// For every local ecoregion, the tuple of resources currently accessible
     /// in this patch, and the maximum possible resources available in a time
@@ -358,6 +359,18 @@ external interaction, so this can be done in parallel. After exploitation,
 patches recover advance to the next season according to Submodule 7.6. This
 concludes a time step.
  */
+
+// Limited exponential growth, with maximum res, with derivative 1
+// at total_effort=0, so in the completely empty state, the actual
+// payout rises at about 2 individuals being supported per one
+// individual working.
+pub fn diminishing_returns_payoff(
+    res: KCal, total_effort: KCal
+) -> KCal
+{
+    res - res * (-total_effort / res).exp()
+}
+
 fn step_part_2(
     families_by_location: &mut HashMap<NodeId, Vec<Family>>,
     patches: &mut HashMap<NodeId, Patch>,
@@ -383,7 +396,7 @@ fn step_part_2(
 
         let mut unextracted = 0.0;
         for (i, (res, res_max)) in patch.resources.iter_mut() {
-            let mut sum_extracted = 0.0;
+            let mut total_effort = 0.0;
             let actual_contributions: Vec<(_, f32, f32)> = groups.iter_mut().map(|group| {
                 let mut raw_contribution = 0.0;
                 let target_culture = group.culture;
@@ -398,22 +411,22 @@ fn step_part_2(
                     raw_contribution += contribution;
                     (&mut family.stored_resources, contribution)
                 }).collect();
-                let actual_contribution: f32 =
+                let group_contribution: f32 =
                     interaction::effective_labor_through_cooperation(
                         raw_contribution +
                             (p.payoff_std *
                              rng.sample::<f32, _>(StandardNormal) *
                              raw_contribution.powf(0.5)),
                         p.cooperation_gain);
-                assert!(actual_contribution.is_normal());
-                sum_extracted += actual_contribution;
-                (families, raw_contribution, actual_contribution)
+                assert!(group_contribution.is_normal());
+                total_effort += group_contribution;
+                (families, raw_contribution, group_contribution)
             }).collect();
-            let actual_payout = f32::min(*res, sum_extracted);
+            let actual_payout = diminishing_returns_payoff(*res, total_effort);
             unextracted += *res - actual_payout;
             *res -= actual_payout;
             for (families, raw_contribution, actual_contribution) in actual_contributions {
-                let actual_extracted = actual_payout * actual_contribution / sum_extracted;
+                let actual_extracted = actual_payout * actual_contribution / total_effort;
                 sum_normalized_payoff += actual_extracted / raw_contribution;
                 for (family_res, contribution) in families {
                     let actual_returns = actual_extracted * contribution / raw_contribution;
@@ -685,18 +698,24 @@ mod adaptation {
                     tot_res += res;
                     family_res += res * family.adaptation[*j];
                 };
+
                 if tot_res == 0. {return None}
+
                 let expected = family.memory.get(&i).unwrap_or(&(family_res / tot_res * match k {
                     None =>
-                        f32::min(interaction::effective_labor_through_cooperation(sizef, p.cooperation_gain) / sizef,
-                                 l.resources.values().map(|(res, _)| res).sum()),
+                        diminishing_returns_payoff(
+                            l.resources.values().map(|(res, _)| res).sum(),
+                            interaction::effective_labor_through_cooperation(
+                                sizef, p.cooperation_gain)),
                     Some(k) => if k.local_cultures.iter().any(
                         |c| emergence::similar_culture(
                             *c, family.culture, p.cooperation_threshold)) {
                         f32::min(k.normalized_payoff, k.leftover)
                     } else {
-                        f32::min(interaction::effective_labor_through_cooperation(sizef, p.cooperation_gain) / sizef,
-                                 k.leftover)
+                        diminishing_returns_payoff(
+                            k.leftover,
+                            interaction::effective_labor_through_cooperation(
+                                sizef, p.cooperation_gain))
                     }})) - movement_cost;
                 Some((i, expected))}),
             threshold
