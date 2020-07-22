@@ -7,7 +7,8 @@ use std::cmp::Ordering;
 use crate::KCal;
 use crate::hexgrid;
 
-pub type MovementGraph = petgraph::csr::Csr<(hexgrid::Index, f64, f64, HashMap<usize, KCal>), f64, petgraph::Directed, usize>;
+pub type NodeData = (hexgrid::Index, f64, f64, HashMap<usize, KCal>);
+pub type MovementGraph = petgraph::csr::Csr<NodeData, f64, petgraph::Directed, usize>;
 
 // From petgraph
 

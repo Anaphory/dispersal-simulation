@@ -101,6 +101,7 @@ the extension to include paleoclimate data, such as recently published in
 fundamentally reasonable dynamics.
 
 https://www.nature.com/articles/s41597-020-0552-1
+
  */
 pub struct Patch {
     /// For every local ecoregion, the tuple of resources currently accessible
@@ -115,8 +116,8 @@ pub struct Patch {
 The main decision-making agents of the simulation are families. Families can
 migrate between nodes and form links to other families in the context of
 cooperation to extract resources.
- */
 
+ */
 pub struct Family {
     /// The agent's history of decendence, also serving as unique ID.
     descendence: String,
@@ -173,6 +174,7 @@ cooperating families are higher-level agents created ad-hoc in each time step.
 They do not persist or have effect beyond a single time step. Resource
 exploitation happens at the level of the cooperative group and is distributed to
 the individual families after the fact.
+
  */
 
 /**
@@ -186,6 +188,7 @@ number of equally similar cultures, we describe culture using a binary vector.
 Computers make natural use of the binary representation integer numbers, so a
 binary vector is equivalent to an unsigned integer of sufficient size, which is
 faster to use in computations and more efficient to store.
+
  */
 #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Clone, Copy)]
 pub struct Culture {
@@ -206,6 +209,7 @@ located there (stored in the Family's `location`) are the core of the model
 state. The state also tracks the time, measured in time steps corresponding to
 half a year each, since the start of the simulation, and TODO stores a copy of
 the model parameters.
+
  */
 pub struct State {
     /// The patches of the model, indexed by node ID in a graph. This set is
@@ -255,8 +259,8 @@ split, and move. It constructs the mapping of families at the end of the season,
 grouped by their location after potential moves. Because the movement of a
 family depends on the distribution of the families at he start of the season,
 it can happen entirely in parallel.
- */
 
+ */
 fn step_part_1(
     families: &mut Vec<Family>,
     patches: &mut HashMap<NodeId, Patch>,
@@ -358,6 +362,7 @@ detail in Submodule 7.5. Everything here happens locally to a patch, with no
 external interaction, so this can be done in parallel. After exploitation,
 patches recover advance to the next season according to Submodule 7.6. This
 concludes a time step.
+
  */
 
 // Limited exponential growth, with maximum res, with derivative 1
@@ -497,6 +502,7 @@ FIXME: Given that statement, I should really construct an implementation of
 Crema's model compatible with my setup, where the differences are explicitly
 visible as model parameters that I use differently from them. My patch topology
 is different, what else?
+
  */
 
 /**
@@ -528,6 +534,7 @@ cultures from unconstrained evolutionary drift.
 
 > Does the model use new, or previously developed, theory for agent traits from
 > which system dynamics emerge?
+
  */
 
 mod basic_principles {}
@@ -539,12 +546,14 @@ mod basic_principles {}
 > adaptive traits, or behaviors, of individuals? In other words, what model
 > results are expected to vary in complex and perhaps unpredictable ways when
 > particular characteristics of individuals or their environment change?
+
 */
 mod emergence {
     use crate::*;
 
-    /**
-    The main emergent property will be culturally somewhat uniform territories. We
+/**
+
+The main emergent property will be culturally somewhat uniform territories. We
     expect that the interplay of migration, cooperation and cultural similarity
     leads to regions sharing similar cultures, with noticeable boundaries. This
     means that the plot of cultural distances vs. geographical distances should
@@ -555,7 +564,8 @@ mod emergence {
     geographical distances, the cultural distances should be high, but with a big
     variance. The critical geographical distance is likely to depend on the region,
     being larger in more marginal environments where migration is more frequent.
-    */
+
+ */
     pub fn cultural_distance_by_geographical_distance(
         cultures_by_location: &HashMap<NodeId, HashMap<Culture, usize>>,
         max_geo_distance: i32,
@@ -598,8 +608,9 @@ mod emergence {
         gd_cd
     }
 
-    /**
-    Underlying the model is a fission-fusiom model of group dynamics
+/**
+
+Underlying the model is a fission-fusiom model of group dynamics
     (crema2014simulation), so we expect a similar analysis to apply to our
     model. Crema observes actual fission-fusion cycles only for a small part of
     the parameter space (“Primate systems emerge only temporarily, either as
@@ -609,14 +620,12 @@ mod emergence {
     frequency of decision-making (z), and the sample proportion of observed
     neighbour agents (k)”), so it is not clear whether we should expect them for
     our model.
-     */
 
-    /**
-    > Are there other results that are more tightly imposed by model rules and
-    > hence less dependent on what individuals do, and hence ‘built in’ rather
-    > than emergent results?
+> Are there other results that are more tightly imposed by model rules and
+> hence less dependent on what individuals do, and hence ‘built in’ rather
+> than emergent results?
 
-    Cooperation in this model is an entirely imposed feature. It is an important
+Cooperation in this model is an entirely imposed feature. It is an important
     question in theoretical biology and related fields under what circumstances
     cooperation can prevail over defectors and other free-riders, and it may
     even affect the dispersal of languages (though more likely on the level of
@@ -626,7 +635,8 @@ mod emergence {
     large-scale cooperation, so we consider the question irrelevant for the
     purpsoses of the present model. Cooperation is thus not a decision of the
     agents, but entirely determined by their cultures.
-     */
+
+ */
 
     pub fn similar_culture(c1: Culture, c2: Culture, cooperation_threshold: u32) -> bool {
         submodels::culture::distance(c1, c2) < cooperation_threshold
@@ -652,6 +662,7 @@ procreation and can in extreme cases (overexploitation of local resources) even
 be detrimental in the long run.
 
 Agents also adapt to local environment: TODO
+
 */
 
 pub struct Knowledge {
@@ -793,6 +804,7 @@ nearby locations only with a small random chance, but they always have knowledge
 about the locations they were at in the last 4 years (8 time steps).
 
 TODO: Put that 4 in a static variable and put a doctest here that confirms it.
+
  */
 
 mod learning {
@@ -821,6 +833,7 @@ extrapolation whatsoever. An agent only adds their own effective size to the
 current distribution of individuals in the target location. Agents do not
 account for the following moves of other agents, and even less so for growth,
 split, or other effects to themselves or others in future time steps.
+
  */
 mod prediction {
     
@@ -889,24 +902,27 @@ be extracted from a patch, and the extracted resources are distributed among all
 agents in that patch. This distribution is not completely even: Members of a
 bigger group of cooperators competing with a smaller cooperative get an
 over-proportional part of the total extracted, measured by their effective size.
+
  */
 mod interaction {
-    /**
-    A single human can forage a certain amount, but by the assumptions of the model,
+/**
+
+A single human can forage a certain amount, but by the assumptions of the model,
     two cooperating foragers gain more resources together than they would
     individually. The effective labor returned by this function is the factor by
     which 2 cooperating foragers are better than 2 separate foragers.
 
-    This formula follows Crema (2014), with the caveat that Crema computes payoffs,
+This formula follows Crema (2014), with the caveat that Crema computes payoffs,
     whereas we compute a multiplicative factor (effective labor) which is multiplied
     with the standard resource gain to give the acutal resource payoffs. Given that
     Crema's payoffs have a mean of μ=10, we adjust our effective labor by the
     opposite factor.
 
-    TODO: I actually dislike this weakly motivated k → k + m k ^ (α + 1) quite a
+TODO: I actually dislike this weakly motivated k → k + m k ^ (α + 1) quite a
     bit, so it would be nice to take a different formula, and to cross-check how
     Crema's results change for that different formula.
-    */
+
+ */
 
     pub fn effective_labor_through_cooperation(n_cooperators: f32, cooperation_gain: f32) -> f32 {
         // 1. + (n_cooperators - 1.).powf(cooperation_gain) / 10.
@@ -929,6 +945,7 @@ mod interaction {
 TODO: Is there a way to get rust to aggregate all functions that use it? Can I
 maybe somehow abuse the trait system to all those locations show up here, with
 comments?
+
  */
 
 /**
@@ -941,6 +958,7 @@ comments?
 > simply a definition by the modeler, such as the set of individuals with
 > certain properties, defined as a separate kind of entity with its own state
 > variables and traits?
+
  */
 mod collectives {
     use crate::*;
@@ -1055,6 +1073,7 @@ mod observation {
 
 > Are the initial values chosen arbitrarily or based on data? References to
 > those data should be provided.
+
 */
 pub mod hexgrid;
 
@@ -1170,6 +1189,7 @@ pub fn initialization(
 
 > Does the model use input from external sources such as data files or other
 > models to represent processes that change over time?
+
  */
 mod input {
     // None at the moment. It might come, though, when we use paleoclimate data.
@@ -1182,6 +1202,7 @@ mod input {
 > ‘Process overview and scheduling’? What are the model parameters, their
 > dimensions, and reference values? How were submodels designed or chosen, and
 > how were they parameterized and then tested?
+
 */
 pub mod submodels {
     pub mod culture {
@@ -1285,17 +1306,17 @@ pub mod submodels {
     pub mod ecology {
         use crate::KCal;
 
-        /**
-        Recover a patch, mutating its resources
+/**
+Recover a patch, mutating its resources
 
-        The recovery assumes exponential (or geometric, it's a discrete-time
+The recovery assumes exponential (or geometric, it's a discrete-time
         model) growth of resources in a patch up to a given maximum.
 
-        The patch's `max_resouces` represents the maximum available for human
+The patch's `max_resouces` represents the maximum available for human
         extraction. This is a proportion `accessible_resources` of the total
         primary production in that spot.
 
-        For example, consider a patch with max_resources 2 kcal and current
+For example, consider a patch with max_resources 2 kcal and current
         resources 1 kcal, where a quarter of the resources are accessible. This
         means that another 6 kcal is present, but inaccessible, for a total of
         7/8. The recovery is proportional to the current resources (i.e. 7 kcal)
@@ -1303,14 +1324,14 @@ pub mod submodels {
         this means that this patch would recover by 7/16, so to 1.4375 available
         resources.
 
-        ```rust
-        # use model::submodels::ecology::recover;
-        let mut resources = 1.0;
-        recover(&mut resources, &2.0, 0.5, 0.25);
-        assert_eq!(resources, 1.4375);
-        ```
+```rust
+# use model::submodels::ecology::recover;
+let mut resources = 1.0;
+recover(&mut resources, &2.0, 0.5, 0.25);
+assert_eq!(resources, 1.4375);
+```
 
-        */
+ */
         pub fn recover(
             patch_resources: &mut KCal,
             patch_max_resources: &KCal,

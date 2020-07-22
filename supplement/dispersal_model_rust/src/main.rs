@@ -2,7 +2,7 @@ use model::*;
 use model::hexgrid;
 use std::collections::{HashMap};
 use model::submodels::parameters::Parameters;
-use model::movementgraph::MovementGraph;
+use model::movementgraph::{MovementGraph,NodeData};
 
 fn read_graph_from_db(
     boundary_west: f64,
@@ -23,11 +23,7 @@ fn read_graph_from_db(
         }
     }
 
-    let mut graph: petgraph::csr::Csr<
-            (_, f64, f64, HashMap<_, _>),
-        f64,
-        petgraph::Directed,
-        usize> = petgraph::csr::Csr::new();
+    let mut graph: MovementGraph = petgraph::csr::Csr::new();
 
     let mut nodes_stmt;
     match conn.prepare("SELECT hexbin, vlongitude, vlatitude FROM hex WHERE ? < vlongitude AND vlongitude < ? AND ? < vlatitude AND vlatitude < ?") { //NATURAL INNER JOIN (SELECT hexbin FROM eco WHERE ecoregion != 999 GROUP BY hexbin) ") {
@@ -42,7 +38,7 @@ fn read_graph_from_db(
     }
 
     let mut dist_stmt;
-    match conn.prepare("SELECT hexbin1, hexbin2, min(distance) FROM dist JOIN hex ON hexbin = hexbin1 WHERE ? < vlongitude AND vlongitude < ? AND ? < vlatitude AND vlatitude < ? GROUP BY hexbin1, hexbin2") {
+    match conn.prepare("SELECT hexbin1, hexbin2, min(distance) FROM dist JOIN hex ON hexbin = hexbin1 WHERE ? < vlongitude AND vlongitude < ? AND ? < vlatitude AND vlatitude < ? GROUP BY hexbin1, hexbin2 ORDER BY hexbin1, hexbin2") {
         Err(_) => { return Err("Could not prepare dist statement".to_string()); }
         Ok(k) => { dist_stmt = k; }
     }
