@@ -51,13 +51,14 @@ use submodels::parameters::Parameters;
 
 # 2. Entities, state variables, and scales
 
-The model consists of agents interacting on a hexagonal discrete global grid in
+The model consists of agents interacting on a network of habitable patches in
 discrete time. One time step is supposed to model a season with a duration of
 half a year. Some of the underlying data is using seconds as base unit and needs
 to be translated.
 
  */
 pub type HalfYears = u32;
+const SECONDS_PER_TIME_STEP: f64 = 365.24219 * 0.5 * 24. * 60. * 60.;
 
 /**
 Whereever possible, resources are measured in kcal (in SI units: 1 kcal = 4.184
@@ -113,7 +114,7 @@ pub struct Patch {
 ## 2.2 Families
 
 The main decision-making agents of the simulation are families. Families can
-migrate between cells and form links to other families in the context of
+migrate between nodes and form links to other families in the context of
 cooperation to extract resources.
 
  */
@@ -134,12 +135,12 @@ pub struct Family {
     /// random factors. For their historical locations, the family also knows
     /// the payoff they gained there, so we keep these two bits of information
     /// together in this place.
-    location_history: Vec<(NodeId, KCal)>,
+    memory: HashMap<NodeId, KCal>,
     /// The amount of stored resources, in kcal, the family has access to
     /// without going foraging.
     stored_resources: KCal,
     /// Adaptation to local ecoregions is represented as a vector with values
-    /// between 0.0 (completely unknown) and 1.0 (perfectly familiar) for any
+    /// between 0.5 (completely unknown) and 1.0 (perfectly familiar) for any
     /// ecoregion the family might encounter.
     adaptation: ecology::Ecovector,
     /// The number of seasons to wait until the next child (reset to 2 when
@@ -189,7 +190,16 @@ binary vector is equivalent to an unsigned integer of sufficient size, which is
 faster to use in computations and more efficient to store.
 
  */
-type Culture = u64;
+#[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Clone, Copy)]
+pub struct Culture {
+    binary_representation: u64
+}
+
+impl std::fmt::Binary for Culture {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        self.binary_representation.fmt(f)
+    }
+}
 
 /**
 ## 2.4 State
@@ -202,9 +212,8 @@ the model parameters.
 
  */
 pub struct State {
-    /// The patches of the model, indexed by their address according to the H3
-    /// discrete global grid system. This set is fixed, although the properties
-    /// of the patches may change with time.
+    /// The patches of the model, indexed by node ID in a graph. This set is
+    /// fixed, although the properties of the patches may change with time.
     patches: HashMap<NodeId, Patch>,
     /// The agents (families) currently active in the simulation. This vector
     /// changes over time as new families are added and old families die out.
@@ -248,7 +257,7 @@ fn step(
 The first part focuses on the individual families, which shrink, grow, die,
 split, and move. It constructs the mapping of families at the end of the season,
 grouped by their location after potential moves. Because the movement of a
-family depends on the distribution of othe families at he start of the season,
+family depends on the distribution of the families at he start of the season,
 it can happen entirely in parallel.
 
  */
@@ -266,7 +275,7 @@ fn step_part_1(
         let mut cultures_by_location: HashMap<NodeId, HashMap<Culture, usize>> = HashMap::new();
 
         for family in families.iter_mut() {
-            family.adaptation = family.adaptation * 0.95;
+            family.adaptation = family.adaptation * 0.95; // Cupping at 0.5 is implemented in the mul method. Not very clear.
             if submodels::family_lifecycle::use_resources_and_maybe_shrink(
                 &mut family.effective_size,
                 &mut family.stored_resources,
@@ -302,7 +311,7 @@ fn step_part_1(
             continue;
         }
 
-        let nearby = sensing::nearby_locations(family.location, p);
+        let nearby = sensing::nearby_locations(family.location, &family.memory, p);
 
         match submodels::family_lifecycle::maybe_procreate(&mut family) {
             None => {}
@@ -684,9 +693,9 @@ mod adaptation {
             0.
         } else {
             p.time_step_energy_use * p.evidence_needed +
-                match family.location_history.last() {
+                match family.memory.get(&family.location) {
                     None => 0.0,
-                    Some((_, k)) => *k
+                    Some(k) => *k
                 }
         };
 
@@ -857,6 +866,7 @@ mod sensing {
 
     pub fn nearby_locations(
         location: NodeId,
+        memory: &HashMap<NodeId, KCal>,
         p: &Parameters,
     ) -> Vec<(NodeId, f64)> {
         let mut rng = rand::thread_rng();
@@ -869,7 +879,7 @@ mod sensing {
             .iter()
             .filter_map(
                 |(n, v)|
-                if rng.gen::<f64>() < 1./(2. + v / NORM){
+                if memory.contains_key(&location) || rng.gen::<f64>() < 1./(2. + v / NORM){
                     Some((*n, *v))
                 } else {
                     None
@@ -1134,9 +1144,9 @@ pub fn initialization(
     let f1 = Family {
         descendence: String::from("A"),
         location: start1,
-        location_history: vec![],
+        memory: HashMap::new(),
         seasons_till_next_child: 4,
-        culture: 0b000_000_000_000_000,
+        culture: Culture { binary_representation: 0b000_000_000_000_000 },
 
         effective_size: 5,
         number_offspring: 0,
@@ -1147,9 +1157,9 @@ pub fn initialization(
     let f2 = Family {
         descendence: String::from("F"),
         location: start2,
-        location_history: vec![],
+        memory: HashMap::new(),
         seasons_till_next_child: 4,
-        culture: 0b111_111_111_111_111,
+        culture: Culture { binary_representation: 0b111_111_111_111_111 },
 
         effective_size: 5,
         number_offspring: 0,
@@ -1200,7 +1210,7 @@ pub mod submodels {
         use rand::prelude::*;
 
         pub fn distance(c1: Culture, c2: Culture) -> u32 {
-            (c1 ^ c2).count_ones()
+            (c1.binary_representation ^ c2.binary_representation).count_ones()
         }
 
         pub fn mutate_culture(
@@ -1219,7 +1229,7 @@ pub mod submodels {
                 },
                 Some(0) => {
                     let i: u8 = rand::thread_rng().gen_range(0, culture_dimensionality);
-                    *family_culture ^= 1 << i;
+                    family_culture.binary_representation ^= 1 << i;
                     *family_seasons_till_next_mutation =
                         Some(random::<f64>().log(1. - culture_mutation_rate) as u32);
                 },
@@ -1252,7 +1262,7 @@ pub mod submodels {
                 Some(Family {
                     descendence: format!("{}:{:}", family.descendence, family.number_offspring),
                     location: family.location,
-                    location_history: vec![],
+                    memory: family.memory.clone(),
                     seasons_till_next_child: 12 * 2,
                     culture: family.culture,
 
@@ -1375,7 +1385,7 @@ pub fn run(mut s: State, p: Parameters, max_t: HalfYears) {
         knowledge = k;
         for (location, families) in families_by_location {
             for mut family in families {
-                family.location_history.push((family.location, family.stored_resources));
+                family.memory.insert(family.location, family.stored_resources / family.effective_size as KCal);
                 family.location = location;
                 s.families.push(family);
             }
