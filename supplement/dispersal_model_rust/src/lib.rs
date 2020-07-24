@@ -1092,6 +1092,9 @@ pub fn initialization(
     let mut start2d = very_coarse_dist(graph[0].1, graph[0].2, -158.2718, 60.8071);
 
     for i in 0..graph.node_count() {
+        if graph[i].0 < 100_000_000 {
+            continue
+        }
         let longitude = graph[i].1;
         let latitude = graph[i].2;
         let d1 = very_coarse_dist(longitude, latitude, -159.873, 65.613);
