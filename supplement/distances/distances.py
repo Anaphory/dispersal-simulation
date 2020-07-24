@@ -211,14 +211,13 @@ def run_on_one_tile(
             lon = lon - 360
         col, row = ~transform * (lon, lat)
         return int(row), int(col)
-    starts: t.List[h3.H3Index] = []
-    cs = sqlalchemy.select([hex.c.hexbin, hex.c.longitude, hex.c.latitude, hex.c.habitable])
-    for h, lon, lat, habitable in db.execute(cs).fetchall():
-        if not habitable:
-            continue
+
+    center: t.Dict[h3.H3Index, t.Tuple[int, int]] = {}
+    cs = sqlalchemy.select([hex.c.hexbin, hex.c.vlongitude, hex.c.vlatitude]).where(hex.c.vlongitude != None)
+    for h, lon, lat in db.execute(cs).fetchall():
         row, col = rowcol((lat, lon))
         if 500 <= col < width + 500 and 500 < row < height + 500:
-            starts.append(h)
+            center[h] = (row, col)
 
     print("Computing terrain coefficients…")
     terrain_coefficient_raster = TC[ecoregions]
@@ -227,105 +226,14 @@ def run_on_one_tile(
     distance_by_direction = all_pairwise_distances(
         elevation, transform, terrain_coefficient_raster)
 
-    print("Computing central nodes…")
-    center = {}
-    partial = set()
-    belongs = {}
-    for row in range(ecoregions.shape[0]):
-        incomplete = set()
-        for col in range(ecoregions.shape[1]):
-            lon, lat = transform * (col, row)
-            hexbin = h3.geo_to_h3(lat, lon, RESOLUTION)
-            incomplete.add(hexbin)
-            if row == 0 or col < 10 or ecoregions.shape[1] - 10 <= col:
-                partial.add(hexbin)
-                try:
-                    del belongs[hexbin]
-                except KeyError:
-                    pass
-            elif hexbin not in partial:
-                belongs.setdefault(hexbin, set()).add((row, col))
-        for hexbin in set(belongs) - incomplete:
-            print(f"Checking {hexbin}…")
-            points = belongs.pop(hexbin)
-            if hexbin in partial:
-                print("Not competely in this tile.")
-                continue
-            result = engine.execute(sqlalchemy.select([
-                hex.c.habitable, hex.c.vlongitude, hex.c.vlatitude,
-                hex.c.longitude, hex.c.latitude]
-            ).where(
-                hex.c.hexbin == hexbin
-            )).fetchone()
-            if not result:
-                print("Middle of nowhere.")
-                center[hexbin] = rowcol(h3.h3_to_geo(hexbin))
-                continue
-            h, vlon, vlat, lon, lat = result
-            if vlon and vlat:
-                print("Known in DB.")
-                center[hexbin] = rowcol((vlat, vlon))
-                continue
-            if lon and lat and not h:
-                print("Uninhabitable.")
-                center[hexbin] = rowcol((lat, lon))
-                continue
-            print("Computing centralities…")
-            rmin = min(p[0] for p in points)
-            rmax = max(p[0] for p in points)
-            cmin = min(p[1] for p in points)
-            cmax = max(p[1] for p in points)
-            assert rmin >= 0
-            assert cmin >= 0
-
-            dist = {(n, e): d[rmin-min(n, 0):rmax + 1 - max(0, n),
-                              cmin-min(e, 0):cmax + 1 - max(0, e)]
-                    for (n, e), d in distance_by_direction.items()}
-
-            border = [(i - rmin, j - cmin) for (i, j) in points
-                      if (i-1, j) not in points
-                      or (i+1, j) not in points
-                      or (i, j-1) not in points
-                      or (i, j + 1) not in points]
-
-            c = t.Counter()
-            max_dist = 0
-            for r0, c0 in border:
-                pred = {(r0, c0): None}
-                all_dist = distances_from_focus((r0, c0), set(border), dist, pred=pred)
-                for b1 in border:
-                    n = b1
-                    while pred[n]:
-                        n = pred[n]
-                        c[n] += 1
-                max_dist = max(max_dist, all_dist.max())
-            (r0, c0), centrality = c.most_common(1)[0]
-            center[hexbin] = (r0 + rmin, c0 + cmin)
-            print(hexbin, center[hexbin], centrality)
-            lon, lat = transform * (c0 + cmin, r0 + rmin)
-            rlat, rlon = h3.h3_to_geo(hexbin)
-            print(f"Centalic node at ({lon}, {lat}). [Actual center at ({rlon}, {rlat}).]")
-            engine.execute(
-                hex.update().where(
-                    hex.c.hexbin == hexbin
-                ).values({
-                    "vlatitude": lat,
-                    "vlongitude": lon}))
-            db.execute(t_dist.insert({
-                "hexbin1": hexbin,
-                "hexbin2": hexbin,
-                "flat_distance": 0.0,
-                "distance": max_dist,
-                "source": 4}))
-
     failed: t.Set[ArrayIndex] = set()
     finished: t.Set[ArrayIndex] = set()
-    while starts:
-        start = starts.pop(0)
-        if start not in center:
-            breakpoint()
+
+    for start, (row, col) in center.items():
         print(f"Computing area around {start:}…")
-        this, neighbors1, neighbors2, neighbors3 = list(h3.k_ring_distances(start, 3))
+        lon, lat = transform * (col, row)
+        hexbin = h3.geo_to_h3(lat, lon, RESOLUTION)
+        this, neighbors1, neighbors2, neighbors3 = list(h3.k_ring_distances(hexbin, 3))
         neighbors: t.Set[h3.H3Index] = neighbors1 | neighbors2
         distance_known = sqlalchemy.select([t_dist.c.hexbin2]).where(
             (t_dist.c.hexbin1 == start) & (t_dist.c.source == 0))
@@ -371,15 +279,23 @@ def run_on_one_tile(
         )
 
         # For debugging: Output the results
-        print({t: distances[d] for t, d in zip(neighbors, destinations)})
+        distances_by_center = {}
+        for t, d in center.items():
+            try:
+                dist = distances[d[0] - rmin, d[1] - cmin]
+                if numpy.isfinite(dist):
+                    distances_by_center[t] = dist
+            except IndexError:
+                continue
 
-        for n, d in zip(neighbors, destinations):
+        print(distances_by_center)
+
+        for n, d in distances_by_center.items():
             try:
                 db.execute(t_dist.insert({
                     "hexbin1": start,
                     "hexbin2": n,
-                    "flat_distance": geographical_distance(start, n),
-                    "distance": distances[d],
+                    "distance": d,
                     "source": 0}))
             except sqlalchemy.exc.IntegrityError:
                 pass
