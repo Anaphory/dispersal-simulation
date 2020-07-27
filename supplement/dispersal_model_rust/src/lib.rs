@@ -38,9 +38,11 @@ compared to that history.
 // Load useful modules
 
 use rand::prelude::*;
-use rayon::prelude::*;
 use std::collections::{HashMap,BTreeSet};
 use rand_distr::StandardNormal;
+
+use rayon::prelude::*;
+use std::sync::{Arc, Mutex};
 
 mod debug;
 pub mod ecology;
@@ -118,6 +120,7 @@ migrate between nodes and form links to other families in the context of
 cooperation to extract resources.
 
  */
+#[derive(Clone)]
 pub struct Family {
     /// The agent's history of decendence, also serving as unique ID.
     descendence: String,
@@ -248,8 +251,8 @@ fn step(
     t: HalfYears,
 ) -> (HashMap<NodeId, Vec<Family>>, HashMap<NodeId, Knowledge>)
 {
-    let mut families_by_location = step_part_1(families, patches, knowledge, p, t);
-    let new_knowledge = step_part_2(&mut families_by_location, patches, p);
+    let mut families_by_location = step_part_1(families, patches, knowledge, p);
+    let new_knowledge = step_part_2(&mut families_by_location, patches, p, t);
     (families_by_location, new_knowledge)
 }
 
@@ -266,51 +269,29 @@ fn step_part_1(
     patches: &mut HashMap<NodeId, Patch>,
     knowledge: HashMap<NodeId, Knowledge>,
     p: &Parameters,
-    t: HalfYears,
 ) -> HashMap<NodeId, Vec<Family>>
 {
     let mut families_by_location: HashMap<NodeId, Vec<Family>> = HashMap::new();
-    {
-        // For reporting only
-        let mut cultures_by_location: HashMap<NodeId, HashMap<Culture, usize>> = HashMap::new();
+    let wrapper = Arc::new(Mutex::new(&mut families_by_location));
 
-        for family in families.iter_mut() {
-            family.adaptation = family.adaptation * 0.95; // Cupping at 0.5 is implemented in the mul method. Not very clear.
-            if submodels::family_lifecycle::use_resources_and_maybe_shrink(
-                &mut family.effective_size,
-                &mut family.stored_resources,
-                p,
-            ) {
-                family.seasons_till_next_child = std::cmp::max(family.seasons_till_next_child, 2)
-            }
-
-            submodels::family_lifecycle::maybe_grow(family);
-
-            let cultures = cultures_by_location
-                .entry(family.location)
-                .or_insert_with(HashMap::new);
-            let counter = cultures.entry(family.culture).or_insert(0);
-            *counter += family.effective_size;
+    families.into_par_iter().filter_map(|mut family| {
+        family.adaptation = family.adaptation * 0.95; // Cupping at 0.5 is implemented in the mul method. Not very clear.
+        if submodels::family_lifecycle::use_resources_and_maybe_shrink(
+            &mut family.effective_size,
+            &mut family.stored_resources,
+            p,
+        ) {
+            family.seasons_till_next_child = std::cmp::max(family.seasons_till_next_child, 2)
         }
 
-        if t % 20 == 0 {
-            let l_c = cultures_by_location.clone();
-            observation::print_gd_cd(l_c, p);
-            let l_c = cultures_by_location;
-            observation::print_population_by_location(l_c, p);
-        }
-    }
+        submodels::family_lifecycle::maybe_grow(&mut family);
 
-    let mut rng = rand::thread_rng();
-    families.shuffle(&mut rng);
-
-    for mut family in families.drain(..) {
         if submodels::family_lifecycle::is_moribund(&family) {
-            family.effective_size = 0;
-            // Stop tracking this family, they are dead.
-            continue;
+            None
+        } else {
+            Some(family)
         }
-
+    }).map(|mut family| {
         let nearby = sensing::nearby_locations(family.location, &family.memory, p);
 
         match submodels::family_lifecycle::maybe_procreate(&mut family) {
@@ -331,7 +312,7 @@ fn step_part_1(
                     true, p);
                 let destination = d.unwrap_or(family.location);
 
-                families_by_location
+                wrapper.lock().unwrap()
                     .entry(destination)
                     .or_insert(vec![])
                     .push(descendant);
@@ -347,11 +328,11 @@ fn step_part_1(
 
         // Update cultures_by_location
         let destination = d.unwrap_or(family.location);
-        families_by_location
+        wrapper.lock().unwrap()
             .entry(destination)
             .or_insert(vec![])
-            .push(family);
-    }
+            .push(family.clone());
+    }).for_each(|_| ());
     families_by_location
 }
 
@@ -379,74 +360,97 @@ pub fn diminishing_returns_payoff(
 fn step_part_2(
     families_by_location: &mut HashMap<NodeId, Vec<Family>>,
     patches: &mut HashMap<NodeId, Patch>,
-    p: &Parameters) -> HashMap<NodeId, Knowledge>
+    p: &Parameters,
+    t: HalfYears,
+) -> HashMap<NodeId, Knowledge>
 {
-    let mut rng = rand::thread_rng();
     let mut knowledge = HashMap::new();
 
-    for (patch_id, families) in families_by_location {
-        let mut sum_normalized_payoff = 0.0;
+    let patches_wrapper = Arc::new(Mutex::new(patches));
+    let knowledge_wrapper = Arc::new(Mutex::new(&mut knowledge));
+
+    let cultures_by_location: HashMap<NodeId, HashMap<Culture, usize>> = families_by_location.par_iter_mut().map(|(patch_id, families)| {
+        let sum_normalized_payoff: KCal = 0.0;
+        let np_wrapper = Arc::new(Mutex::new(sum_normalized_payoff));
+
         let mut cultures: BTreeSet<Culture> = BTreeSet::new();
+
+        let mut cc = HashMap::new();
 
         assert!(!families.is_empty());
 
-        let patch = match patches.get_mut(patch_id) {
-            None => { continue },
-            Some(p) => { p }
-        };
+        // This is overkill. We don't need a lock on the whole patch map, just
+        // on the current patch.
+        match patches_wrapper.lock().unwrap().get_mut(patch_id) {
+            None => {},
+            Some(patch ) => {
+                let mut groups = collectives::cooperatives(
+                    families.iter_mut().collect(), p);
+                let n_groups = groups.len() as KCal;
 
-        let mut groups = collectives::cooperatives(
-            families.iter_mut().collect(), p);
-        let n_groups = groups.len() as KCal;
+                let unextracted = patch.resources.iter_mut().map(|(i, (res, res_max))| {
+                    let mut rng = rand::thread_rng();
+                    let mut total_effort = 0.0;
+                    let actual_contributions: Vec<(_, f32, f32)> = groups.iter_mut().map(|group| {
+                        let mut raw_contribution = 0.0;
+                        let target_culture = group.culture;
+                        cultures.insert(target_culture);
+                        let families: Vec<(&mut f32, f32)> = group.families.iter_mut().map(|family| {
+                            family.adaptation.entries[*i] += 0.05;
+                            submodels::culture::mutate_culture(
+                                &mut family.seasons_till_next_mutation,
+                                &mut family.culture, target_culture,
+                                p.culture_dimensionality, p.culture_mutation_rate);
+                            *cc.entry(target_culture).or_insert(0)
+                                += family.effective_size;
+                            let contribution = family.effective_size as f32 * family.adaptation[*i];
+                            raw_contribution += contribution;
+                            (&mut family.stored_resources, contribution)
+                        }).collect();
+                        let group_contribution: f32 =
+                            interaction::effective_labor_through_cooperation(
+                                raw_contribution +
+                                    (p.payoff_std *
+                                     rng.sample::<f32, _>(StandardNormal) *
+                                     raw_contribution.powf(0.5)),
+                                p.cooperation_gain);
+                        assert!(group_contribution.is_normal());
+                        total_effort += group_contribution;
+                        (families, raw_contribution, group_contribution)
+                    }).collect();
+                    let actual_payout = diminishing_returns_payoff(*res, total_effort);
+                    let unextracted = *res - actual_payout;
+                    *res -= actual_payout;
+                    for (families, raw_contribution, actual_contribution) in actual_contributions {
+                        let actual_extracted = actual_payout * actual_contribution / total_effort;
+                        *np_wrapper.lock().unwrap() += actual_extracted / raw_contribution;
+                        for (family_res, contribution) in families {
+                            let actual_returns = actual_extracted * contribution / raw_contribution;
+                            *family_res += actual_returns;
+                        }
+                    }
+                    submodels::ecology::recover(
+                        res, res_max, p.resource_recovery, p.accessible_resources);
+                    unextracted
+                }).sum();
 
-        let mut unextracted = 0.0;
-        for (i, (res, res_max)) in patch.resources.iter_mut() {
-            let mut total_effort = 0.0;
-            let actual_contributions: Vec<(_, f32, f32)> = groups.iter_mut().map(|group| {
-                let mut raw_contribution = 0.0;
-                let target_culture = group.culture;
-                cultures.insert(target_culture);
-                let families: Vec<(&mut f32, f32)> = group.families.iter_mut().map(|family| {
-                    family.adaptation.entries[*i] += 0.05;
-                    submodels::culture::mutate_culture(
-                        &mut family.seasons_till_next_mutation,
-                        &mut family.culture, target_culture,
-                        p.culture_dimensionality, p.culture_mutation_rate);
-                    let contribution = family.effective_size as f32 * family.adaptation[*i];
-                    raw_contribution += contribution;
-                    (&mut family.stored_resources, contribution)
-                }).collect();
-                let group_contribution: f32 =
-                    interaction::effective_labor_through_cooperation(
-                        raw_contribution +
-                            (p.payoff_std *
-                             rng.sample::<f32, _>(StandardNormal) *
-                             raw_contribution.powf(0.5)),
-                        p.cooperation_gain);
-                assert!(group_contribution.is_normal());
-                total_effort += group_contribution;
-                (families, raw_contribution, group_contribution)
-            }).collect();
-            let actual_payout = diminishing_returns_payoff(*res, total_effort);
-            unextracted += *res - actual_payout;
-            *res -= actual_payout;
-            for (families, raw_contribution, actual_contribution) in actual_contributions {
-                let actual_extracted = actual_payout * actual_contribution / total_effort;
-                sum_normalized_payoff += actual_extracted / raw_contribution;
-                for (family_res, contribution) in families {
-                    let actual_returns = actual_extracted * contribution / raw_contribution;
-                    *family_res += actual_returns;
-                }
+                knowledge_wrapper.lock().unwrap().insert(*patch_id, Knowledge {
+                    local_cultures: cultures,
+                    normalized_payoff: sum_normalized_payoff / n_groups,
+                    leftover: unextracted,
+                });
             }
-            submodels::ecology::recover(
-                res, res_max, p.resource_recovery, p.accessible_resources);
-        }
-        knowledge.insert(*patch_id, Knowledge {
-            local_cultures: cultures,
-            normalized_payoff: sum_normalized_payoff / n_groups,
-            leftover: unextracted,
-        });
+        };
+        (*patch_id, cc)
+    }).collect();
+
+    if t % 20 == 0 {
+        let l_c = cultures_by_location.clone();
+        observation::print_gd_cd(l_c, p);
+        let l_c = cultures_by_location;
+        observation::print_population_by_location(l_c, p);
     }
+
     knowledge
 }
 
