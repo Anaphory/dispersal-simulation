@@ -7,10 +7,12 @@ import matplotlib.pyplot as plt
 
 parser = argparse.ArgumentParser(description="Plot simulation results")
 parser.add_argument("logfile", type=argparse.FileType("r"))
+parser.add_argument("output_dir", type=Path, default="plots/", nargs="?")
 parser.add_argument("--start", type=int, default=0)
 parser.add_argument("--max-cdif", type=int, default=20,
                     help="Maxiumum cultural difference to be plotted")
 args = parser.parse_args()
+args.output_dir.mkdir(parents=True, exist_ok=True)
 
 stem = Path(args.logfile.name).stem
 all_q = numpy.zeros((51, args.max_cdif))
@@ -28,7 +30,7 @@ try:
             plt.xlim(-3, -0.5)
             plt.ylim(-1., 1.5)
             plt.gcf().set_size_inches((12, 16))
-            plt.savefig(f"plots/disp{m:08d}-{stem:}.png")
+            plt.savefig(args.output_dir / f"disp{m:08d}-{stem:}.png")
             plt.close()
         if line.startswith("GD_CD: {"):
             n += 1
@@ -44,10 +46,10 @@ try:
             plt.imshow(q.T)
             all_q += q
             plt.gcf().set_size_inches((12, 9))
-            plt.savefig(f"plots/corr{n:08d}-{stem:}.png")
+            plt.savefig(args.output_dir / f"corr{n:08d}-{stem:}.png")
             plt.close()
 finally:
     plt.imshow(all_q.T)
     plt.gcf().set_size_inches((12, 9))
-    plt.savefig(f"plots/corr-{stem:}.png")
+    plt.savefig(args.output_dir / f"corr-{stem:}.png")
     plt.close()
