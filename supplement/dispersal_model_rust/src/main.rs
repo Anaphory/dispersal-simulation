@@ -26,7 +26,11 @@ fn read_graph_from_db(
     let mut graph: MovementGraph = petgraph::csr::Csr::new();
 
     let mut nodes_stmt;
-    match conn.prepare("SELECT hexbin, vlongitude, vlatitude FROM hex WHERE ? < vlongitude AND vlongitude < ? AND ? < vlatitude AND vlatitude < ?") { //NATURAL INNER JOIN (SELECT hexbin FROM eco WHERE ecoregion != 999 GROUP BY hexbin) ") {
+    match conn.prepare(concat!(
+        "SELECT hexbin, vlongitude, vlatitude FROM hex ",
+        "WHERE ? < vlongitude AND vlongitude < ? AND ? < vlatitude AND vlatitude < ? ",
+        // "NATURAL INNER JOIN (SELECT hexbin FROM eco WHERE ecoregion != 999 GROUP BY hexbin) ",
+    )) {
         Err(e) => { return Err(e.to_string()); }
         Ok(k) => { nodes_stmt = k; }
     }
@@ -38,7 +42,14 @@ fn read_graph_from_db(
     }
 
     let mut dist_stmt;
-    match conn.prepare("SELECT hexbin1, hexbin2, min(distance) FROM dist JOIN hex ON hexbin = hexbin1 WHERE ? < vlongitude AND vlongitude < ? AND ? < vlatitude AND vlatitude < ? GROUP BY hexbin1, hexbin2 ORDER BY hexbin1, hexbin2") {
+    match conn.prepare(concat!(
+        "SELECT hexbin1, hexbin2, min(distance) ",
+        "FROM dist ",
+        "JOIN hex ON hexbin = hexbin1 ",
+        "WHERE ? < vlongitude AND vlongitude < ? AND ? < vlatitude AND vlatitude < ? ",
+        // "INNER JOIN (SELECT hexbin FROM eco WHERE ecoregion != 999 GROUP BY hexbin) ON hexbin = hexbin1",
+        // "INNER JOIN (SELECT hexbin FROM eco WHERE ecoregion != 999 GROUP BY hexbin) ON hexbin = hexbin2",
+        "GROUP BY hexbin1, hexbin2 ORDER BY hexbin1, hexbin2 ")) {
         Err(_) => { return Err("Could not prepare dist statement".to_string()); }
         Ok(k) => { dist_stmt = k; }
     }
@@ -80,8 +91,12 @@ fn read_graph_from_db(
         rusqlite::params![
             boundary_west, boundary_east, boundary_south, boundary_north
         ], |dist| Ok((dist.get(0)?, dist.get(1)?, dist.get(2)?)))
-        .unwrap().flatten().filter_map(|(i, j, d)|
-            Some((*h3_to_graph.get(&i)?, *h3_to_graph.get(&j)?, d)))
+        .unwrap().flatten().filter_map(
+            |(i, j, d)|
+            {
+                print!("{:}", i);
+                Some((*h3_to_graph.get(&i)?, *h3_to_graph.get(&j)?, d))
+            })
     {
         graph.add_edge(a1, a2, d);
     }

@@ -5,6 +5,9 @@ authors = ["Gereon A. Kaiping <gkaiping@geo.uzh.ch>"]
 edition = "2018"
 debug = true
 
+[profile.release]
+debug = true
+
 [lib]
 name = "model"
 
@@ -18,3 +21,4 @@ argparse = ">=0.0.0"
 lazy_static = ">=0.0.0"
 petgraph = ">=0.0.0"
 rusqlite = ">=0.0.0"
+dashmap = ">=3.0.0"
