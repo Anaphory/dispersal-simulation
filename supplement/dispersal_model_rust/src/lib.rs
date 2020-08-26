@@ -39,6 +39,7 @@ compared to that history.
 
 use rand::prelude::*;
 use std::collections::{HashMap,BTreeSet};
+use dashmap::DashMap;
 use rand_distr::StandardNormal;
 
 use rayon::prelude::*;
@@ -217,7 +218,7 @@ the model parameters.
 pub struct State {
     /// The patches of the model, indexed by node ID in a graph. This set is
     /// fixed, although the properties of the patches may change with time.
-    patches: HashMap<NodeId, Patch>,
+    patches: DashMap<NodeId, Patch>,
     /// The agents (families) currently active in the simulation. This vector
     /// changes over time as new families are added and old families die out.
     families: Vec<Family>,
@@ -245,11 +246,11 @@ The structure of a single time step consist of two parts, as follows.
  */
 fn step(
     families: &mut Vec<Family>,
-    patches: &mut HashMap<NodeId, Patch>,
-    knowledge: HashMap<NodeId, Knowledge>,
+    patches: &mut DashMap<NodeId, Patch>,
+    knowledge: DashMap<NodeId, Knowledge>,
     p: &Parameters,
     t: HalfYears,
-) -> (HashMap<NodeId, Vec<Family>>, HashMap<NodeId, Knowledge>)
+) -> (HashMap<NodeId, Vec<Family>>, DashMap<NodeId, Knowledge>)
 {
     let mut families_by_location = step_part_1(families, patches, knowledge, p);
     let new_knowledge = step_part_2(&mut families_by_location, patches, p, t);
@@ -266,8 +267,8 @@ it can happen entirely in parallel.
  */
 fn step_part_1(
     families: &mut Vec<Family>,
-    patches: &mut HashMap<NodeId, Patch>,
-    knowledge: HashMap<NodeId, Knowledge>,
+    patches: &mut DashMap<NodeId, Patch>,
+    knowledge: DashMap<NodeId, Knowledge>,
     p: &Parameters,
 ) -> HashMap<NodeId, Vec<Family>>
 {
@@ -307,30 +308,32 @@ fn step_part_1(
                         |(i, d)| if *i == family.location {
                             None
                         } else {
-                            Some((*i, *d, patches.get(i)?, knowledge.get(i)))
+                            Some((*i, *d, knowledge.get(i)))
                         }),
+                    patches,
                     true, p);
                 let destination = d.unwrap_or(family.location);
 
                 wrapper.lock().unwrap()
                     .entry(destination)
-                    .or_insert(vec![])
+                    .or_insert_with(|| vec![])
                     .push(descendant);
             }
         }
         let d = adaptation::decide_on_moving(
             &family,
-            nearby.iter().filter_map(
+            nearby.iter().map(
                 |(i, d)|
-                Some((*i, *d, patches.get(i)?, knowledge.get(i)))
+                (*i, *d, knowledge.get(i))
             ),
+            patches,
             false, p);
 
         // Update cultures_by_location
         let destination = d.unwrap_or(family.location);
         wrapper.lock().unwrap()
             .entry(destination)
-            .or_insert(vec![])
+            .or_insert_with(|| vec![])
             .push(family.clone());
     }).for_each(|_| ());
     families_by_location
@@ -359,14 +362,14 @@ pub fn diminishing_returns_payoff(
 
 fn step_part_2(
     families_by_location: &mut HashMap<NodeId, Vec<Family>>,
-    patches: &mut HashMap<NodeId, Patch>,
+    patches: &mut DashMap<NodeId, Patch>,
     p: &Parameters,
     t: HalfYears,
-) -> HashMap<NodeId, Knowledge>
+) -> DashMap<NodeId, Knowledge>
 {
-    let mut knowledge = HashMap::new();
+    let mut knowledge = DashMap::new();
 
-    let patches_wrapper = Arc::new(Mutex::new(patches));
+    let patches_wrapper = patches;
     let knowledge_wrapper = Arc::new(Mutex::new(&mut knowledge));
 
     let cultures_by_location: HashMap<NodeId, HashMap<Culture, usize>> = families_by_location.par_iter_mut().map(|(patch_id, families)| {
@@ -381,9 +384,9 @@ fn step_part_2(
 
         // This is overkill. We don't need a lock on the whole patch map, just
         // on the current patch.
-        match patches_wrapper.lock().unwrap().get_mut(patch_id) {
+        match patches_wrapper.get_mut(patch_id) {
             None => {},
-            Some(patch ) => {
+            Some(mut patch) => {
                 let mut groups = collectives::cooperatives(
                     families.iter_mut().collect(), p);
                 let n_groups = groups.len() as KCal;
@@ -430,7 +433,7 @@ fn step_part_2(
                         }
                     }
                     submodels::ecology::recover(
-                        res, res_max, p.resource_recovery, p.accessible_resources);
+                        res, *res_max, p.resource_recovery, p.accessible_resources);
                     unextracted
                 }).sum();
 
@@ -687,11 +690,12 @@ mod adaptation {
     pub fn decide_on_moving<'a, KD>(
         family: &'a Family,
         kd: KD,
+        patches: &'a DashMap<NodeId, Patch>,
         avoid_stay: bool,
         p: &Parameters,
     ) -> Option<NodeId>
     where
-        KD: Iterator<Item = (NodeId, f64, &'a Patch, Option<&'a Knowledge>)>,
+        KD: Iterator<Item = (NodeId, f64, Option<dashmap::mapref::one::Ref<'a, usize, Knowledge>>)>,
     {
         let threshold = if avoid_stay {
             0.
@@ -704,12 +708,12 @@ mod adaptation {
         };
 
         objectives::best_location(
-            kd.filter_map(|(i, d, l, k)| {
+            kd.filter_map(|(i, d, k)| {
                 let movement_cost = (d * COST_PER_WALKING_TIME) as f32 * p.time_step_energy_use ;
                 let mut tot_res = 0.;
                 let mut family_res = 0.;
                 let sizef = family.effective_size as f32;
-                for (j, (res, _)) in &l.resources {
+                for (j, (res, _)) in &patches.get(&i)?.value().resources {
                     tot_res += res;
                     family_res += res * family.adaptation[*j];
                 };
@@ -719,7 +723,7 @@ mod adaptation {
                 let expected = family.memory.get(&i).unwrap_or(&(family_res / tot_res * match k {
                     None =>
                         diminishing_returns_payoff(
-                            l.resources.values().map(|(res, _)| res).sum(),
+                            patches.get(&i)?.value().resources.values().map(|(res, _)| res).sum(),
                             interaction::effective_labor_through_cooperation(
                                 sizef, p.cooperation_gain)),
                     Some(k) => if k.local_cultures.iter().any(
@@ -1184,8 +1188,8 @@ pub fn initialization(
             })
             .collect(),
         families: vec![
-            f1
-            // f2,
+            f1,
+            f2,
         ],
         t: 0,
     })
@@ -1341,11 +1345,11 @@ assert_eq!(resources, 1.4375);
  */
         pub fn recover(
             patch_resources: &mut KCal,
-            patch_max_resources: &KCal,
+            patch_max_resources: KCal,
             resource_recovery: f32,
             accessible_resources: f32)
         {
-            if *patch_resources < *patch_max_resources {
+            if *patch_resources < patch_max_resources {
                 let inaccessible = patch_max_resources * (1. - accessible_resources) / accessible_resources;
                 let underlying_resources = *patch_resources + inaccessible;
                 *patch_resources += underlying_resources
@@ -1356,7 +1360,7 @@ assert_eq!(resources, 1.4375);
                     "The recovery of {} from {} towards {} ({}% of total) was not finite",
                     resource_recovery,
                     *patch_resources,
-                    *patch_max_resources,
+                    patch_max_resources,
                     accessible_resources * 100.
             );
         }
@@ -1386,7 +1390,7 @@ assert_eq!(resources, 1.4375);
 
 
 pub fn run(mut s: State, p: Parameters, max_t: HalfYears) {
-    let mut knowledge = HashMap::new();
+    let mut knowledge = DashMap::new();
     loop {
         let (families_by_location, k) = step(&mut s.families, &mut s.patches, knowledge, &p, s.t);
         knowledge = k;

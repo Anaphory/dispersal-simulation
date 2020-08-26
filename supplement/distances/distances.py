@@ -237,10 +237,12 @@ def run_on_one_tile(
         neighbors: t.Set[h3.H3Index] = neighbors1 | neighbors2
         distance_known = sqlalchemy.select([t_dist.c.hexbin2]).where(
             (t_dist.c.hexbin1 == start) & (t_dist.c.source == 0))
-        if not neighbors - {k[0] for k in db.execute(distance_known).fetchall()}:
+        missing = (neighbors - {k[0] for k in db.execute(distance_known).fetchall()}) & set(center)
+        if not missing:
             print("Already known.")
             finished.add(start)
             continue
+        print("Not found:", missing)
         if start in failed or start in finished:
             continue
 
@@ -290,15 +292,16 @@ def run_on_one_tile(
 
         print(distances_by_center)
 
-        for n, d in distances_by_center.items():
-            try:
-                db.execute(t_dist.insert({
-                    "hexbin1": start,
-                    "hexbin2": n,
-                    "distance": d,
-                    "source": 0}))
-            except sqlalchemy.exc.IntegrityError:
-                pass
+        with db.begin() as conn:
+            for n, d in distances_by_center.items():
+                try:
+                    conn.execute(t_dist.insert({
+                        "hexbin1": start,
+                        "hexbin2": n,
+                        "distance": d,
+                        "source": 0}).prefix_with('OR IGNORE'))
+                except sqlalchemy.exc.IntegrityError:
+                    pass
         finished.add(start)
 
     return failed

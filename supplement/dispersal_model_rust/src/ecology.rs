@@ -22,10 +22,9 @@ pub fn load_precipitation_tif() -> Option<(Vec<u16>, u32)> {
 
 pub const ATTESTED_ECOREGIONS: usize = 303;
 
-#[allow(clippy::excessive_precision)]
-pub fn patch_from_ecoregions(
-    ecoregions: &HashMap<usize, f64>,
-    time_step_energy_use: &KCal
+#[allow(clippy::excessive_precision, clippy::unreadable_literal)]
+pub fn patch_from_ecoregions<S: ::std::hash::BuildHasher>(
+    ecoregions: &HashMap<usize, f64, S>
 ) -> HashMap<usize, (KCal, KCal)> {
     let logpopdensity: HashMap<_, KCal> = vec![
         (2, 4.0974917821114), // Admiralty Islands lowland rain forests

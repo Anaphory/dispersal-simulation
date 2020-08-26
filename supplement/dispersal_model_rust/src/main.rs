@@ -2,7 +2,7 @@ use model::*;
 use model::hexgrid;
 use std::collections::{HashMap};
 use model::submodels::parameters::Parameters;
-use model::movementgraph::{MovementGraph,NodeData};
+use model::movementgraph::MovementGraph;
 
 fn read_graph_from_db(
     boundary_west: f64,
