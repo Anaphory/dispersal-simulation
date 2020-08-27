@@ -61,7 +61,7 @@ to be translated.
 
  */
 pub type HalfYears = u32;
-const SECONDS_PER_TIME_STEP: f64 = 365.24219 * 0.5 * 24. * 60. * 60.;
+// const SECONDS_PER_TIME_STEP: f64 = 365.24219 * 0.5 * 24. * 60. * 60.;
 
 /**
 Whereever possible, resources are measured in kcal (in SI units: 1 kcal = 4.184
@@ -200,7 +200,7 @@ pub struct Culture {
 }
 
 impl std::fmt::Binary for Culture {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+    fn fmt<'a>(&self, f: &mut std::fmt::Formatter<'a>) -> Result<(), std::fmt::Error> {
         self.binary_representation.fmt(f)
     }
 }
@@ -322,7 +322,7 @@ fn step_part_1(
                         .lock()
                         .unwrap()
                         .entry(destination)
-                        .or_insert_with(|| vec![])
+                        .or_insert_with(|| Vec::new())
                         .push(descendant);
                 }
             }
@@ -776,13 +776,14 @@ mod adaptation {
                                 ),
                             ),
                             Some(k) => {
-                                if k.local_cultures.iter().any(|c| {
+                                let has_similar: bool = k.local_cultures.iter().any(|c| {
                                     emergence::similar_culture(
                                         *c,
                                         family.culture,
                                         p.cooperation_threshold,
                                     )
-                                }) {
+                                });
+                                if has_similar {
                                     f32::min(k.normalized_payoff, k.leftover)
                                 } else {
                                     diminishing_returns_payoff(
@@ -1035,10 +1036,10 @@ mod collectives {
         p: &Parameters,
     ) -> Vec<Cooperative<'a>> {
         let mut rng = rand::thread_rng();
-        let mut groups: Vec<Cooperative> = vec![];
+        let mut groups: Vec<Cooperative<'a>> = vec![];
 
         for family in families_in_this_location.drain(..) {
-            let mut joined_group: Option<&mut Cooperative> = None;
+            let mut joined_group: Option<&mut Cooperative<'a>> = None;
             for group in groups.iter_mut() {
                 let mut join = true;
                 for other_family in group.families.iter() {
