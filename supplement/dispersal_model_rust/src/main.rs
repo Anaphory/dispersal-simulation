@@ -112,7 +112,6 @@ fn read_graph_from_db(
         .unwrap()
         .flatten()
         .filter_map(|(i, j, d)| {
-            print!("{:}", i);
             Some((*h3_to_graph.get(&i)?, *h3_to_graph.get(&j)?, d))
         })
     {

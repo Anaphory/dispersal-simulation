@@ -199,6 +199,12 @@ pub struct Culture {
     binary_representation: u64,
 }
 
+impl std::fmt::Debug for Culture {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        self.binary_representation.fmt(f)
+    }
+}
+
 impl std::fmt::Binary for Culture {
     fn fmt<'a>(&self, f: &mut std::fmt::Formatter<'a>) -> Result<(), std::fmt::Error> {
         self.binary_representation.fmt(f)
@@ -480,7 +486,8 @@ fn step_part_2(
         })
         .collect();
 
-    if t % 20 == 0 {
+    if t % 1 == 0 {
+        println!("t: {:}", t);
         let l_c = cultures_by_location.clone();
         observation::print_gd_cd(l_c, p);
         let l_c = cultures_by_location;
@@ -627,7 +634,8 @@ mod emergence {
                                 .entry(gd)
                                 .or_insert_with(HashMap::new)
                                 .entry(0)
-                                .or_insert(0) += count1 * (count2 + 1) / 2;
+                                .or_insert(0)
+                                += count1 * (count2 - 1) / 2;
                             break;
                         }
                         let cd = submodels::culture::distance(*c1, *c2);
@@ -1105,9 +1113,9 @@ mod observation {
                 .par_iter()
                 .map(|(k, v)| {
                     let g = hexgrid::geo_coordinates(p.dispersal_graph[*k].0);
-                    (g.lon, g.lat, v.iter().map(|(_, c)| c).sum())
+                    (g.lon, g.lat, v)
                 })
-                .collect::<Vec<(f64, f64, usize)>>()
+                .collect::<Vec<(f64, f64, _)>>()
         );
     }
 
@@ -1235,7 +1243,7 @@ pub fn initialization(p: &Parameters) -> Option<State> {
         stored_resources: p.time_step_energy_use * 10.,
         adaptation: ecology::Ecovector::default(),
     };
-    let f2 = Family {
+    let _f2 = Family {
         descendence: String::from("F"),
         location: start2,
         memory: HashMap::new(),
@@ -1360,12 +1368,14 @@ pub mod submodels {
         }
 
         pub fn maybe_grow(family: &mut Family) {
+            print!("Growing {:} in {:}: size {:} ", family.descendence, family.seasons_till_next_child, family.effective_size);
             if family.seasons_till_next_child == 0 {
                 family.effective_size += 1;
                 family.seasons_till_next_child = 2;
             } else {
                 family.seasons_till_next_child -= 1;
             }
+            println!("becomes {:} ({:})", family.effective_size, family.seasons_till_next_child);
         }
         pub fn use_resources_and_maybe_shrink(
             size: &mut usize,

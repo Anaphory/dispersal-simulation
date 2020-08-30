@@ -18,14 +18,18 @@ stem = Path(args.logfile.name).stem
 all_q = numpy.zeros((51, args.max_cdif))
 m = 0
 n = 0
+pop = []
 try:
     for l, line in enumerate(args.logfile):
         if line.startswith("POPULATION: ["):
             m += 1
             if m < args.start:
                 continue
-            q = numpy.array(eval(line[len("POPULATION: "):])).T
-            q[2] /= 1
+            population = [(x, y, sum(p.values()))
+                          for x, y, p in eval(line[len("POPULATION: "):])]
+            q = numpy.array(population).T
+            pop.append(q.sum())
+            q[2] /= 1 # Scale population to pixels
             plt.scatter(*q[:2], q[2], alpha=0.8, linewidths=0.0)
             plt.xlim(-3, -0.5)
             plt.ylim(-1., 1.5)
@@ -52,4 +56,8 @@ finally:
     plt.imshow(all_q.T)
     plt.gcf().set_size_inches((12, 9))
     plt.savefig(args.output_dir / f"corr-{stem:}.png")
+    plt.close()
+
+    plt.plot(pop)
+    plt.savefig(args.output_dir / f"pop-{stem:}.png")
     plt.close()
