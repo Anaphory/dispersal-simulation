@@ -23,4 +23,3 @@ pub fn hex_distance(i1: Index, i2: Index) -> i32 {
         Some(d) => *d,
     }
 }
-

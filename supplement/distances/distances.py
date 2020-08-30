@@ -290,6 +290,8 @@ def run_on_one_tile(
             except IndexError:
                 continue
 
+        print(distances_by_center)
+
         with db.begin() as conn:
             for n, d in distances_by_center.items():
                 try:

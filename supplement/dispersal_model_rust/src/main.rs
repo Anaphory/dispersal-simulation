@@ -1,8 +1,8 @@
-use model::*;
 use model::hexgrid;
-use std::collections::{HashMap};
+use model::movementgraph::MovementGraph;
 use model::submodels::parameters::Parameters;
-use model::movementgraph::{MovementGraph,NodeData};
+use model::*;
+use std::collections::HashMap;
 
 fn read_graph_from_db(
     boundary_west: f64,
@@ -12,7 +12,8 @@ fn read_graph_from_db(
 ) -> Result<MovementGraph, String> {
     let try_conn = rusqlite::Connection::open_with_flags(
         "/home/gereon/Public/settlement-of-americas/supplement/distances/plot.sqlite",
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY);
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    );
     let conn: rusqlite::Connection;
     match try_conn {
         Err(e) => {
@@ -31,14 +32,23 @@ fn read_graph_from_db(
         "WHERE ? < vlongitude AND vlongitude < ? AND ? < vlatitude AND vlatitude < ? ",
         // "NATURAL INNER JOIN (SELECT hexbin FROM eco WHERE ecoregion != 999 GROUP BY hexbin) ",
     )) {
-        Err(e) => { return Err(e.to_string()); }
-        Ok(k) => { nodes_stmt = k; }
+        Err(e) => {
+            return Err(e.to_string());
+        }
+        Ok(k) => {
+            nodes_stmt = k;
+        }
     }
 
     let mut eco_stmt;
-    match conn.prepare("SELECT ecoregion, frequency FROM eco WHERE hexbin = ? AND ecoregion != 999") {
-        Err(e) => { return Err(e.to_string()); }
-        Ok(k) => { eco_stmt = k; }
+    match conn.prepare("SELECT ecoregion, frequency FROM eco WHERE hexbin = ? AND ecoregion != 999")
+    {
+        Err(e) => {
+            return Err(e.to_string());
+        }
+        Ok(k) => {
+            eco_stmt = k;
+        }
     }
 
     let mut dist_stmt;
@@ -49,36 +59,43 @@ fn read_graph_from_db(
         "WHERE ? < vlongitude AND vlongitude < ? AND ? < vlatitude AND vlatitude < ? ",
         // "INNER JOIN (SELECT hexbin FROM eco WHERE ecoregion != 999 GROUP BY hexbin) ON hexbin = hexbin1",
         // "INNER JOIN (SELECT hexbin FROM eco WHERE ecoregion != 999 GROUP BY hexbin) ON hexbin = hexbin2",
-        "GROUP BY hexbin1, hexbin2 ORDER BY hexbin1, hexbin2 ")) {
-        Err(_) => { return Err("Could not prepare dist statement".to_string()); }
-        Ok(k) => { dist_stmt = k; }
+        "GROUP BY hexbin1, hexbin2 ORDER BY hexbin1, hexbin2 "
+    )) {
+        Err(_) => {
+            return Err("Could not prepare dist statement".to_string());
+        }
+        Ok(k) => {
+            dist_stmt = k;
+        }
     }
 
     let mut h3_to_graph = HashMap::new();
     let mut expand_attested = HashMap::new();
     println!("Adding nodes…");
-    for (i, (hexbin, longitude, latitude)) in nodes_stmt.query_map(
-        rusqlite::params![
-            boundary_west, boundary_east, boundary_south, boundary_north
-        ], |node| {
-            Ok((node.get::<_, i64>(0)?, node.get(1)?, node.get(2)?))
-        }).unwrap().flatten().enumerate() {
-        let ecos: HashMap<_, _> =
-            eco_stmt.query_map(
-                rusqlite::params![hexbin], |eco| {
-                    // The areas are already scaled by the cosine of latitude,
-                    // so this converts them into km².
-                    let len = expand_attested.len();
-                    Ok((
-                        *(expand_attested.entry(eco.get::<_, i64>(0)?).or_insert(len)),
-                        eco.get::<_, f64>(1)? as f32))
-                })
+    for (i, (hexbin, longitude, latitude)) in nodes_stmt
+        .query_map(
+            rusqlite::params![boundary_west, boundary_east, boundary_south, boundary_north],
+            |node| Ok((node.get::<_, i64>(0)?, node.get(1)?, node.get(2)?)),
+        )
+        .unwrap()
+        .flatten()
+        .enumerate()
+    {
+        let ecos: HashMap<_, _> = eco_stmt
+            .query_map(rusqlite::params![hexbin], |eco| {
+                // The areas are already scaled by the cosine of latitude,
+                // so this converts them into km².
+                let len = expand_attested.len();
+                Ok((
+                    *(expand_attested.entry(eco.get::<_, i64>(0)?).or_insert(len)),
+                    eco.get::<_, f64>(1)? as f32,
+                ))
+            })
             .unwrap()
             .flatten()
             .collect();
         // assert!(!ecos.is_empty());
-        graph.add_node(
-            (hexbin as hexgrid::Index, longitude, latitude, ecos));
+        graph.add_node((hexbin as hexgrid::Index, longitude, latitude, ecos));
         h3_to_graph.insert(hexbin, i);
     }
     println!("{:} nodes added.", graph.node_count());
@@ -87,16 +104,17 @@ fn read_graph_from_db(
     println!("{:?}", expand_attested);
 
     println!("Adding edges…");
-    for (a1, a2, d) in dist_stmt.query_map(
-        rusqlite::params![
-            boundary_west, boundary_east, boundary_south, boundary_north
-        ], |dist| Ok((dist.get(0)?, dist.get(1)?, dist.get(2)?)))
-        .unwrap().flatten().filter_map(
-            |(i, j, d)|
-            {
-                print!("{:}", i);
-                Some((*h3_to_graph.get(&i)?, *h3_to_graph.get(&j)?, d))
-            })
+    for (a1, a2, d) in dist_stmt
+        .query_map(
+            rusqlite::params![boundary_west, boundary_east, boundary_south, boundary_north],
+            |dist| Ok((dist.get(0)?, dist.get(1)?, dist.get(2)?)),
+        )
+        .unwrap()
+        .flatten()
+        .filter_map(|(i, j, d)| {
+            print!("{:}", i);
+            Some((*h3_to_graph.get(&i)?, *h3_to_graph.get(&j)?, d))
+        })
     {
         graph.add_edge(a1, a2, d);
     }
@@ -131,18 +149,16 @@ fn main() -> Result<(), String> {
         &mut boundary_east,
         &mut boundary_south,
         &mut boundary_north,
-        &mut p, &mut max_t);
+        &mut p,
+        &mut max_t,
+    );
     println!("# Initialization ...");
     // FIXME: There is something messed up in lat/long -> image pixels. It works
     // currently, but the names point out that I misunderstood something, eg.
     // with the layout of the tiff in memory or similar.
 
-    p.dispersal_graph = read_graph_from_db(
-        boundary_west,
-        boundary_east,
-        boundary_south,
-        boundary_north,
-    )?;
+    p.dispersal_graph =
+        read_graph_from_db(boundary_west, boundary_east, boundary_south, boundary_north)?;
     let s: State = initialization(&p).unwrap();
     println!("Initialized");
 
@@ -151,9 +167,13 @@ fn main() -> Result<(), String> {
 }
 
 fn parse_args(
-    west: &mut f64, east: &mut f64, south: &mut f64, north: &mut f64,
-    p: &mut Parameters, max_t: &mut HalfYears)
-{
+    west: &mut f64,
+    east: &mut f64,
+    south: &mut f64,
+    north: &mut f64,
+    p: &mut Parameters,
+    max_t: &mut HalfYears,
+) {
     let mut parser = argparse::ArgumentParser::new();
     parser.set_description("Run a dispersal simulation");
     // TODO: Attach an ArgumentParser to the parameters object, so parameters can be set from the CLI.

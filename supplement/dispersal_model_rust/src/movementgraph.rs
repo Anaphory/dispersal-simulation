@@ -1,11 +1,11 @@
-use petgraph::visit::{EdgeRef, IntoEdges, VisitMap, Visitable};
-use std::hash::Hash;
-use petgraph::algo::Measure;
-use std::collections::{BinaryHeap, HashMap};
-use std::collections::hash_map::Entry::{Occupied, Vacant};
-use std::cmp::Ordering;
-use crate::KCal;
 use crate::hexgrid;
+use crate::KCal;
+use petgraph::algo::Measure;
+use petgraph::visit::{EdgeRef, IntoEdges, VisitMap, Visitable};
+use std::cmp::Ordering;
+use std::collections::hash_map::Entry::{Occupied, Vacant};
+use std::collections::{BinaryHeap, HashMap};
+use std::hash::Hash;
 
 pub type NodeData = (hexgrid::Index, f64, f64, HashMap<usize, KCal>);
 pub type MovementGraph = petgraph::csr::Csr<NodeData, f64, petgraph::Directed, usize>;
@@ -67,12 +67,13 @@ pub fn bounded_dijkstra<G, F, K>(
     graph: G,
     start: G::NodeId,
     max_distance: K,
-    mut edge_cost: F
+    mut edge_cost: F,
 ) -> HashMap<G::NodeId, K>
-where G: IntoEdges + Visitable,
-      G::NodeId: Eq + Hash,
-      F: FnMut(G::EdgeRef) -> K,
-      K: Measure + Copy,
+where
+    G: IntoEdges + Visitable,
+    G::NodeId: Eq + Hash,
+    F: FnMut(G::EdgeRef) -> K,
+    K: Measure + Copy,
 {
     let mut visited = graph.visit_map();
     let mut scores = HashMap::new();
@@ -83,7 +84,7 @@ where G: IntoEdges + Visitable,
     visit_next.push(MinScored(zero_score, start));
     while let Some(MinScored(node_score, node)) = visit_next.pop() {
         if visited.is_visited(&node) {
-            continue
+            continue;
         }
         if max_distance < node_score {
             break;
@@ -91,16 +92,18 @@ where G: IntoEdges + Visitable,
         for edge in graph.edges(node) {
             let next = edge.target();
             if visited.is_visited(&next) {
-                continue
+                continue;
             }
             let mut next_score = node_score + edge_cost(edge);
             match scores.entry(next) {
-                Occupied(ent) => if next_score < *ent.get() {
-                    *ent.into_mut() = next_score;
+                Occupied(ent) => {
+                    if next_score < *ent.get() {
+                        *ent.into_mut() = next_score;
                     //predecessor.insert(next.clone(), node.clone());
-                } else {
-                    next_score = *ent.get();
-                },
+                    } else {
+                        next_score = *ent.get();
+                    }
+                }
                 Vacant(ent) => {
                     ent.insert(next_score);
                     //predecessor.insert(next.clone(), node.clone());

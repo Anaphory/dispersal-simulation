@@ -9,7 +9,6 @@ impl std::fmt::Debug for crate::Patch {
 
 impl std::fmt::Debug for crate::Family {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-
         f.debug_struct("Family")
             .field("descendence", &self.descendence)
             .field("size", &self.effective_size)
