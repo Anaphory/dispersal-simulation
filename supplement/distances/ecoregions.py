@@ -8,7 +8,6 @@ from sqlalchemy.sql import func
 
 import rasterio
 import shapefile
-from h3 import h3
 import shapely.geometry as sgeom
 from shapely.prepared import prep
 
@@ -16,10 +15,8 @@ from database import db
 from raster_data import ecoregion_tile_from_geocoordinates
 
 RESOLUTION: int = 5
-AREA: float = h3.hex_area(RESOLUTION, "km^2")
 
 # The resolution of our hexes should be about 450 km² following Gavin (2017)
-assert h3.hex_area(RESOLUTION - 1, "km^2") > 450 > AREA
 
 
 ARCMIN: float = 111.319 / 60. # km, at the equator.
@@ -145,7 +142,7 @@ TC = numpy.array([
 def hex_ecoregions(
         ecoregions: numpy.array,
         transform: rasterio.Affine
-) -> t.Dict[h3.H3Index, t.Counter[int]]:
+):
     c: t.Dict[h3.H3Index, t.Counter[int]] = t.DefaultDict(t.Counter)
     for y, row in enumerate(ecoregions):
         (_, lat) = transform * (0, y)
