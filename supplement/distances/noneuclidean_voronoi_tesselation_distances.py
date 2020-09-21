@@ -353,7 +353,7 @@ def add_speed_along_rivers(dist, start = 60000000):
             continue
         pixel_time = (
             data[2] / # Length in km
-            v / # river velocity in km/s
+            (KAYAK_SPEED + v) / # along-river velocity in km/s
             (n_pix - 1) # number of steps along the path
         )
         print(n_pix)
