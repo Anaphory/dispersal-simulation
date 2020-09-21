@@ -283,6 +283,16 @@ class RiverNetwork:
 
 RIVERS = RiverNetwork()
 
+oceans_zip = zipfile.ZipFile(
+            (Path(__file__).parent /
+             "../naturalearth/ne_10m_ocean.zip").open("rb"))
+OCEANS = shapefile.Reader(
+            shp=oceans_zip.open("ne_10m_ocean.shp"),
+            shx=oceans_zip.open("ne_10m_ocean.shx"),
+            dbf=oceans_zip.open("ne_10m_ocean.dbf"),
+            encoding='utf-8'
+        )
+
 
 # Somewhere, I found speeds of 4.5 knots for kayak cruising. That's 8.334 km/h, but the database stores data in seconds.
 KAYAK_SPEED = 8.334 / 3600
@@ -309,58 +319,51 @@ def estimate_flow_speed(discharge, slope):
     return v / 1000
 
 
-def add_speed_along_rivers(dist, start = 60000000):
-    for r, reach in enumerate(RIVERS.shp.iterShapeRecords()):
-        data = reach.record
-        reach_id = int(data[0])
-        if reach_id < start:
-            # The Americas have SA 6, NA 7, American Arctic 8, Greenland 9
-            continue
+def navigable_water_mask(dist):
+    # Is this reach navigable by Kayak? From
+    # [@rood2006instream,@zinke2018comparing] it seems that reaches with a
+    # flow lower than 5m³/s are not navigable even by professional extreme
+    # sport athletes, and generally even that number seems to be an outlier
+    # with opinions starting at 8m³/s, so we take that as the cutoff.
+    raster = rasterio.features.rasterize(
+        (shp.shape for shp in RIVERS.shp.iterShapeRecords()
+         if shp.record[3] > 0.9030899869919434), # log(8.)/log(10.)
+        out_shape = dist.shape,
+        transform = dist.transform).astype(bool)
+    raster |= rasterio.features.rasterize(
+        OCEANS.iterShapes(),
+        out_shape = dist.shape,
+        transform = dist.transform).astype(bool)
 
-        if rasterio.coords.disjoint_bounds(
-                dist.bounds,
-                rasterio.features.bounds(reach.shape)):
-            continue
+    d_n, d_e, d_ne = [], [], []
+    for y in range(1, dist.shape[0] + 1):
+        (lon0, lat0) = dist.transform * (0, y)
+        (lon1, lat1) = dist.transform * (1, y - 1)
 
-        # Is this reach navigable by Kayak? From
-        # [@rood2006instream,@zinke2018comparing] it seems that reaches with a
-        # flow lower than 5m³/s are not navigable even by professional extreme
-        # sport athletes, and generally even that number seems to be an outlier
-        # with opinions starting at 8m³/s, so we take that as the cutoff.
-        #
-        # [@zinke2018comparing] further plots wild water kayaking run slopes
-        # vs. difficulty. All of these are below 10%, so we assume that reaches
-        # above 10% are not navigable. Gradient is not directly available in
-        # the data, but the stream power is directly proportional to the
-        # product of discharge and gradient, so we can reverse-engineer it:
-        # Stream Power [kg m/s³]
-        # = Water Density [kg/m³] * gravity [m/s²] * discharge [m³/s] * slope [m/m]
-        # so
-        if (data[3] < 0.9030899869919434 or # log(8.)/log(10.)
-            data[11] / (10 ** data[3]) > 981.0):
-            continue
+        d = GEODESIC.inverse((lon0, lat0), [
+            (lon0, lat1), (lon1, lat0), (lon1, lat1)])
+        d_n.append(d[0, 0])
+        d_e.append(d[1, 0])
+        d_ne.append(d[2, 0])
 
-        # slope = stream power / discharge / (1000 * 9.81) > 10% = 0.1
-        v = estimate_flow_speed(discharge = 10 ** data[3], slope = data[11] / 10 ** data[3] / (9810))
-        assert v < 0.1, "River flow speed was estimated to be ridiculously fast"
+    with rasterio.open("adj.tif", 'w', dist.profile) as dst:
+        cell_distance = numpy.ones(dist.shape) * numpy.array(d_n)[:-1, None] / KAYAK_SPEED
+        mask = raster[1:, :] & raster[:-1, :]
+        with_rivers = dist.read(1)
+        dist[1:, :][mask] = cell_distance[mask]
+        dst.write(band.astype(rasterio.float64), i)
+        south = dist.read(1)
+        south[:-1, :][mask] = cell_distance[mask]
 
-        pixels = rasterio.features.geometry_mask(
-            [reach.shape],
-            out_shape=dist.shape,
-            transform=dist.transform)
-        n_pix = pixels.sum()
-        if n_pix <= 1:
-            continue
-        pixel_time = (
-            data[2] / # Length in km
-            (KAYAK_SPEED + v) / # along-river velocity in km/s
-            (n_pix - 1) # number of steps along the path
-        )
-        print(n_pix)
-        points: t.List[t.Tuple[float, float]] = reach.shape.points
+
+    # At the end of the ``with rasterio.Env()`` block, context
+    # manager exits and all drivers are de-registered.
+    return rasterio.open(fname)
+
 
 
 for lon in [-75, -45]:
     for lat in [-20, 0, 20]:
-        add_speed_along_rivers(
-            travel_time_raster(lon, lat))
+        navigable_water_mask(gmted_tile_from_geocoordinates(lon, lat))
+        travel_time = travel_time_raster(lon, lat)
+        
