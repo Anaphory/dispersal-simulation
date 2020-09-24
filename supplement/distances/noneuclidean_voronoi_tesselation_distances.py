@@ -12,6 +12,7 @@ import zipfile
 import shapefile
 import shapely.geometry as sgeom
 from shapely.prepared import prep
+from shapely.validation import make_valid
 
 from ecoregions import ECOREGIONS, TC, RESOLUTION
 
@@ -19,65 +20,7 @@ import cartopy.geodesic as geodesic
 GEODESIC: geodesic.Geodesic = geodesic.Geodesic()
 
 
-def tile_from_geocoordinates(
-        lon: float, lat: float
-) -> t.Tuple[t.Literal["N", "S"],
-             int,
-             t.Literal["E", "W"],
-             int]:
-    """Turn a Longitude/Latitude (i.e. x, y) pair into a tile index
-
-    The index describes the South West corner of the tile, which has a width of
-    30° (anchored at the 0° meridian) and a height of 20° (centered at the
-    equator, so anchored at ±10°). This kind of index is used eg. for the GMTED
-    tiles.
-
-    >>> tile_from_geocoordinates(15, 40)
-    ('N', 30, 'E', 0)
-    >>> tile_from_geocoordinates(-75, -20)
-    ('S', 30, 'W', 90)
-    >>> tile_from_geocoordinates(-179, -17)
-    ('S', 30, 'W', 180)
-
-    """
-    southwest_corner_lon = int(lon // 30) * 30
-    southwest_corner_lat = int((lat - 10) // 20) * 20 + 10
-    ew: t.Literal["E", "W"] = "W" if southwest_corner_lon < 0 else "E"
-    ns: t.Literal["N", "S"] = "S" if southwest_corner_lat < 0 else "N"
-    return ns, abs(southwest_corner_lat), ew, abs(southwest_corner_lon)
-
-
-def ecoregion_tile_from_geocoordinates(lon: float, lat: float) -> rasterio.DatasetReader:
-    ns, lat0, ew, lon0 = tile_from_geocoordinates(lon, lat)
-    ecoregions_path_t = "../ecoregions/ECOREGIONS-{0:02d}{1}{2:03d}{3}_20101117_gmted_med150.tif"
-    return rasterio.open(ecoregions_path_t.format(lat0, ns.lower(), lon0, ew.lower()))
-
-
-def gmted_tile_from_geocoordinates(lon: float, lat: float) -> rasterio.DatasetReader:
-    """Path to the GMTED tile for given geocoordinates.
-
-    The return type is explicitly a `str`, not a `pathlib.Path`, because it
-    contains a GDAL virtual file system component.
-
-    https://earthexplorer.usgs.gov/metadata/4584/GMTED2010N30E000/
-    >>> d1 = gmted_tile_from_geocoordinates(15, 40)
-    >>> d1.name[-78:]
-    'elevation/GMTED2010/GMTED2010N30E000_150.zip/30n000e_20101117_gmted_med150.tif'
-
-    https://earthexplorer.usgs.gov/metadata/4584/GMTED2010S30W090/
-    >>> d2 = gmted_tile_from_geocoordinates(-75, -20)
-    >>> d2.name[-78:]
-    'elevation/GMTED2010/GMTED2010S30W090_150.zip/30s090w_20101117_gmted_med150.tif'
-
-    """
-    ns, lat, ew, lon = tile_from_geocoordinates(lon, lat)
-    file = "{:02d}{:1s}{:03d}{:1s}".format(
-        lat, ns.lower(), lon, ew.lower())
-    tile = "GMTED2010{:1s}{:02d}{:1s}{:03d}".format(
-        ns.upper(), lat, ew.upper(), lon)
-    path = (Path(__file__).absolute().parent.parent /
-            f"elevation/GMTED2010/{tile:}_150.zip")
-    return rasterio.open(f"/vsizip/{path:}/{file:}_20101117_gmted_med150.tif")
+from raster_data import *
 
 
 def navigation_speed(slope: float) -> float:
@@ -217,6 +160,13 @@ def travel_time_raster(
                             source_rows, source_cols]
             except rasterio.RasterioIOError:
                 pass
+            try:
+                ecoregions[target_rows, target_cols] = (
+                    ecoregion_tile_from_geocoordinates(
+                        lon + delta_lon, lat + delta_lat)).read(1)[
+                            source_rows, source_cols]
+            except rasterio.RasterioIOError:
+                pass
 
     print("Computing hex extents…")
     transform = rasterio.Affine(
@@ -237,7 +187,7 @@ def travel_time_raster(
         elevation, transform, terrain_coefficient_raster)
 
     fname = '{:}{:}.tif'.format(lon, lat)
-    with rasterio.open(fname, 'w', **profile) as dst:
+    with rasterio.open(fname, 'w', **profile, ) as dst:
         for i, band in enumerate(distance_by_direction.values(), 1):
             dst.write(band.astype(rasterio.float64), i)
 
@@ -283,9 +233,44 @@ class RiverNetwork:
 
 RIVERS = RiverNetwork()
 
+oceans_zip = zipfile.ZipFile(
+            (Path(__file__).parent /
+             "../naturalearth/ne_10m_ocean.zip").open("rb"))
+OCEANS = shapefile.Reader(
+            shp=oceans_zip.open("ne_10m_ocean.shp"),
+            shx=oceans_zip.open("ne_10m_ocean.shx"),
+            dbf=oceans_zip.open("ne_10m_ocean.dbf"),
+            encoding='utf-8'
+)
+OCEANS = next(OCEANS.iterShapes())
+OCEANS = make_valid(sgeom.shape(OCEANS))
 
-# Somewhere, I found speeds of 4.5 knots for kayak cruising. That's 8.334 km/h, but the database stores data in seconds.
-KAYAK_SPEED = 8.334 / 3600
+lakes_zip = zipfile.ZipFile(
+            (Path(__file__).parent /
+             "../naturalearth/ne_10m_lakes.zip").open("rb"))
+LAKES = shapefile.Reader(
+            shp=lakes_zip.open("ne_10m_lakes.shp"),
+            shx=lakes_zip.open("ne_10m_lakes.shx"),
+            dbf=lakes_zip.open("ne_10m_lakes.dbf"),
+            encoding='utf-8'
+)
+
+rivers_zip = zipfile.ZipFile(
+            (Path(__file__).parent /
+             "../naturalearth/ne_10m_rivers_lake_centerlines.zip").open("rb"))
+MORE_RIVERS = shapefile.Reader(
+            shp=rivers_zip.open("ne_10m_rivers_lake_centerlines.shp"),
+            shx=rivers_zip.open("ne_10m_rivers_lake_centerlines.shx"),
+            dbf=rivers_zip.open("ne_10m_rivers_lake_centerlines.dbf"),
+            encoding='utf-8'
+)
+
+
+# Somewhere, I found speeds of 4.5 knots for kayak cruising. That's 8.334 km/h,
+# but the database stores data in seconds, so 2.315 m/s. That's about a factor
+# 3 faster than walking slightly downhill (before terrain coefficients), which
+# sounds sensible.
+KAYAK_SPEED = 2.315
 
 def estimate_flow_speed(discharge, slope):
     """Estimate the flow speed, in km/s from discharge and slope
@@ -309,58 +294,219 @@ def estimate_flow_speed(discharge, slope):
     return v / 1000
 
 
-def add_speed_along_rivers(dist, start = 60000000):
-    for r, reach in enumerate(RIVERS.shp.iterShapeRecords()):
-        data = reach.record
-        reach_id = int(data[0])
-        if reach_id < start:
-            # The Americas have SA 6, NA 7, American Arctic 8, Greenland 9
-            continue
+def navigable_water_mask(dist):
+    # Is this reach navigable by Kayak? From
+    # [@rood2006instream,@zinke2018comparing] it seems that reaches with a
+    # flow lower than 5m³/s are not navigable even by professional extreme
+    # sport athletes, and generally even that number seems to be an outlier
+    # with opinions starting at 8m³/s, so we take that as the cutoff.
+    raster = rasterio.features.rasterize(
+        (shp.shape for shp in RIVERS.shp.iterShapeRecords()
+         if shp.record[3] > 0.9030899869919434), # log(8.)/log(10.)
+        out_shape = dist.shape,
+        transform = dist.transform).astype(bool)
+    raster |= rasterio.features.rasterize(
+        [OCEANS],
+        out_shape = dist.shape,
+        transform = dist.transform).astype(bool)
+    raster |= rasterio.features.rasterize(
+        LAKES.iterShapes(),
+        out_shape = dist.shape,
+        transform = dist.transform).astype(bool)
+    raster |= rasterio.features.rasterize(
+        (shp for shp in MORE_RIVERS.iterShapes()
+         if shp.shapeTypeName != "NULL"),
+        out_shape = dist.shape,
+        transform = dist.transform).astype(bool)
 
-        if rasterio.coords.disjoint_bounds(
-                dist.bounds,
-                rasterio.features.bounds(reach.shape)):
-            continue
+    d_n, d_e, d_ne = [], [], []
+    for y in range(1, dist.shape[0] + 1):
+        (lon0, lat0) = dist.transform * (0, y)
+        (lon1, lat1) = dist.transform * (1, y - 1)
 
-        # Is this reach navigable by Kayak? From
-        # [@rood2006instream,@zinke2018comparing] it seems that reaches with a
-        # flow lower than 5m³/s are not navigable even by professional extreme
-        # sport athletes, and generally even that number seems to be an outlier
-        # with opinions starting at 8m³/s, so we take that as the cutoff.
-        #
-        # [@zinke2018comparing] further plots wild water kayaking run slopes
-        # vs. difficulty. All of these are below 10%, so we assume that reaches
-        # above 10% are not navigable. Gradient is not directly available in
-        # the data, but the stream power is directly proportional to the
-        # product of discharge and gradient, so we can reverse-engineer it:
-        # Stream Power [kg m/s³]
-        # = Water Density [kg/m³] * gravity [m/s²] * discharge [m³/s] * slope [m/m]
-        # so
-        if (data[3] < 0.9030899869919434 or # log(8.)/log(10.)
-            data[11] / (10 ** data[3]) > 981.0):
-            continue
+        d = GEODESIC.inverse((lon0, lat0), [
+            (lon0, lat1), (lon1, lat0), (lon1, lat1)])
+        d_n.append(d[0, 0])
+        d_e.append(d[1, 0])
+        d_ne.append(d[2, 0])
 
-        # slope = stream power / discharge / (1000 * 9.81) > 10% = 0.1
-        v = estimate_flow_speed(discharge = 10 ** data[3], slope = data[11] / 10 ** data[3] / (9810))
-        assert v < 0.1, "River flow speed was estimated to be ridiculously fast"
+    profile = dist.profile
+    profile["dtype"] = rasterio.float64
+    profile["count"] = 8
+    fname = "adj{:}".format(dist.name)
+    with rasterio.open(fname, 'w', **profile) as dst:
+        cell_distance = numpy.ones(dist.shape) * numpy.array(d_n)[:, None] / KAYAK_SPEED
+        mask = raster[1:, :] & raster[:-1, :]
+        # North
+        with_rivers = dist.read(1)
+        with_rivers[1:, :][mask] = cell_distance[1:, :][mask]
+        dst.write(with_rivers.astype(rasterio.float64), 1)
+        # South
+        with_rivers = dist.read(5)
+        with_rivers[:-1, :][mask] = cell_distance[:-1, :][mask]
+        dst.write(with_rivers.astype(rasterio.float64), 5)
 
-        pixels = rasterio.features.geometry_mask(
-            [reach.shape],
-            out_shape=dist.shape,
-            transform=dist.transform)
-        n_pix = pixels.sum()
-        if n_pix <= 1:
-            continue
-        pixel_time = (
-            data[2] / # Length in km
-            (KAYAK_SPEED + v) / # along-river velocity in km/s
-            (n_pix - 1) # number of steps along the path
-        )
-        print(n_pix)
-        points: t.List[t.Tuple[float, float]] = reach.shape.points
+        cell_distance = numpy.ones(dist.shape) * numpy.array(d_e)[:, None] / KAYAK_SPEED
+        mask = raster[:, 1:] & raster[:, :-1]
+        # East
+        with_rivers = dist.read(3)
+        with_rivers[:, :-1][mask] = cell_distance[:, :-1][mask]
+        dst.write(with_rivers.astype(rasterio.float64), 3)
+        # West
+        with_rivers = dist.read(7)
+        with_rivers[:, 1:][mask] = cell_distance[:, 1:][mask]
+        dst.write(with_rivers.astype(rasterio.float64), 7)
+
+        cell_distance = numpy.ones(dist.shape) * numpy.array(d_ne)[:, None] / KAYAK_SPEED
+        mask = raster[:-1, 1:] & raster[1:, :-1]
+        # North-East
+        with_rivers = dist.read(2)
+        with_rivers[1:, :-1][mask] = cell_distance[1:, :-1][mask]
+        dst.write(with_rivers.astype(rasterio.float64), 2)
+        # South-West
+        with_rivers = dist.read(6)
+        with_rivers[:-1, 1:][mask] = cell_distance[:-1, 1:][mask]
+        dst.write(with_rivers.astype(rasterio.float64), 6)
+
+        mask = raster[1:, 1:] & raster[:-1, :-1]
+        # South-East
+        with_rivers = dist.read(4)
+        with_rivers[:-1, :-1][mask] = cell_distance[:-1, :-1][mask]
+        dst.write(with_rivers.astype(rasterio.float64), 4)
+        # North-West
+        with_rivers = dist.read(8)
+        with_rivers[1:, 1:][mask] = cell_distance[1:, 1:][mask]
+        dst.write(with_rivers.astype(rasterio.float64), 8)
+
+    # At the end of the ``with rasterio.Env()`` block, context
+    # manager exits and all drivers are de-registered.
+    return rasterio.open(fname)
+
+#    Copyright (C) 2004-2018 by
+#    Aric Hagberg <hagberg@lanl.gov>
+#    Dan Schult <dschult@colgate.edu>
+#    Pieter Swart <swart@lanl.gov>
+#    All rights reserved.
+#    BSD license.
+#
+# Authors:  Aric Hagberg <hagberg@lanl.gov>
+#           Loïc Séguin-C. <loicseguin@gmail.com>
+#           Dan Schult <dschult@colgate.edu>
+#           Niels van Adrichem <n.l.m.vanadrichem@tudelft.nl>
+
+from heapq import heappush, heappop
+from itertools import count
+
+def dijkstra_multisource(G, sources):
+    """Uses Dijkstra's algorithm to find shortest weighted paths
+
+    Parameters
+    ----------
+    G : [8, M, N] numpy array
+
+    sources : non-empty iterable of nodes
+        Starting nodes for paths. If this is just an iterable containing
+        a single node, then all paths computed by this function will
+        start from that node. If there are two or more nodes in this
+        iterable, the computed paths may begin from any one of the start
+        nodes.
+
+    Returns
+    -------
+    distance : dictionary
+        A mapping from node to shortest distance to that node from one
+        of the source nodes.
+
+    Raises
+    ------
+    NodeNotFound
+        If any of `sources` is not in `G`.
+
+    """
+    push = heappush
+    pop = heappop
+    dist = numpy.full(
+        G.shape[1:],
+        numpy.inf,
+        dtype=float
+    )
+    domain = numpy.full(
+        G.shape[1:],
+        -1,
+        dtype=int
+    )
+    source_dist = {}
+    seen = {}
+    # fringe is heapq with 3-tuples (distance,c,node)
+    # use the count c to avoid comparing nodes (may not be able to)
+    c = count()
+    fringe = []
+    for i, source in enumerate(sources):
+        seen[source] = 0
+        domain[source] = i
+        push(fringe, (0, next(c), source))
+    while fringe:
+        print(len(fringe))
+        (d, _, v) = pop(fringe)
+        if numpy.isfinite(dist[v]):
+            continue  # already searched this node.
+        dist[v] = d
+        for direction, e in zip([
+                (-1, 0), (-1, 1), (0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1)],
+                                G[:, v[0], v[1]]):
+            if not numpy.isfinite(e):
+                continue
+            u = (v[0] + direction[0], v[1] + direction[1])
+            if not 0<=u[0]<G.shape[1]:
+                continue
+            if not 0<=u[1]<G.shape[2]:
+                continue
+            vu_dist = dist[v] + e
+            if u not in seen or vu_dist < seen[u]:
+                if domain[u] != domain[v]:
+                    source_dist[domain[u], domain[v]] = min(
+                        seen.get(u, numpy.inf) + vu_dist,
+                        source_dist.get((domain[u], domain[v]), numpy.inf))
+                seen[u] = vu_dist
+                push(fringe, (vu_dist, next(c), u))
+                domain[u] = domain[v]
+
+    breakpoint()
+    return domain, source_dist
 
 
 for lon in [-75, -45]:
     for lat in [-20, 0, 20]:
-        add_speed_along_rivers(
-            travel_time_raster(lon, lat))
+        # travel_time = travel_time_raster(lon, lat)
+        # travel_time = navigable_water_mask(travel_time)
+        fname = "adj{:}{:}.tif".format(lon, lat)
+        travel_time =  rasterio.open(fname)
+
+        land = sgeom.box(*travel_time.bounds).difference(OCEANS)
+        xmin, ymin, xmax, ymax = land.bounds
+        center = h3.geo_to_h3((ymin + ymax) / 2, (xmin + xmax) / 2, 5)
+        corners = [
+            h3.geo_to_h3(y, x, 5)
+            for x in [xmin, xmax]
+            for y in [ymin, ymax]
+        ]
+        dist = max(h3.h3_distance(center, corner) for corner in corners) + 1
+        pland = prep(land)
+        dots = [
+            hex
+            for hex in h3.k_ring(center, dist)
+            if pland.contains(
+                    sgeom.Point(h3.h3_to_geo(hex)[::-1])
+            )
+        ]
+
+        back_transform = ~travel_time.transform
+        def h3_to_rowcol(hex):
+            lat, lon = h3.h3_to_geo(hex)
+            col, row = back_transform * (lon, lat)
+            return int(row), int(col)
+        domain, dists = dijkstra_multisource(
+            travel_time.read(),
+            (h3_to_rowcol(dot) for dot in dots)
+        )
+        breakpoint()

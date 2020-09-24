@@ -139,24 +139,8 @@ TC = numpy.array([
 
 
 
-def hex_ecoregions(
-        ecoregions: numpy.array,
-        transform: rasterio.Affine
-):
-    c: t.Dict[h3.H3Index, t.Counter[int]] = t.DefaultDict(t.Counter)
-    for y, row in enumerate(ecoregions):
-        (_, lat) = transform * (0, y)
-        area = numpy.cos(lat * numpy.pi / 180) * SQUARE_OF_15_ARCSEC
-        for x, eco in enumerate(row):
-            (lon, lat) = transform * (x, y)
-            index: h3.H3Index = h3.geo_to_h3(lat, lon, RESOLUTION)
-            c[index][int(eco)] += area # eco is a numpy type that sqlalchemy does not understand as int
-    return c
-
-
 def store_ecocount_in_db(ecoregions: numpy.array, transform: rasterio.Affine, engine: sqlalchemy.engine.Connectable, t_eco: sqlalchemy.Table, t_hex: sqlalchemy.Table) -> None:
     for h, eco_count in hex_ecoregions(ecoregions, transform).items():
-        lat, lon = h3.h3_to_geo(h)
         try:
             engine.execute(t_hex.insert({"hexbin": h,
                                    "longitude": lon,
