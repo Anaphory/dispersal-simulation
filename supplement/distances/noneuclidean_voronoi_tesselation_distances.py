@@ -58,9 +58,9 @@ def all_pairwise_distances(
     terrain_coefficients: numpy.array,
 ):
     d_n, d_e, d_ne = [], [], []
-    for y in range(1, len(elevation) + 1):
-        (lon0, lat0) = transform * (0, y)
-        (lon1, lat1) = transform * (1, y - 1)
+    for y in range(len(elevation)):
+        (lon0, lat0) = transform * (0, y + 1)
+        (lon1, lat1) = transform * (1, y)
 
         d = GEODESIC.inverse((lon0, lat0), [(lon0, lat1), (lon1, lat0), (lon1, lat1)])
         d_n.append(d[0, 0])
@@ -91,6 +91,8 @@ def all_pairwise_distances(
     west[:, 1:] = distance_to_east[:, None]
     west[:, 1:] /= navigation_speed(-slope_to_east) * tc_to_east
     del distance_to_east, slope_to_east, tc_to_east
+
+    areas = [n * e for n, e in zip(d_n, d_e)]
 
     distance_to_northeast = numpy.array(d_ne)[:-1]
     slope_to_northeast = (
@@ -132,7 +134,7 @@ def all_pairwise_distances(
         (1, -1): southwest,
         (0, -1): west,
         (-1, -1): northwest,
-    }
+    }, areas
 
 
 def travel_time_raster(lon: float, lat: float, bf: int = 500):  # Buffer
@@ -508,30 +510,33 @@ for lon in range(-175, -45, 30):
             ecoregions_file = ecoregion_tile_from_geocoordinates(lon, lat)
         except rasterio.errors.RasterioIOError:
             continue
-        # profile = ecoregions_file.profile
-        # height, width = ecoregions_file.shape
-        # profile["width"] = width + 2 * BF
-        # profile["height"] = height + 2 * BF
-        # profile["transform"] = ecoregions_file.transform
-        # profile["dtype"] = rasterio.float64
-        # profile["count"] = 8
-        # print(profile)
+        profile = ecoregions_file.profile
+        height, width = ecoregions_file.shape
+        profile["width"] = width + 2 * BF
+        profile["height"] = height + 2 * BF
+        profile["transform"] = ecoregions_file.transform
+        profile["dtype"] = rasterio.float64
+        profile["count"] = 8
+        print(profile)
 
-        # try:
-        #     distance_by_direction = travel_time_raster(lon, lat, BF)
-        # except rasterio.errors.RasterioIOError:
-        #     continue
+        try:
+            distance_by_direction, areas = travel_time_raster(lon, lat, BF)
+        except rasterio.errors.RasterioIOError:
+            continue
 
-        # with rasterio.open(
-        #     fname,
-        #     "w",
-        #     **profile,
-        # ) as dst:
-        #     for i, band in enumerate(distance_by_direction.values(), 1):
-        #         dst.write(band.astype(rasterio.float64), i)
+        with rasterio.open(
+            fname,
+            "w",
+            **profile,
+        ) as dst:
+            for i, band in enumerate(distance_by_direction.values(), 1):
+                dst.write(band.astype(rasterio.float64), i)
 
-        # travel_time = rasterio.open(fname)
-        # travel_time = navigable_water_mask(travel_time)
+        with open("areas-{:}.json".format(lat), "w") as areas_file:
+            json.dump(areas, areas_file)
+
+        travel_time = rasterio.open(fname)
+        travel_time = navigable_water_mask(travel_time)
         try:
             travel_time = rasterio.open("adj{:}".format(fname))
         except rasterio.errors.RasterioIOError:
@@ -567,10 +572,15 @@ for lon in range(-175, -45, 30):
         )
         fname = "adj{:}{:}-hexes.json".format(lon, lat)
         open(fname, "w").write(str(hexes))
+
         fname = "adj{:}{:}.json".format(lon, lat)
-        open(fname, "w").write(
-            str({(hexes[i], hexes[j]): d for (i, j), d in dists.items()})
-        )
+        json_dist = {}
+        for (i, j), d in dists.items():
+            i, j = hexes[i], hexes[j]
+            i, j = min(i, j), max(i, j)
+            json_dist.setdefault(int(i), {})[int(j)] = d
+        with open(fname, "w") as d:
+            json.dump(json_dist, d)
 
         profile = travel_time.profile
         profile["dtype"] = rasterio.int32
@@ -581,14 +591,16 @@ for lon in range(-175, -45, 30):
             dst.write(domain.astype(rasterio.int32), 1)
 
         ecoregions = ecoregions_file.read(1)
-        assert domain[500:-500, 500:-500].shape == ecoregions.shape
-        c: t.DefaultDict[int, t.Counter[int]] = collections.defaultdict(
+        assert domain[BF:-BF, BF:-BF].shape == ecoregions.shape
+        c: t.DefaultDict[str, t.Counter[int]] = collections.defaultdict(
             collections.Counter
         )
-        for voronoi_center, ecoregion in zip(
-            domain[500:-500, 500:-500].flat, ecoregions.flat
+        for voronoi_center, ecoregion, area in zip(
+            domain[BF:-BF, BF:-BF].flat,
+            ecoregions.flat,
+            (numpy.array(areas[BF:-BF])[:, None] * numpy.ones(ecoregions.shape)).flat,
         ):
-            c[hexes[voronoi_center]][ecoregion] += 1
+            c[int(hexes[voronoi_center])][int(ecoregion)] += area
 
         fname = "adj{:}{:}-regions.json".format(lon, lat)
         json.dump(c, open(fname, "w"))
