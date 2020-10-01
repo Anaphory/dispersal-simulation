@@ -81,6 +81,7 @@ fn read_graph_from_db(
         .flatten()
         .enumerate()
     {
+        println!("{}: {}", i, hexbin);
         let ecos: HashMap<_, _> = eco_stmt
             .query_map(rusqlite::params![hexbin], |eco| {
                 // The areas are already scaled by the cosine of latitude,

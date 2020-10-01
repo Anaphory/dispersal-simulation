@@ -1243,7 +1243,7 @@ pub fn initialization(p: &Parameters) -> Option<State> {
         stored_resources: p.time_step_energy_use * 10.,
         adaptation: ecology::Ecovector::default(),
     };
-    let _f2 = Family {
+    let f2 = Family {
         descendence: String::from("F"),
         location: start2,
         memory: HashMap::new(),
@@ -1477,6 +1477,7 @@ pub fn run(mut s: State, p: Parameters, max_t: HalfYears) {
     loop {
         let (families_by_location, k) = step(&mut s.families, &mut s.patches, knowledge, &p, s.t);
         knowledge = k;
+        s.families = vec![];
         for (location, families) in families_by_location {
             for mut family in families {
                 family.memory.insert(

@@ -8,7 +8,7 @@ use std::collections::{BinaryHeap, HashMap};
 use std::hash::Hash;
 
 pub type NodeData = (hexgrid::Index, f64, f64, HashMap<usize, KCal>);
-pub type MovementGraph = petgraph::csr::Csr<NodeData, f64, petgraph::Directed, usize>;
+pub type MovementGraph = petgraph::csr::Csr<NodeData, f64, petgraph::Undirected, usize>;
 
 // From petgraph
 
