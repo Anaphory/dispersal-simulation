@@ -96,7 +96,7 @@ fn read_graph_from_db(
             .flatten()
             .collect();
         // assert!(!ecos.is_empty());
-        graph.add_node((hexbin as hexgrid::Index, longitude, latitude, ecos ));
+        graph.add_node((hexbin as hexgrid::Index, longitude, latitude, ecos));
         h3_to_graph.insert(hexbin, i);
     }
     println!("{:} nodes added.", graph.node_count());
