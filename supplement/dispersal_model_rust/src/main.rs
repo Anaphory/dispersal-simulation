@@ -28,8 +28,8 @@ fn read_graph_from_db(
 
     let mut nodes_stmt;
     match conn.prepare(concat!(
-        "SELECT hexbin, vlongitude, vlatitude FROM hex ",
-        "WHERE ? < vlongitude AND vlongitude < ? AND ? < vlatitude AND vlatitude < ? ",
+        "SELECT hexbin, longitude, latitude FROM hex ",
+        "WHERE ? < longitude AND longitude < ? AND ? < latitude AND latitude < ? ",
         // "NATURAL INNER JOIN (SELECT hexbin FROM eco WHERE ecoregion != 999 GROUP BY hexbin) ",
     )) {
         Err(e) => {
@@ -41,7 +41,7 @@ fn read_graph_from_db(
     }
 
     let mut eco_stmt;
-    match conn.prepare("SELECT ecoregion, frequency FROM eco WHERE hexbin = ? AND ecoregion != 999")
+    match conn.prepare("SELECT ecoregion, area_m2 FROM eco WHERE hexbin = ? AND ecoregion != 999")
     {
         Err(e) => {
             return Err(e.to_string());
@@ -56,7 +56,7 @@ fn read_graph_from_db(
         "SELECT hexbin1, hexbin2, min(distance) ",
         "FROM dist ",
         "JOIN hex ON hexbin = hexbin1 ",
-        "WHERE ? < vlongitude AND vlongitude < ? AND ? < vlatitude AND vlatitude < ? ",
+        "WHERE ? < longitude AND longitude < ? AND ? < latitude AND latitude < ? ",
         // "INNER JOIN (SELECT hexbin FROM eco WHERE ecoregion != 999 GROUP BY hexbin) ON hexbin = hexbin1",
         // "INNER JOIN (SELECT hexbin FROM eco WHERE ecoregion != 999 GROUP BY hexbin) ON hexbin = hexbin2",
         "GROUP BY hexbin1, hexbin2 ORDER BY hexbin1, hexbin2 "
@@ -89,14 +89,14 @@ fn read_graph_from_db(
                 let len = expand_attested.len();
                 Ok((
                     *(expand_attested.entry(eco.get::<_, i64>(0)?).or_insert(len)),
-                    eco.get::<_, f64>(1)? as f32,
+                    eco.get::<_, f64>(1)? as f32 / 1_000_000.,
                 ))
             })
             .unwrap()
             .flatten()
             .collect();
         // assert!(!ecos.is_empty());
-        graph.add_node((hexbin as hexgrid::Index, longitude, latitude, ecos));
+        graph.add_node((hexbin as hexgrid::Index, longitude, latitude, ecos ));
         h3_to_graph.insert(hexbin, i);
     }
     println!("{:} nodes added.", graph.node_count());

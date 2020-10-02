@@ -486,7 +486,7 @@ fn step_part_2(
         })
         .collect();
 
-    if t % 1 == 0 {
+    if t % 20 == 0 {
         println!("t: {:}", t);
         let l_c = cultures_by_location.clone();
         observation::print_gd_cd(l_c, p);
@@ -1368,14 +1368,14 @@ pub mod submodels {
         }
 
         pub fn maybe_grow(family: &mut Family) {
-            print!("Growing {:} in {:}: size {:} ", family.descendence, family.seasons_till_next_child, family.effective_size);
+            // print!("Growing {:} in {:}: size {:} ", family.descendence, family.seasons_till_next_child, family.effective_size);
             if family.seasons_till_next_child == 0 {
                 family.effective_size += 1;
                 family.seasons_till_next_child = 2;
             } else {
                 family.seasons_till_next_child -= 1;
             }
-            println!("becomes {:} ({:})", family.effective_size, family.seasons_till_next_child);
+            // println!("becomes {:} ({:})", family.effective_size, family.seasons_till_next_child);
         }
         pub fn use_resources_and_maybe_shrink(
             size: &mut usize,
