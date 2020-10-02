@@ -349,7 +349,7 @@ def navigable_water_mask(dist):
     profile = dist.profile
     profile["dtype"] = rasterio.float64
     profile["count"] = 8
-    fname = "adj{:}".format(dist.name)
+    fname = "waterways_{:}".format(dist.name)
     with rasterio.open(fname, "w", **profile) as dst:
         cell_distance = numpy.ones(dist.shape) * numpy.array(d_n)[:, None] / KAYAK_SPEED
         mask = raster[1:, :] & raster[:-1, :]
@@ -501,11 +501,11 @@ AMERICAS = (
 
 BF = 500
 
-for lon in range(-175, -45, 30):
-    for lat in range(-60, 80, 20):
+for lat in range(80, -60, -20):
+    for lon in range(-175, -45, 30):
         print(lon, lat)
 
-        fname = "{:}{:}.tif".format(lon, lat)
+        fname = "dist_{:}_{:}.tif".format(lon, lat)
         try:
             ecoregions_file = ecoregion_tile_from_geocoordinates(lon, lat)
         except rasterio.errors.RasterioIOError:
@@ -532,13 +532,13 @@ for lon in range(-175, -45, 30):
             for i, band in enumerate(distance_by_direction.values(), 1):
                 dst.write(band.astype(rasterio.float64), i)
 
-        with open("areas-{:}.json".format(lat), "w") as areas_file:
+        with open("areas_{:}.json".format(lat), "w") as areas_file:
             json.dump(areas, areas_file)
 
         travel_time = rasterio.open(fname)
         travel_time = navigable_water_mask(travel_time)
         try:
-            travel_time = rasterio.open("adj{:}".format(fname))
+            travel_time = rasterio.open("waterways_{:}".format(fname))
         except rasterio.errors.RasterioIOError:
             continue
 
@@ -570,10 +570,10 @@ for lon in range(-175, -45, 30):
         hexes, domain, dists = dijkstra_multisource(
             travel_time.read(), {dot: h3_to_rowcol(dot) for dot in dots}
         )
-        fname = "adj{:}{:}-hexes.json".format(lon, lat)
+        fname = "hexes-to-indices_{:}_{:}.json".format(lon, lat)
         open(fname, "w").write(str(hexes))
 
-        fname = "adj{:}{:}.json".format(lon, lat)
+        fname = "hexdist_{:}_{:}.json".format(lon, lat)
         json_dist = {}
         for (i, j), d in dists.items():
             i, j = hexes[i], hexes[j]
@@ -586,7 +586,7 @@ for lon in range(-175, -45, 30):
         profile["dtype"] = rasterio.int32
         profile["count"] = 1
         profile["count"] = 1
-        fname = "vor{:}{:}.tif".format(lon, lat)
+        fname = "vor_{:}_{:}.tif".format(lon, lat)
         with rasterio.open(fname, "w", **profile) as dst:
             dst.write(domain.astype(rasterio.int32), 1)
 
@@ -602,5 +602,5 @@ for lon in range(-175, -45, 30):
         ):
             c[int(hexes[voronoi_center])][int(ecoregion)] += area
 
-        fname = "adj{:}{:}-regions.json".format(lon, lat)
+        fname = "hex_to_eco_{:}_{:}.json".format(lon, lat)
         json.dump(c, open(fname, "w"))
