@@ -504,6 +504,9 @@ BF = 500
 for lat in range(80, -60, -20):
     for lon in range(-175, -45, 30):
         print(lon, lat)
+        fname = "hex_to_eco_{:}_{:}.json".format(lon, lat)
+        if Path(fname).exists():
+            continue
 
         fname = "dist_{:}_{:}.tif".format(lon, lat)
         try:
