@@ -11,6 +11,14 @@ debug = true
 [lib]
 name = "model"
 
+[[bin]]
+name = "simulation"
+path = "src/main.rs"
+
+[[bin]]
+name = "graphwriter"
+path = "src/serialize_graph.rs"
+
 [dependencies]
 rand = ">=0.0.0"
 rand_distr = ">=0.0.0"
@@ -19,6 +27,8 @@ libh3 = ">=0.0.0"
 tiff = ">=0.5.0"
 argparse = ">=0.0.0"
 lazy_static = ">=0.0.0"
-petgraph = ">=0.0.0"
+petgraph = { version = ">=0.0.0", features = ["serde-1"] }
+serde = ">=0.0.0"
+bincode = ">=0.0.0"
 rusqlite = ">=0.0.0"
 dashmap = ">=3.0.0"

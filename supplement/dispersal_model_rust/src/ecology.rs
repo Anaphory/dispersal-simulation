@@ -20,12 +20,27 @@ pub fn load_precipitation_tif() -> Option<(Vec<u16>, u32)> {
     Some((vec, width))
 }
 
+pub fn load_density_tif() -> Option<(Vec<u16>, u32)> {
+    let f = std::fs::File::open("../tallavaara/lpdensity.tif").ok()?;
+    let maybe_image = tiff::decoder::Decoder::new(f);
+    let mut image = maybe_image.ok()?;
+    let (width, height) = image.dimensions().ok()?;
+    println!("# {}x{}", width, height);
+    let outcome = image.read_image().ok()?;
+    println!("# Image read");
+    let vec = match outcome {
+        tiff::decoder::DecodingResult::U8(v) => v.iter().map(|g| u16::from(*g)).collect(),
+        tiff::decoder::DecodingResult::U16(w) => w,
+        tiff::decoder::DecodingResult::U32(v) => v.iter().map(|g| *g as u16).collect(),
+        tiff::decoder::DecodingResult::U64(v) => v.iter().map(|g| *g as u16).collect(),
+    };
+    Some((vec, width))
+}
+
 pub const ATTESTED_ECOREGIONS: usize = 303;
 
 #[allow(clippy::excessive_precision, clippy::unreadable_literal)]
-pub fn patch_from_ecoregions<S: ::std::hash::BuildHasher>(
-    ecoregions: &HashMap<usize, f64, S>,
-) -> HashMap<usize, (KCal, KCal)> {
+pub fn patch_from_ecoregions(ecoregion: i64, area_in_100_km2: f32) -> KCal {
     let logpopdensity: HashMap<_, KCal> = vec![
         (2, 4.0974917821114),       // Admiralty Islands lowland rain forests
         (3, 2.13331596527082),      // Aegean and Western Turkey sclerophyllous and mixed forests
@@ -823,13 +838,10 @@ pub fn patch_from_ecoregions<S: ::std::hash::BuildHasher>(
     .drain(..)
     .collect();
 
-    ecoregions
-        .iter()
-        .map(|(&i, amount)| {
-            let r = logpopdensity.get(&i).unwrap_or(&0.0) * *amount as KCal;
-            (i, (r, r))
-        })
-        .collect()
+    match logpopdensity.get(&ecoregion) {
+        None => return 0.,
+        Some(ldensity) => return area_in_100_km2 * ldensity.exp(),
+    }
 }
 
 #[derive(Clone, Copy)]

@@ -3,130 +3,18 @@ use model::movementgraph::MovementGraph;
 use model::submodels::parameters::Parameters;
 use model::*;
 use std::collections::HashMap;
-
-fn read_graph_from_db(
-    boundary_west: f64,
-    boundary_east: f64,
-    boundary_south: f64,
-    boundary_north: f64,
-) -> Result<MovementGraph, String> {
-    let try_conn = rusqlite::Connection::open_with_flags(
-        "/home/gereon/Public/settlement-of-americas/supplement/distances/plot.sqlite",
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-    );
-    let conn: rusqlite::Connection;
-    match try_conn {
-        Err(e) => {
-            return Err(e.to_string());
-        }
-        Ok(k) => {
-            conn = k;
-        }
-    }
-
-    let mut graph: MovementGraph = petgraph::csr::Csr::new();
-
-    let mut nodes_stmt;
-    match conn.prepare(concat!(
-        "SELECT hexbin, longitude, latitude FROM hex ",
-        "WHERE ? < longitude AND longitude < ? AND ? < latitude AND latitude < ? ",
-        // "NATURAL INNER JOIN (SELECT hexbin FROM eco WHERE ecoregion != 999 GROUP BY hexbin) ",
-    )) {
-        Err(e) => {
-            return Err(e.to_string());
-        }
-        Ok(k) => {
-            nodes_stmt = k;
-        }
-    }
-
-    let mut eco_stmt;
-    match conn.prepare("SELECT ecoregion, area_m2 FROM eco WHERE hexbin = ? AND ecoregion != 999")
-    {
-        Err(e) => {
-            return Err(e.to_string());
-        }
-        Ok(k) => {
-            eco_stmt = k;
-        }
-    }
-
-    let mut dist_stmt;
-    match conn.prepare(concat!(
-        "SELECT hexbin1, hexbin2, min(distance) ",
-        "FROM dist ",
-        "JOIN hex ON hexbin = hexbin1 ",
-        "WHERE ? < longitude AND longitude < ? AND ? < latitude AND latitude < ? ",
-        // "INNER JOIN (SELECT hexbin FROM eco WHERE ecoregion != 999 GROUP BY hexbin) ON hexbin = hexbin1",
-        // "INNER JOIN (SELECT hexbin FROM eco WHERE ecoregion != 999 GROUP BY hexbin) ON hexbin = hexbin2",
-        "GROUP BY hexbin1, hexbin2 ORDER BY hexbin1, hexbin2 "
-    )) {
-        Err(_) => {
-            return Err("Could not prepare dist statement".to_string());
-        }
-        Ok(k) => {
-            dist_stmt = k;
-        }
-    }
-
-    let mut h3_to_graph = HashMap::new();
-    let mut expand_attested = HashMap::new();
-    println!("Adding nodes…");
-    for (i, (hexbin, longitude, latitude)) in nodes_stmt
-        .query_map(
-            rusqlite::params![boundary_west, boundary_east, boundary_south, boundary_north],
-            |node| Ok((node.get::<_, i64>(0)?, node.get(1)?, node.get(2)?)),
-        )
-        .unwrap()
-        .flatten()
-        .enumerate()
-    {
-        println!("{}: {}", i, hexbin);
-        let ecos: HashMap<_, _> = eco_stmt
-            .query_map(rusqlite::params![hexbin], |eco| {
-                // The areas are already scaled by the cosine of latitude,
-                // so this converts them into km².
-                let len = expand_attested.len();
-                Ok((
-                    *(expand_attested.entry(eco.get::<_, i64>(0)?).or_insert(len)),
-                    eco.get::<_, f64>(1)? as f32 / 1_000_000.,
-                ))
-            })
-            .unwrap()
-            .flatten()
-            .collect();
-        // assert!(!ecos.is_empty());
-        graph.add_node((hexbin as hexgrid::Index, longitude, latitude, ecos));
-        h3_to_graph.insert(hexbin, i);
-    }
-    println!("{:} nodes added.", graph.node_count());
-    assert!(expand_attested.len() <= ecology::ATTESTED_ECOREGIONS);
-    println!("{:} ecoregions found.", expand_attested.len());
-    println!("{:?}", expand_attested);
-
-    println!("Adding edges…");
-    for (a1, a2, d) in dist_stmt
-        .query_map(
-            rusqlite::params![boundary_west, boundary_east, boundary_south, boundary_north],
-            |dist| Ok((dist.get(0)?, dist.get(1)?, dist.get(2)?)),
-        )
-        .unwrap()
-        .flatten()
-        .filter_map(|(i, j, d)| {
-            Some((*h3_to_graph.get(&i)?, *h3_to_graph.get(&j)?, d))
-        })
-    {
-        graph.add_edge(a1, a2, d);
-    }
-    println!("{:} edges added.", graph.edge_count());
-    Ok(graph)
-}
+use std::fs;
 
 fn main() -> Result<(), String> {
-    let mut boundary_west = -168.571_541;
-    let mut boundary_east = -34.535_395;
-    let mut boundary_south = -56.028_198;
-    let mut boundary_north = 74.52671;
+    let contents = match fs::read("graph.bincode") {
+        Ok(c) => c,
+        Err(e) => return Err(e.to_string())
+    };
+
+    let dispersal_graph: MovementGraph = match bincode::deserialize(&contents) {
+        Ok(c) => c,
+        Err(e) => return Err(e.to_string())
+    };
 
     let mut p = Parameters {
         attention_probability: 0.1,
@@ -141,14 +29,10 @@ fn main() -> Result<(), String> {
         evidence_needed: 0.3,
         payoff_std: 0.1,
 
-        dispersal_graph: MovementGraph::new(),
+        dispersal_graph: dispersal_graph,
     };
     let mut max_t: HalfYears = 20000;
     parse_args(
-        &mut boundary_west,
-        &mut boundary_east,
-        &mut boundary_south,
-        &mut boundary_north,
         &mut p,
         &mut max_t,
     );
@@ -157,8 +41,7 @@ fn main() -> Result<(), String> {
     // currently, but the names point out that I misunderstood something, eg.
     // with the layout of the tiff in memory or similar.
 
-    p.dispersal_graph =
-        read_graph_from_db(boundary_west, boundary_east, boundary_south, boundary_north)?;
+    // p.dispersal_graph = ...
     let s: State = initialization(&p).unwrap();
     println!("Initialized");
 
@@ -167,10 +50,6 @@ fn main() -> Result<(), String> {
 }
 
 fn parse_args(
-    west: &mut f64,
-    east: &mut f64,
-    south: &mut f64,
-    north: &mut f64,
     p: &mut Parameters,
     max_t: &mut HalfYears,
 ) {
@@ -206,26 +85,6 @@ fn parse_args(
         &["--steps"],
         argparse::Store,
         "number of half years to simulate",
-    );
-    parser.refer(west).add_option(
-        &["--west"],
-        argparse::Store,
-        "western bounding box boundary",
-    );
-    parser.refer(east).add_option(
-        &["--east"],
-        argparse::Store,
-        "eastern bounding box boundary",
-    );
-    parser.refer(south).add_option(
-        &["--south"],
-        argparse::Store,
-        "southern bounding box boundary",
-    );
-    parser.refer(north).add_option(
-        &["--north"],
-        argparse::Store,
-        "northern bounding box boundary",
     );
     println!("Starting…");
     parser.parse_args_or_exit();

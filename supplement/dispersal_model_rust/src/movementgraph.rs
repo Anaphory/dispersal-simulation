@@ -6,9 +6,10 @@ use std::cmp::Ordering;
 use std::collections::hash_map::Entry::{Occupied, Vacant};
 use std::collections::{BinaryHeap, HashMap};
 use std::hash::Hash;
+use serde::{Serialize, Deserialize};
 
 pub type NodeData = (hexgrid::Index, f64, f64, HashMap<usize, KCal>);
-pub type MovementGraph = petgraph::csr::Csr<NodeData, f64, petgraph::Undirected, usize>;
+pub type MovementGraph = petgraph::graph::Graph<NodeData, f64, petgraph::Undirected, usize>;
 
 // From petgraph
 

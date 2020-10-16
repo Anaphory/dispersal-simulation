@@ -83,7 +83,7 @@ pre-processed real geographical data.
 
  */
 pub mod movementgraph;
-pub type NodeId = usize;
+pub type NodeId = petgraph::graph::NodeIndex<usize>;
 
 /**
 Each node contains one or more ecoregions, according to the geographical
@@ -620,7 +620,7 @@ mod emergence {
     ) -> HashMap<i32, HashMap<u32, usize>> {
         let mut gd_cd: HashMap<i32, HashMap<u32, usize>> = HashMap::new();
         for (l1, cs1) in cultures_by_location {
-            let l1h3 = p.dispersal_graph[*l1].0;
+            let l1h3 = p.dispersal_graph.node_weight(*l1).unwrap().0;
             for (l2, cs2) in cultures_by_location {
                 let l2h3 = p.dispersal_graph[*l2].0;
                 let gd = hexgrid::hex_distance(l1h3, l2h3);
@@ -634,8 +634,7 @@ mod emergence {
                                 .entry(gd)
                                 .or_insert_with(HashMap::new)
                                 .entry(0)
-                                .or_insert(0)
-                                += count1 * (count2 - 1) / 2;
+                                .or_insert(0) += count1 * (count2 - 1) / 2;
                             break;
                         }
                         let cd = submodels::culture::distance(*c1, *c2);
@@ -738,7 +737,7 @@ mod adaptation {
             Item = (
                 NodeId,
                 f64,
-                Option<dashmap::mapref::one::Ref<'a, usize, Knowledge>>,
+                Option<dashmap::mapref::one::Ref<'a, NodeId, Knowledge>>,
             ),
         >,
     {
@@ -837,7 +836,7 @@ mod objectives {
     where
         Pair: Iterator<Item = (I, N)>,
         N: PartialOrd + Default + std::fmt::Debug,
-        I: Default + std::fmt::Display,
+        I: Default,
     {
         let mut rng = rand::thread_rng();
 
@@ -946,7 +945,7 @@ mod sensing {
             &p.dispersal_graph,
             location,
             NORM * 12., //4 complete days, or 12 days of travel
-            |e| *petgraph::csr::EdgeReference::weight(&e),
+            |e| *petgraph::graph::EdgeReference::weight(&e),
         )
         .iter()
         .filter_map(|(n, v)| {
@@ -1165,31 +1164,31 @@ fn very_coarse_dist(x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
 pub fn initialization(p: &Parameters) -> Option<State> {
     let graph = &p.dispersal_graph;
 
-    let mut start1: NodeId = 0;
-    let mut start2: NodeId = 0;
-    let mut start1d = very_coarse_dist(graph[0].1, graph[0].2, -159.873, 65.613);
-    let mut start2d = very_coarse_dist(graph[0].1, graph[0].2, -158.2718, 60.8071);
 
-    for i in 0..graph.node_count() {
-        if graph[i].0 < 100_000_000 {
-            continue;
-        }
+    let mut m_start1: Option<NodeId> = None;
+    let mut m_start2: Option<NodeId> = None;
+    let mut start1d = f64::INFINITY;
+    let mut start2d = f64::INFINITY;
+
+    for i in graph.node_indices() {
         let longitude = graph[i].1;
         let latitude = graph[i].2;
         let d1 = very_coarse_dist(longitude, latitude, -159.873, 65.613);
         let d2 = very_coarse_dist(longitude, latitude, -158.2718, 60.8071);
         if d1 < start1d {
-            start1 = i;
+            m_start1 = Some(i);
             start1d = d1;
         }
         if d2 < start2d {
-            start2 = i;
+            m_start2 = Some(i);
             start2d = d2;
         }
     }
+    let start1 = m_start1.unwrap();
+    let start2 = m_start2.unwrap();
     let _area: f32 = libh3::hex_area_km_2(5) as f32;
 
-    println!("Starts: {:}, {:}", start1, start2);
+    println!("Starts: {:}, {:}", start1.index(), start2.index());
 
     let mut patches: HashMap<NodeId, Option<Patch>> = HashMap::new();
     let mut new_patches: std::collections::BinaryHeap<NodeId> = std::collections::BinaryHeap::new();
@@ -1210,7 +1209,7 @@ pub fn initialization(p: &Parameters) -> Option<State> {
 
         println!(
             "Resources at {:} ({:}, {:}): {:?}",
-            next, longitude, latitude, ecoregions
+            next.index(), longitude, latitude, ecoregions
         );
         patches.insert(
             next,
@@ -1221,11 +1220,11 @@ pub fn initialization(p: &Parameters) -> Option<State> {
                     .collect(),
             }),
         );
-        for q in graph.neighbors_slice(next) {
-            if patches.contains_key(q) {
+        for q in graph.neighbors(next) {
+            if patches.contains_key(&q) {
                 continue;
             }
-            new_patches.push(*q);
+            new_patches.push(q);
         }
     }
     let f1 = Family {
@@ -1438,15 +1437,16 @@ pub mod submodels {
                 *patch_resources += underlying_resources
                     * resource_recovery
                     * (1. - underlying_resources * accessible_resources / patch_max_resources);
+                if !patch_resources.is_normal() {
+                    println!(
+                        "The recovery of {} from {} towards {} ({}% of total) was not finite",
+                        resource_recovery,
+                        *patch_resources,
+                        patch_max_resources,
+                        accessible_resources * 100.
+                    );
+                }
             }
-            assert!(
-                patch_resources.is_normal(),
-                "The recovery of {} from {} towards {} ({}% of total) was not finite",
-                resource_recovery,
-                *patch_resources,
-                patch_max_resources,
-                accessible_resources * 100.
-            );
         }
     }
 

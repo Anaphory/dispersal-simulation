@@ -14,6 +14,14 @@ parser.add_argument("--max-cdif", type=int, default=20,
 args = parser.parse_args()
 args.output_dir.mkdir(parents=True, exist_ok=True)
 
+def bitvec_to_color(i: int):
+    r = (bin(i & 0b000000000000111111).count("1") - 1) / 5
+    g = (bin(i & 0b000000111111000000).count("1") - 1) / 5
+    b = (bin(i & 0b111111000000000000).count("1") - 1) / 5
+    r, g, b = min(max(r, 0), 1), min(max(g, 0), 1), min(max(b, 0), 1)
+    return 1-r, 1-g, b
+
+
 stem = Path(args.logfile.name).stem
 all_q = numpy.zeros((51, args.max_cdif))
 m = 0
@@ -25,14 +33,18 @@ try:
             m += 1
             if m < args.start:
                 continue
+            content = eval(line[len("POPULATION: "):])
             population = [(x, y, sum(p.values()))
-                          for x, y, p in eval(line[len("POPULATION: "):])]
+                          for x, y, p in content]
+            colors = [bitvec_to_color(max(p, key=p.get))
+                      for x, y, p in content]
             q = numpy.array(population).T
-            pop.append(q.sum())
-            q[2] /= 1 # Scale population to pixels
-            plt.scatter(*q[:2], q[2], alpha=0.8, linewidths=0.0)
-            plt.xlim(-3, -0.5)
-            plt.ylim(-1., 1.5)
+            q[:2] *= 180 / numpy.pi
+            pop.append(q[2].sum())
+            q[2] /= 4  # Scale population to pixels
+            plt.scatter(*q[:2], q[2], c=colors, alpha=0.8, linewidths=0.0)
+            plt.xlim(-170, -30)
+            plt.ylim(-60, 90)
             plt.gcf().set_size_inches((12, 16))
             plt.savefig(args.output_dir / f"disp{m:08d}-{stem:}.png")
             plt.close()
