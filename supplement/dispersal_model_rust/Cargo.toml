@@ -16,6 +16,10 @@ name = "simulation"
 path = "src/main.rs"
 
 [[bin]]
+name = "simple"
+path = "src/simple.rs"
+
+[[bin]]
 name = "graphwriter"
 path = "src/serialize_graph.rs"
 

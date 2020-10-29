@@ -98,11 +98,11 @@ networkx.draw_networkx_edges(
     hex_table,
     edge_color=1
     / numpy.array(list(networkx.get_edge_attributes(g, "weight").values())),
-    edge_cmap=plt.cm.Blues,
+    edge_cmap=plt.cm.viridis,
 )
 networkx.draw_networkx_nodes(
     g,
     hex_table,
-    node_size=1,
+    node_size=0.2,
 )
 plt.show()

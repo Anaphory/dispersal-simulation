@@ -847,6 +847,7 @@ pub fn patch_from_ecoregions(ecoregion: i64, area_in_100_km2: f32) -> KCal {
 #[derive(Clone, Copy)]
 pub struct Ecovector {
     pub entries: [f32; ATTESTED_ECOREGIONS],
+    pub minimum: f32,
 }
 
 use std::ops::{Index, Mul};
@@ -857,9 +858,12 @@ impl Mul<f32> for Ecovector {
     fn mul(self, rhs: f32) -> Self::Output {
         let mut result = [0.; ATTESTED_ECOREGIONS];
         for (i, item) in self.entries.iter().enumerate() {
-            result[i] = f32::max(0.5, item * rhs); //TODO: Move this part of the logic elsewhere
+            result[i] = f32::max(self.minimum, item * rhs); //TODO: Move this part of the logic elsewhere
         }
-        Ecovector { entries: result }
+        Ecovector {
+            entries: result,
+            minimum: self.minimum,
+        }
     }
 }
 
@@ -875,6 +879,16 @@ impl Default for Ecovector {
     fn default() -> Self {
         Ecovector {
             entries: [0.5; ATTESTED_ECOREGIONS],
+            minimum: 0.5,
+        }
+    }
+}
+
+impl From<f32> for Ecovector {
+    fn from(min: f32) -> Self {
+        Ecovector {
+            entries: [min; ATTESTED_ECOREGIONS],
+            minimum: min,
         }
     }
 }
