@@ -1,4 +1,188 @@
-use crate::KCal;
+use std::ops::{Div, Index, Mul};
+
+/**
+OneYearResources is a number with units.
+*/
+#[derive(PartialEq, PartialOrd, Default, Clone, Copy)]
+pub struct OneYearResources {
+    c: f64,
+}
+/**
+We need comparability, so we cheat this implementation.
+ */
+impl Eq for OneYearResources {}
+impl Ord for OneYearResources {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match self.c.partial_cmp(&other.c) {
+            None => std::cmp::Ordering::Equal,
+            Some(c) => c,
+        }
+    }
+}
+
+/**
+Attach the unit to a number
+*/
+impl From<f64> for OneYearResources {
+    fn from(c: f64) -> Self {
+        OneYearResources { c: c }
+    }
+}
+/**
+Numbers with units can be multiplied/divided by scalars
+ */
+impl Mul<f64> for OneYearResources {
+    type Output = Self;
+    fn mul(self, f: f64) -> Self {
+        OneYearResources { c: self.c * f }
+    }
+}
+impl Div for OneYearResources {
+    type Output = f64;
+    fn div(self, f: Self) -> f64 {
+        self.c / f.c
+    }
+}
+/**
+Numbers with unit can be added, and subtracted
+ */
+impl std::ops::Sub for OneYearResources {
+    type Output = Self;
+    fn sub(self, other: Self) -> Self {
+        OneYearResources {
+            c: self.c - other.c,
+        }
+    }
+}
+impl std::ops::AddAssign for OneYearResources {
+    fn add_assign(&mut self, other: Self) {
+        self.c += other.c
+    }
+}
+impl std::iter::Sum for OneYearResources {
+    fn sum<I>(iter: I) -> Self
+    where
+        I: Iterator<Item = Self>,
+    {
+        OneYearResources {
+            c: iter.map(|o| o.c).sum(),
+        }
+    }
+}
+impl<'a> std::iter::Sum<&'a OneYearResources> for OneYearResources {
+    fn sum<I: Iterator<Item = &'a Self>>(iter: I) -> Self {
+        OneYearResources {
+            c: iter.map(|o| o.c).sum(),
+        }
+    }
+}
+impl std::ops::SubAssign for OneYearResources {
+    fn sub_assign(&mut self, other: Self) {
+        self.c -= other.c
+    }
+}
+impl std::ops::Add for OneYearResources {
+    type Output = Self;
+    fn add(self, other: Self) -> Self {
+        OneYearResources {
+            c: self.c + other.c,
+        }
+    }
+}
+/**
+Dividing out the unit gives back a scalar
+ */
+impl Div<f64> for OneYearResources {
+    type Output = Self;
+    fn div(self, f: f64) -> Self {
+        OneYearResources { c: self.c / f }
+    }
+}
+/**
+To get a feeling for the number of year-resources, transform it into kCal (at 2000 kCal a day, 365 days a year).
+ */
+impl std::fmt::Debug for OneYearResources {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:.2} ({:.2} kCal)", self.c, self.c * 2000. * 365.)
+    }
+}
+
+pub fn population_to_resources(population: f64, p: &crate::Parameters) -> OneYearResources {
+    let mut lower_bound = OneYearResources::from(population);
+    let mut upper_bound = effort(population, OneYearResources::from(1.0), p);
+    while upper_bound.c > lower_bound.c + 1e-8 {
+        let mid = (lower_bound + upper_bound) * 0.5;
+        let e = effort(population, mid, p);
+        match e.cmp(&mid) {
+            std::cmp::Ordering::Equal => return mid,
+            std::cmp::Ordering::Greater => {
+                lower_bound = mid;
+            }
+            std::cmp::Ordering::Less => {
+                upper_bound = mid;
+            }
+        }
+    }
+    lower_bound
+}
+
+
+pub fn find_population_size(res: OneYearResources, p: &crate::Parameters) -> f64 {
+    let mut lower_bound = 1e-8;
+    let mut upper_bound = res.c;
+    while upper_bound > lower_bound + 1e-8 {
+        let mid = 0.5 * (lower_bound + upper_bound);
+        let e = effort(mid, res, p);
+        match e.cmp(&res) {
+            std::cmp::Ordering::Equal => return mid,
+            std::cmp::Ordering::Greater => {
+                upper_bound = mid;
+            }
+            std::cmp::Ordering::Less => {
+                lower_bound = mid;
+            }
+        }
+    }
+    lower_bound
+}
+
+pub fn population(res: OneYearResources, p: &crate::Parameters) -> f64 {
+    lazy_static::lazy_static! {
+        static ref LAST_VAL: dashmap::DashMap<usize, f64> = dashmap::DashMap::new();
+    }
+    let round_down_res = res.c.floor() as usize;
+    match LAST_VAL.entry(round_down_res) {
+        dashmap::mapref::entry::Entry::Occupied(kv) => *kv.get(),
+        dashmap::mapref::entry::Entry::Vacant(kv) => {
+            let pop = find_population_size(res, p);
+            kv.insert(pop);
+            pop
+        }
+    }
+}
+
+pub fn effort(
+    target_harvest: f64,
+    res: OneYearResources,
+    p: &crate::Parameters,
+) -> OneYearResources {
+    let t = target_harvest;
+    OneYearResources {
+        c: t + t.powf(p.cooperation_gain) / res.c.powf(0.5) * p.resource_density,
+    }
+}
+
+use std::num::ParseFloatError;
+use std::str::FromStr;
+impl FromStr for OneYearResources {
+    type Err = ParseFloatError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(OneYearResources {
+            c: f64::from_str(s)?,
+        })
+    }
+}
 
 use std::collections::HashMap;
 
@@ -40,8 +224,8 @@ pub fn load_density_tif() -> Option<(Vec<u16>, u32)> {
 pub const ATTESTED_ECOREGIONS: usize = 303;
 
 #[allow(clippy::excessive_precision, clippy::unreadable_literal)]
-pub fn patch_from_ecoregions(ecoregion: i64, area_in_100_km2: f32) -> KCal {
-    let logpopdensity: HashMap<_, KCal> = vec![
+pub fn patch_from_ecoregions(ecoregion: i64, area_in_100_km2: f64) -> f64 {
+    let logpopdensity: HashMap<_, f64> = vec![
         (2, 4.0974917821114),       // Admiralty Islands lowland rain forests
         (3, 2.13331596527082),      // Aegean and Western Turkey sclerophyllous and mixed forests
         (4, 1.30248547521061),      // Afghan Mountains semi-desert
@@ -846,19 +1030,17 @@ pub fn patch_from_ecoregions(ecoregion: i64, area_in_100_km2: f32) -> KCal {
 
 #[derive(Clone, Copy)]
 pub struct Ecovector {
-    pub entries: [f32; ATTESTED_ECOREGIONS],
-    pub minimum: f32,
+    pub entries: [f64; ATTESTED_ECOREGIONS],
+    pub minimum: f64,
 }
 
-use std::ops::{Index, Mul};
-
-impl Mul<f32> for Ecovector {
+impl Mul<f64> for Ecovector {
     type Output = Self;
 
-    fn mul(self, rhs: f32) -> Self::Output {
+    fn mul(self, rhs: f64) -> Self::Output {
         let mut result = [0.; ATTESTED_ECOREGIONS];
         for (i, item) in self.entries.iter().enumerate() {
-            result[i] = f32::max(self.minimum, item * rhs); //TODO: Move this part of the logic elsewhere
+            result[i] = f64::max(self.minimum, item * rhs); //TODO: Move this part of the logic elsewhere
         }
         Ecovector {
             entries: result,
@@ -868,9 +1050,9 @@ impl Mul<f32> for Ecovector {
 }
 
 impl Index<usize> for Ecovector {
-    type Output = f32;
+    type Output = f64;
 
-    fn index(&self, index: usize) -> &f32 {
+    fn index(&self, index: usize) -> &f64 {
         &self.entries[index]
     }
 }
@@ -884,8 +1066,8 @@ impl Default for Ecovector {
     }
 }
 
-impl From<f32> for Ecovector {
-    fn from(min: f32) -> Self {
+impl From<f64> for Ecovector {
+    fn from(min: f64) -> Self {
         Ecovector {
             entries: [min; ATTESTED_ECOREGIONS],
             minimum: min,

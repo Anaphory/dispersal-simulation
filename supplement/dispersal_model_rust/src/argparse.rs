@@ -1,6 +1,7 @@
-use crate::{HalfYears, KCal, Parameters};
+use crate::{Seasons, Parameters};
+use crate::ecology::OneYearResources;
 
-pub fn parse_args(p: &mut Parameters, max_t: &mut HalfYears, resource_scale: &mut KCal) {
+pub fn parse_args(p: &mut Parameters, max_t: &mut Seasons, resource_scale: &mut OneYearResources) {
     let mut parser = argparse::ArgumentParser::new();
     parser.set_description("Run a dispersal simulation");
     // TODO: Attach an ArgumentParser to the parameters object, so parameters can be set from the CLI.

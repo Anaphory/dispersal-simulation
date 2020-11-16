@@ -43,7 +43,7 @@ try:
             q = numpy.array(population).T
             pop.append(q[2].sum())
             q[2] /= 4  # Scale population to pixels
-            plt.scatter(*q[:2], q[2], c='k', alpha=0.8, linewidths=0.0)
+            plt.scatter(*q[:2], q[2], c=colors, alpha=0.8, linewidths=0.0)
             plt.xlim(*args.xlim)
             plt.ylim(*args.ylim)
             plt.gcf().set_size_inches((12, 16))

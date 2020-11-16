@@ -31,19 +31,19 @@ data and interpretations of past ecoregions to produce results that can be
 compared to that history.
 
  */
+
 // TODO: Dear Rustacean, I know that my use of documentation comments is
 // hazardous, because they land in the generated documentation in a different
-// order, or attached to things that are only accidentally coming afterwards.
+// order, or sometimes attached to things that are only accidentally coming afterwards.
 
 // Load useful modules
 
 use dashmap::DashMap;
 use rand::prelude::*;
 use rand_distr::StandardNormal;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 
 use rayon::prelude::*;
-use std::sync::{Arc, Mutex};
 
 pub mod argparse;
 mod debug;
@@ -61,16 +61,15 @@ half a year. Some of the underlying data is using seconds as base unit and needs
 to be translated.
 
  */
-pub type HalfYears = u32;
-// const SECONDS_PER_TIME_STEP: f64 = 365.24219 * 0.5 * 24. * 60. * 60.;
+pub type Seasons = u32;
+const SEASON_LENGTH_YEARS: f64 = 0.5;
+const SECONDS_PER_YEAR: f64 = 365.24219 * 24. * 60. * 60.;
 
 /**
-Whereever possible, resources are measured in kcal (in SI units: 1 kcal = 4.184
-kJ) TODO: This is not the case any more, I have switched to population size as
-the main unit of measurement.
-
+Whereever possible, resources are measured in terms of the resources one adult
+consumes in a year, abbreviated OYR.
  */
-pub type KCal = f32;
+use ecology::OneYearResources;
 
 /**
 ## 2.1 Grid and Patches
@@ -89,18 +88,17 @@ pub type NodeId = petgraph::graph::NodeIndex<usize>;
 /**
 Each node contains one or more ecoregions, according to the geographical
 distribution of ecoregions in the real world. For each ecoregion, the patch has
-a maximum and current availability of resources, measured in kcal available over
-the course of half a year. These numbers are estimated from population
-densities, adapting the estimation of population density per biome from
-[@tallavaara] to ecoregions [@dinerstein2017ecoregionbased] and so deriving
-population counts from ecoregion area in km².
+a maximum and current availability of resources, measured in OYR available over
+the course of one season. These numbers are estimated from population densities,
+adapting the estimation of population density per biome from [@tallavaara] to
+obtain a raster of population densities, which together with the shapes of the
+hexagons gives population counts per ecoregion area in km².
 
 In the current state of the model, the resource maximum is constant throughout
 the simulation, but future work might add seasonality (with every other time
 step corresponding to the more plentiful half of the year and the others to the
-scarcer half) or random variation (eg. estimated from the observed random
-variation of resources within that ecoregion). By nature, the simulation invites
-the extension to include paleoclimate data, such as recently published in
+scarcer half) or random variation. By nature, the simulation invites the
+extension to include paleoclimate data, such as recently published in
 [@beyer2020highresolution] but that only becomes relevant once it shows
 fundamentally reasonable dynamics.
 
@@ -110,8 +108,8 @@ https://www.nature.com/articles/s41597-020-0552-1
 pub struct Patch {
     /// For every local ecoregion, the tuple of resources currently accessible
     /// in this patch, and the maximum possible resources available in a time
-    /// step, both in kcal / season.
-    resources: HashMap<usize, (KCal, KCal)>,
+    /// step, both in OYR.
+    resources: HashMap<usize, (OneYearResources, OneYearResources)>,
 }
 
 /**
@@ -122,7 +120,6 @@ migrate between nodes and form links to other families in the context of
 cooperation to extract resources.
 
  */
-#[derive(Clone)]
 pub struct Family {
     /// The agent's history of decendence, also serving as unique ID.
     pub descendence: String,
@@ -134,34 +131,30 @@ pub struct Family {
     pub culture: Culture,
     /// The current location of the agent.
     pub location: NodeId,
-    /// The previous locations of the agent. This is useful for some bits of
-    /// analysis, but agents are also guaranteed to have knowledge about their
-    /// recent locations, while knowlede beyond their own history depends on
-    /// random factors. For their historical locations, the family also knows
-    /// the payoff they gained there, so we keep these two bits of information
-    /// together in this place.
-    pub memory: HashMap<NodeId, KCal>,
-    /// The amount of stored resources, in kcal, the family has access to
+    /// The amount of stored resources, in OYR, the family has access to
     /// without going foraging.
-    pub stored_resources: KCal,
+    pub stored_resources: OneYearResources,
     /// Adaptation to local ecoregions is represented as a vector with values
     /// between 0.5 (completely unknown) and 1.0 (perfectly familiar) for any
     /// ecoregion the family might encounter.
     pub adaptation: ecology::Ecovector,
     /// The number of seasons to wait until the next child (reset to 2 when
     /// starvation happens)
-    pub seasons_till_next_child: HalfYears,
+    pub seasons_till_next_child: Seasons,
 
     /// For bookkeeping purposes (eg. generating descendant's ‘descendence’
     /// values), keep track of the number of offspring families this family has
     /// spawned so far.
     pub number_offspring: u16,
+    /// The previous locations of the agent. This is useful for some bits of
+    /// analysis.
+    pub history: Vec<NodeId>,
     /// A bookkeeping quantity. Instead of mutation happening in each time step
     /// with a tiny probability, the same distribution of times between
     /// mutations is generated by drawing a number of season from a geometric
     /// distribution and counting it down by one each time step, which is useful
     /// because random number generation is computationally expensive.
-    pub seasons_till_next_mutation: Option<HalfYears>,
+    pub seasons_till_next_mutation: Option<Seasons>,
 }
 
 impl PartialEq for Family {
@@ -175,21 +168,21 @@ impl Default for Family {
         Family {
             descendence: String::from("A"),
             location: petgraph::graph::NodeIndex::new(0),
-            memory: std::collections::HashMap::new(),
+            history: vec![],
             seasons_till_next_child: 4,
             culture: Culture::from(0b000_000_000_000_000),
             effective_size: 5,
             number_offspring: 0,
             seasons_till_next_mutation: None,
-            stored_resources: 0.0,
-            adaptation: ecology::Ecovector::from(0.95),
+            stored_resources: OneYearResources::from(0.0),
+            adaptation: ecology::Ecovector::from(0.5),
         }
     }
 }
 
 /**
-Families in the same location with compatible cultures can cooperate to improve
-their success at extracting resources. (Following XXX, cooperation could also
+Families in the same location with compatible cultures can cooperate to decrease
+their cost for extracting resources. (Following XXX, cooperation could also
 mean sharing resources between different families. To simplify the model, this
 implementation does not contain that effect.) The cooperative groups formed by
 cooperating families are higher-level agents created ad-hoc in each time step.
@@ -206,10 +199,10 @@ Every family has a culture. These are very abstract and vastly simplified, due
 to the lack of quantitative data on cultural evolution in a framework comparable
 to the one used for this study. Based on the need to have a data structure that
 supports random drift, a low but positive chance of back-mutation, and a large
-number of equally similar cultures, we describe culture using a binary vector.
-Computers make natural use of the binary representation integer numbers, so a
-binary vector is equivalent to an unsigned integer of sufficient size, which is
-faster to use in computations and more efficient to store.
+number of equally (dis-)similar cultures, we describe culture using a binary
+vector. Computers make natural use of the binary representation integer numbers,
+so a binary vector is equivalent to an unsigned integer of sufficient size,
+which is faster to use in computations and more efficient to store.
 
  */
 #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Clone, Copy)]
@@ -243,10 +236,11 @@ impl From<u64> for Culture {
 The associations between nodes and patches and between nodes and the families
 located there (stored in the Family's `location`) are the core of the model
 state. The state also tracks the time, measured in time steps corresponding to
-half a year each, since the start of the simulation, and TODO stores a copy of
+one season each, since the start of the simulation, and stores a copy of
 the model parameters.
 
  */
+#[derive(Debug)]
 pub struct State {
     /// The patches of the model, indexed by node ID in a graph. This set is
     /// fixed, although the properties of the patches may change with time.
@@ -255,7 +249,9 @@ pub struct State {
     /// changes over time as new families are added and old families die out.
     families: Vec<Family>,
     /// The current time step, in half years since start of the simulation.
-    t: HalfYears,
+    t: Seasons,
+    /// The parameters of the model
+    p: Parameters,
 }
 
 /**
@@ -279,103 +275,98 @@ The structure of a single time step consist of two parts, as follows.
 fn step(
     families: &mut Vec<Family>,
     patches: &mut DashMap<NodeId, Patch>,
-    knowledge: DashMap<NodeId, Knowledge>,
     p: &Parameters,
-    t: HalfYears,
-) -> (HashMap<NodeId, Vec<Family>>, DashMap<NodeId, Knowledge>) {
-    let mut families_by_location = step_part_1(families, patches, knowledge, p);
-    let new_knowledge = step_part_2(&mut families_by_location, patches, p, t);
-    (families_by_location, new_knowledge)
+    t: Seasons,
+    o: &observation::ObservationSettings,
+) {
+    step_part_1(families, patches, p);
+    step_part_2(families, patches, p, o, t);
 }
 
-/**
-The first part focuses on the individual families, which shrink, grow, die,
-split, and move. It constructs the mapping of families at the end of the season,
-grouped by their location after potential moves. Because the movement of a
-family depends on the distribution of the families at he start of the season,
-it can happen entirely in parallel.
-
- */
-fn step_part_1(
+fn procreate_and_migrate(
     families: &mut Vec<Family>,
-    patches: &mut DashMap<NodeId, Patch>,
-    knowledge: DashMap<NodeId, Knowledge>,
     p: &Parameters,
-) -> HashMap<NodeId, Vec<Family>> {
-    let mut families_by_location: HashMap<NodeId, Vec<Family>> = HashMap::new();
-    let wrapper = Arc::new(Mutex::new(&mut families_by_location));
-
+    patches: &mut DashMap<NodeId, Patch>,
+    cc: &DashMap<NodeId, usize>,
+) -> Vec<Family> {
     families
-        .into_par_iter()
+        .par_iter_mut()
         .filter_map(|mut family| {
-            if submodels::family_lifecycle::use_resources_and_maybe_shrink(
-                &mut family.effective_size,
-                &mut family.stored_resources,
-                p,
-            ) {
-                family.seasons_till_next_child = std::cmp::max(family.seasons_till_next_child, 2)
-            }
+            let nearby = sensing::nearby_locations(family.location, &family.history, p);
 
-            submodels::family_lifecycle::maybe_grow(&mut family);
-
-            if submodels::family_lifecycle::is_moribund(&family) {
-                None
-            } else {
-                Some(family)
-            }
-        })
-        .map(|mut family| {
-            let nearby = sensing::nearby_locations(family.location, &family.memory, p);
-
-            match submodels::family_lifecycle::maybe_procreate(&mut family) {
-                None => {}
+            let child = match submodels::family_lifecycle::maybe_procreate(&mut family) {
+                None => None,
                 // In terms of scheduling a new family can (and if possible
                 // should) move immediately when created. This behaviour is
                 // taken from del Castillo (2013). Also, a descendant family
                 // will move directly before their progenitor.
-                Some(descendant) => {
+                Some(mut descendant) => {
                     let d = adaptation::decide_on_moving(
                         &descendant,
                         nearby.iter().filter_map(|(i, d)| {
                             if *i == family.location {
                                 None
                             } else {
-                                Some((*i, *d, knowledge.get(i)))
+                                Some((*i, *d))
                             }
                         }),
                         patches,
                         true,
                         p,
+                        cc,
                     );
-                    let destination = d.unwrap_or(family.location);
-
-                    wrapper
-                        .lock()
-                        .unwrap()
-                        .entry(destination)
-                        .or_insert_with(|| Vec::new())
-                        .push(descendant);
+                    descendant.location = d.unwrap_or(family.location);
+                    Some(descendant)
                 }
-            }
+            };
             let d = adaptation::decide_on_moving(
                 &family,
-                nearby.iter().map(|(i, d)| (*i, *d, knowledge.get(i))),
+                nearby.iter().map(|(i, d)| (*i, *d)),
                 patches,
                 false,
                 p,
+                cc,
             );
 
             // Update cultures_by_location
             let destination = d.unwrap_or(family.location);
-            wrapper
-                .lock()
-                .unwrap()
-                .entry(destination)
-                .or_insert_with(|| vec![])
-                .push(family.clone());
+            family.location = destination;
+
+            child
         })
-        .for_each(|_| ());
-    families_by_location
+        .collect()
+}
+
+/**
+The first part focuses on the individual families, which shrink, grow, die,
+split, and move. It constructs the mapping of families at the end of the season,
+grouped by their location after potential moves. Because the movement of a
+family depends on the distribution of the families at he start of the season and
+not at the time of movement, it can happen entirely in parallel.
+
+ */
+fn step_part_1(families: &mut Vec<Family>, patches: &mut DashMap<NodeId, Patch>, p: &Parameters) {
+    let cc: DashMap<NodeId, usize> = DashMap::new();
+    for f in families.iter() {
+        *cc.entry(f.location).or_insert(0) += f.effective_size;
+    }
+
+    families.par_iter_mut().for_each(|mut family| {
+        if submodels::family_lifecycle::use_resources_and_maybe_shrink(
+            &mut family.effective_size,
+            &mut family.stored_resources,
+            p,
+        ) {
+            family.seasons_till_next_child = std::cmp::max(family.seasons_till_next_child, 2)
+        }
+
+        submodels::family_lifecycle::maybe_grow(&mut family);
+    });
+
+    families.retain(|family| submodels::family_lifecycle::can_survive(&family));
+
+    let mut children = procreate_and_migrate(families, p, patches, &cc);
+    families.extend(children.drain(..));
 }
 
 /**
@@ -387,229 +378,57 @@ patches recover advance to the next season according to Submodule 7.6. This
 concludes a time step.
 
  */
-
-/**
-
-Limited exponential growth, with maximum res, with derivative 1 at
-total_effort=0, so in the completely empty state, the actual payout rises at
-about 2 individuals being supported per one individual working.
-
-```rust
-```
-*/
-pub fn harvest(res: KCal, total_effort: KCal) -> KCal {
-    if total_effort < res {
-        total_effort + total_effort * (res - total_effort) / res
-    } else {
-        res
-    }
-}
-
-/**
-
-This function models how much a family contributes to the group effort of
-harvesting a particular ecoregion. The family's contribution is given by its
-size, weighted with how well they know the ecoregion.
-
-As a side effect, because this function is the one that knows about the family's
-size, it also adds that size to a counter. This counter is used for the
-per-culture census. (The caller knows the culture of the family.)
-
-```rust
-
-let mut family= model::Family::default();
-family.effective_size = 8;
-let mut sum_effort = 0;
-let (target, contribution) = model::raw_family_contribution(&mut family, 0, &mut sum_effort);
-assert_eq!(sum_effort, 8);
-*target += sum_effort as model::KCal;
-assert_eq!(family.stored_resources, 8.0)
-```
- */
-pub fn raw_family_contribution<'a>(
-    family: &'a mut Family,
-    ecoregion: usize,
-    sum_effort: &mut usize,
-) -> (&'a mut KCal, KCal) {
-    *sum_effort += family.effective_size;
-    family.adaptation = family.adaptation * 0.95;
-    family.adaptation.entries[ecoregion] += 0.05;
-    let contribution = family.effective_size as f32 * family.adaptation[ecoregion];
-    (&mut family.stored_resources, contribution)
-}
-
-fn adjust_culture(
-    group: &mut collectives::Cooperative,
-    cultures: &mut BTreeSet<Culture>,
-    p: &Parameters,
-) -> Culture {
-    let target_culture = group.culture;
-    cultures.insert(target_culture);
-    for family in group.families.iter_mut() {
-        submodels::culture::mutate_culture(
-            &mut family.seasons_till_next_mutation,
-            &mut family.culture,
-            target_culture,
-            p.culture_dimensionality,
-            p.culture_mutation_rate,
-        );
-    }
-    target_culture
-}
-
-/**
-
-This function takes a cooperative – a group of cooperating families with a
-shared culture – and computes their effectivity at gathering resources from (a part, by ecoregion) of a patch.
-
-```rust
-
-let mut family = model::Family::default();
-family.effective_size = 4;
-let mut group = model::collectives::Cooperative {
-  culture: family.culture,
-  families: vec![&mut family]
-};
-let mut p = model::submodels::parameters::Parameters::default();
-p.cooperation_gain = 0.5;
-p.payoff_std = 0.0;
-let mut total_effort = 0.;
-model::scaled_group_contributions(&mut group, 0, &p, &mut total_effort);
-assert_eq!(total_effort, 8.0);
-```
- */
-pub fn scaled_group_contributions<'a>(
-    group: &'a mut collectives::Cooperative,
-    ecoregion: usize,
-    p: &Parameters,
-    total_effort: &mut KCal,
-) -> (Vec<(&'a mut KCal, KCal)>, usize, KCal) {
-    let mut sum_raw_effort = 0;
-    let families: Vec<(&mut f32, f32)> = group
-        .families
-        .iter_mut()
-        .map(|family| raw_family_contribution(family, ecoregion, &mut sum_raw_effort))
-        .collect();
-    let work_before_random_effects: KCal = families.iter().map(|(_, c)| c).sum();
-    let mut rng = rand::thread_rng();
-    let work_including_random_effects: f32 = interaction::effective_labor_through_cooperation(
-        work_before_random_effects
-            + (p.payoff_std
-                * rng.sample::<f32, _>(StandardNormal)
-                * work_before_random_effects.powf(0.5)),
-        p.cooperation_gain,
-    );
-    assert!(work_including_random_effects.is_normal());
-    *total_effort += work_including_random_effects;
-    (families, sum_raw_effort, work_including_random_effects)
-}
-
-fn exploit_patch<
-    'a,
-    P: core::ops::DerefMut<Target = Patch>,
-    R: core::ops::Deref<Target = Mutex<KCal>>,
->(
-    families: &mut Vec<Family>,
-    mut patch: P,
-    p: &Parameters,
-    cultures: &mut BTreeSet<Culture>,
-    cc: &mut HashMap<Culture, usize>,
-    np_wrapper: R,
-) -> Knowledge {
-    let mut groups = collectives::cooperatives(families.iter_mut().collect(), p);
-    let n_groups = groups.len() as KCal;
-
-    let unextracted = patch
-        .resources
-        .iter_mut()
-        .map(|(i, (res, res_max))| {
-            let mut total_effort = 0.0;
-            let actual_contributions: Vec<(_, usize, f32)> = groups
-                .iter_mut()
-                .map(|group| {
-                    let target_culture = adjust_culture(group, cultures, p);
-                    let c = scaled_group_contributions(group, *i, p, &mut total_effort);
-                    cc.entry(target_culture).or_insert(c.1);
-                    c
-                })
-                .collect();
-            let actual_payout = harvest(*res, total_effort);
-            // println!("Group effort: {:}→{:}→{:}→{:}",
-            // actual_contributions.iter().map(|(f, _, _)| f.iter().map(|(_, c)| c).sum::<f32>()).sum::<f32>(),
-            // total_effort,
-            // actual_contributions.iter().map(|(_, f, _)| f).sum::<f32>(),
-            // actual_payout);
-            let unextracted = *res - actual_payout;
-            *res -= actual_payout;
-            for (families, raw_contribution, actual_contribution) in actual_contributions {
-                let rc = raw_contribution as KCal;
-                let actual_extracted = actual_payout * actual_contribution / total_effort;
-                *np_wrapper.lock().unwrap() += actual_extracted / rc;
-                for (family_res, contribution) in families {
-                    let actual_returns = actual_extracted * contribution / rc;
-                    *family_res += actual_returns;
-                }
-            }
-            submodels::ecology::recover(res, *res_max, p.resource_recovery, p.accessible_resources);
-            unextracted
-        })
-        .sum();
-
-    // println!("Knowledgle: Payoff {:} with {:} left over for cultures {:?}", *np_wrapper.lock().unwrap(), unextracted, cultures);
-    Knowledge {
-        local_cultures: cultures.clone(),
-        normalized_payoff: *np_wrapper.lock().unwrap() / n_groups,
-        leftover: unextracted,
-    }
-}
-
 fn step_part_2(
-    families_by_location: &mut HashMap<NodeId, Vec<Family>>,
+    families: &mut Vec<Family>,
     patches: &mut DashMap<NodeId, Patch>,
     p: &Parameters,
-    t: HalfYears,
-) -> DashMap<NodeId, Knowledge> {
-    let mut knowledge = DashMap::new();
-
+    o: &observation::ObservationSettings,
+    t: Seasons,
+) {
     let patches_wrapper = patches;
-    let knowledge_wrapper = Arc::new(Mutex::new(&mut knowledge));
+    //let knowledge_wrapper = Arc::new(Mutex::new(&mut knowledge));
+
+    let families_by_location: DashMap<NodeId, Vec<&mut Family>> = DashMap::new();
+    families.par_iter_mut().for_each(|f| {
+        families_by_location
+            .entry(f.location)
+            .or_insert_with(Vec::default)
+            .push(f)
+    });
 
     let cultures_by_location: HashMap<NodeId, HashMap<Culture, usize>> = families_by_location
-        .par_iter_mut()
+        // TODO: Change when DashMap directly supports par_iter
+        .into_iter()
+        .par_bridge()
         .map(|(patch_id, families)| {
-            let sum_normalized_payoff: KCal = 0.0;
-            let np_wrapper = Arc::new(Mutex::new(sum_normalized_payoff));
-
-            let mut cultures: BTreeSet<Culture> = BTreeSet::new();
-
             let mut cc = HashMap::new();
 
-            assert!(!families.is_empty());
+            let mut groups = crate::collectives::cooperatives(families, p);
 
-            // This is overkill. We don't need a lock on the whole patch map, just
-            // on the current patch.
-            match patches_wrapper.get_mut(patch_id) {
+            for group in groups.iter_mut() {
+                let group_culture = submodels::ecology::adjust_culture(group, p);
+                cc.insert(
+                    group_culture,
+                    group.families.iter().map(|f| f.effective_size).sum(),
+                );
+            }
+
+            match patches_wrapper.get_mut(&patch_id) {
                 None => {}
                 Some(patch) => {
-                    knowledge_wrapper.lock().unwrap().insert(
-                        *patch_id,
-                        exploit_patch(families, patch, p, &mut cultures, &mut cc, np_wrapper),
-                    );
+                    submodels::ecology::exploit_patch(groups, patch, p);
                 }
             };
-            (*patch_id, cc)
+
+            (patch_id, cc)
         })
         .collect();
 
-    if t % 20 == 0 {
+    if (o.log_every > 0) && (t % o.log_every == 0) {
         println!("t: {:}", t);
-        let l_c = cultures_by_location.clone();
-        observation::print_gd_cd(l_c, p);
-        let l_c = cultures_by_location;
-        observation::print_population_by_location(l_c, p);
+        observation::print_gd_cd(&cultures_by_location, p);
+        observation::print_population_by_location(&cultures_by_location, p);
     }
-
-    knowledge
 }
 
 /**
@@ -820,111 +639,85 @@ success: A certain minimum of gathered resources is necessary to procreate, but
 extremely large amounts gathered soon do not increase the immediate rate of
 procreation and can in extreme cases (overexploitation of local resources) even
 be detrimental in the long run.
+ */
 
+/**
 Agents also adapt to local environment: TODO
 
-*/
-
-pub struct Knowledge {
-    local_cultures: BTreeSet<Culture>,
-    normalized_payoff: KCal,
-    leftover: KCal,
-}
-
-const WALKING_TIME_PER_SEASON: f64 = 365.24219 * 0.5 * NORM;
-const COST_PER_WALKING_TIME: f64 =
-    // Triple: opportunity cost from not foraging, and cost from doing likely
-    // heavy labor instead.
-    3. / WALKING_TIME_PER_SEASON;
-
+ */
 mod adaptation {
     use crate::*;
 
     pub fn decide_on_moving<'a, KD>(
         family: &'a Family,
-        kd: KD,
+        known_destinations: KD,
         patches: &'a DashMap<NodeId, Patch>,
         avoid_stay: bool,
         p: &Parameters,
+        population: &DashMap<NodeId, usize>,
     ) -> Option<NodeId>
     where
-        KD: Iterator<
-            Item = (
-                NodeId,
-                f64,
-                Option<dashmap::mapref::one::Ref<'a, NodeId, Knowledge>>,
-            ),
-        >,
+        KD: Iterator<Item = (NodeId, f64)>,
     {
         let threshold = if avoid_stay {
-            0.
+            OneYearResources::from(0.)
         } else {
-            p.time_step_energy_use * p.evidence_needed
-                + match family.memory.get(&family.location) {
-                    None => 0.0,
-                    Some(k) => *k,
-                }
+            p.season_resources * p.evidence_needed
         };
 
-        objectives::best_location(
-            kd.filter_map(|(i, d, k)| {
-                let movement_cost = (d * COST_PER_WALKING_TIME) as f32 * p.time_step_energy_use;
-                let mut tot_res = 0.;
-                let mut family_res = 0.;
-                let sizef = family.effective_size as f32;
-                for (j, (res, _)) in &patches.get(&i)?.value().resources {
-                    tot_res += res;
-                    family_res += res * family.adaptation[*j];
-                }
+        // Triple: opportunity cost from not foraging, and cost from doing likely
+        // heavy labor instead.
+        let COST_PER_WALKING_SECOND: OneYearResources =
+            OneYearResources::from(1.) / SECONDS_PER_YEAR * 3.;
+        // println!("{:?}", COST_PER_WALKING_SECOND);
 
-                if tot_res == 0. {
-                    return None;
-                }
+        let destination_expectation = known_destinations.filter_map(|(i, d)| {
+            let movement_cost = COST_PER_WALKING_SECOND * d;
+            let pop = match population.get(&i) {
+                None => 0,
+                Some(k) => *k,
+            } + (if family.location == i {
+                0
+            } else {
+                family.effective_size
+            });
+            let (now, later) = expected_quality(i, p, patches, family, movement_cost, pop);
+            if now < p.season_resources {
+                return None;
+            }
+            // println!("{:?}, {:?}", (i, expected_quality(i, p, patches, family, movement_cost, 1)), pop);
+            Some((i, later))
+        });
+        objectives::best_location(destination_expectation, threshold).or(Some(family.location))
+    }
 
-                let expected = family.memory.get(&i).unwrap_or(
-                    &(family_res / tot_res
-                        * match k {
-                            None => harvest(
-                                patches
-                                    .get(&i)?
-                                    .value()
-                                    .resources
-                                    .values()
-                                    .map(|(res, _)| res)
-                                    .sum(),
-                                interaction::effective_labor_through_cooperation(
-                                    sizef,
-                                    p.cooperation_gain,
-                                ),
-                            ),
-                            Some(k) => {
-                                let has_similar: bool = k.local_cultures.iter().any(|c| {
-                                    emergence::similar_culture(
-                                        *c,
-                                        family.culture,
-                                        p.cooperation_threshold,
-                                    )
-                                });
-                                if has_similar {
-                                    f32::min(k.normalized_payoff, k.leftover)
-                                } else {
-                                    harvest(
-                                        k.leftover,
-                                        interaction::effective_labor_through_cooperation(
-                                            sizef,
-                                            p.cooperation_gain,
-                                        ),
-                                    )
-                                }
-                            }
-                        }),
-                ) - movement_cost;
-                // println!("Moving to {:?} for {} out of {}", i, expected, tot_res);
-                Some((i, expected))
-            }),
-            threshold,
+    fn expected_quality(
+        i: NodeId,
+        p: &Parameters,
+        patches: &DashMap<NodeId, Patch>,
+        family: &Family,
+        movement_cost: OneYearResources,
+        population: usize,
+    ) -> (OneYearResources, OneYearResources) {
+        // Minimal knowledge about quality of a patch: Its current plus max resources.
+        let r = patches.get(&i).unwrap();
+        let q: Vec<_> = r.resources.values().collect();
+        let perhead = 1. / population as f64;
+        (
+            q.iter()
+                .map(|(res, _max_res)| res)
+                .sum::<OneYearResources>()
+                * perhead
+                - movement_cost,
+            q.iter()
+                .map(|(res, max_res)| *res + *max_res * p.resource_recovery)
+                .sum::<OneYearResources>()
+                * perhead,
         )
-        .or(Some(family.location))
+        // Goal: Instead, use popcap-lookup of (res + max_res) * g' / N',
+        // where g' is the size of the relevant local culture group after
+        // family joins them (i.e. just family in the extreme case), an N'
+        // is the current population plus the size of the family.
     }
 }
 
@@ -952,7 +745,6 @@ mod objectives {
     where
         Pair: Iterator<Item = (I, N)>,
         N: PartialOrd + Default + std::fmt::Debug,
-        I: Default + core::fmt::Debug,
     {
         let mut rng = rand::thread_rng();
 
@@ -964,11 +756,12 @@ mod objectives {
         let mut max_gain = N::default();
 
         for (location, expected_gain) in kd {
-            if expected_gain >= max_gain {
-                if expected_gain < threshold {
+            if expected_gain >= threshold {
+                if expected_gain < max_gain {
                     continue;
                 }
                 if expected_gain == max_gain {
+                    // println!("Considering {:?}: equal long-term options {:?}", location, expected_gain);
                     n_best_before += 1;
                     if rng.gen_range(0, n_best_before + 1) < n_best_before {
                         continue;
@@ -979,6 +772,8 @@ mod objectives {
                 // println!("So {:?}", location);
                 target = Some(location);
                 max_gain = expected_gain;
+            } else {
+                // println!("Rejected {:?}: bad short-term options ({:?} / {:?})", location, expected_gain, threshold);
             }
         }
         target
@@ -1054,7 +849,7 @@ mod sensing {
 
     pub fn nearby_locations(
         location: NodeId,
-        memory: &HashMap<NodeId, KCal>,
+        memory: &[NodeId],
         p: &Parameters,
     ) -> Vec<(NodeId, f64)> {
         let mut rng = rand::thread_rng();
@@ -1066,7 +861,9 @@ mod sensing {
         )
         .iter()
         .filter_map(|(n, v)| {
-            if memory.contains_key(&location) || rng.gen::<f64>() < 1. / (2. + v / NORM) {
+            if memory[..std::cmp::min(memory.len(), 16)].contains(&location)
+                || rng.gen::<f64>() < 1. / (2. + v / NORM)
+            {
                 Some((*n, *v))
             } else {
                 None
@@ -1112,7 +909,7 @@ mod interaction {
 
      */
 
-    pub fn effective_labor_through_cooperation(n_cooperators: f32, cooperation_gain: f32) -> f32 {
+    pub fn effective_labor_through_cooperation(n_cooperators: f64, cooperation_gain: f64) -> f64 {
         // 1. + (n_cooperators - 1.).powf(cooperation_gain) / 10.
         n_cooperators.powf(1. + cooperation_gain)
     }
@@ -1181,7 +978,7 @@ pub mod collectives {
                     break;
                 }
             }
-            let _size = family.effective_size as f32;
+            let _size = family.effective_size as f64;
             match joined_group {
                 None => {
                     let group = Cooperative {
@@ -1211,16 +1008,15 @@ pub mod collectives {
 > empirical study (‘virtual ecologist’)?
 
  */
-mod observation {
+pub mod observation {
     use crate::*;
-
     /**
     Do get an overview over the flow of human migration captured by the model,
     we collect the population count, i.e. the sum of all families' effective
     sizes, for each spot in each time step.
     */
     pub fn print_population_by_location(
-        cultures_by_location: HashMap<NodeId, HashMap<Culture, usize>>,
+        cultures_by_location: &HashMap<NodeId, HashMap<Culture, usize>>,
         p: &Parameters,
     ) {
         println!(
@@ -1235,6 +1031,10 @@ mod observation {
         );
     }
 
+    pub struct ObservationSettings {
+        pub log_every: Seasons,
+    }
+
     /**
     The major focus of the model, however, is on the cultural areas and
     networks. To asses the main outcome of the model, we collect the geographic
@@ -1243,12 +1043,12 @@ mod observation {
     this data only about once per generation, i.e. every 60 time steps.
     */
     pub fn print_gd_cd(
-        cultures_by_location: HashMap<NodeId, HashMap<Culture, usize>>,
+        cultures_by_location: &HashMap<NodeId, HashMap<Culture, usize>>,
         p: &Parameters,
     ) {
         let gd_cd: HashMap<i32, HashMap<u32, usize>> =
             emergence::cultural_distance_by_geographical_distance(
-                &cultures_by_location,
+                cultures_by_location,
                 5 * 5 * 2,
                 p,
             );
@@ -1278,7 +1078,10 @@ fn very_coarse_dist(x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
     (x1 - x2).abs() + (y1 - y2).abs()
 }
 
-pub fn initialization(p: &Parameters, scale: &KCal) -> Option<State> {
+pub fn initialization(p: Parameters, scale: &OneYearResources) -> Option<State> {
+    let SECONDS_PER_SEASON: f64 = SECONDS_PER_YEAR * SEASON_LENGTH_YEARS;
+    let SEASON_RESOURCES: OneYearResources = OneYearResources::from(SEASON_LENGTH_YEARS);
+
     let graph = &p.dispersal_graph;
 
     let mut m_start1: Option<NodeId> = None;
@@ -1323,7 +1126,7 @@ pub fn initialization(p: &Parameters, scale: &KCal) -> Option<State> {
         let ecoregions = &geo.3;
 
         print!(
-            "Resources at {:} ({:}, {:}) – ",
+            "Resources at {:} ({:}, {:}) –",
             next.index(),
             longitude,
             latitude
@@ -1334,21 +1137,25 @@ pub fn initialization(p: &Parameters, scale: &KCal) -> Option<State> {
             Some(Patch {
                 resources: ecoregions
                     .iter()
-                    .map(|(&i, &j)| {
+                    .map(|(&ecoregion, &popcap)| {
                         // This over-estimates the carrying capacity of
                         // transition regions: For two ecoregions, each with
                         // carrying capacity 16, and cooperation gain 1, this
                         // gives twice 4 resources, which when harvested give 8
                         // resources together, which under cooperation will lead
-                        // to a capacity of 8²=64>32=16+16. Transitory regions
+                        // to a capacity of 8²=64>32=16+16. &>Transitory regions
                         // should be small, important for the movement between
                         // the ecoregions, and are otherwise disadvantaged (see
                         // the adaptation formula), so this is hopefully not too
                         // bad.
-                        let res = (j * p.time_step_energy_use * scale)
-                            .powf(1. / (1. + p.cooperation_gain));
-                        print!("{:}: {:}", i, res);
-                        (i, (res, res))
+                        let q = ecology::population_to_resources(popcap, &p);
+                        let res = OneYearResources::from(q);
+                        let res_max = OneYearResources::from(q);
+                        print!(
+                            " Filling ecoregion {:} with popcap {:} with {:?}.",
+                            ecoregion, popcap, res
+                        );
+                        (ecoregion, (res, res_max))
                     })
                     .collect(),
             }),
@@ -1364,7 +1171,7 @@ pub fn initialization(p: &Parameters, scale: &KCal) -> Option<State> {
     let f1 = Family {
         descendence: String::from("A"),
         location: start1,
-        memory: HashMap::new(),
+        history: vec![],
         seasons_till_next_child: 4,
         culture: Culture {
             binary_representation: 0b000_000_000_000_000,
@@ -1373,13 +1180,13 @@ pub fn initialization(p: &Parameters, scale: &KCal) -> Option<State> {
         effective_size: 5,
         number_offspring: 0,
         seasons_till_next_mutation: None,
-        stored_resources: p.time_step_energy_use * 10.,
+        stored_resources: SEASON_RESOURCES * 10.,
         adaptation: ecology::Ecovector::from(p.minimum_adaptation),
     };
     let f2 = Family {
         descendence: String::from("F"),
         location: start2,
-        memory: HashMap::new(),
+        history: vec![],
         seasons_till_next_child: 4,
         culture: Culture {
             binary_representation: 0b111_111_111_111_111,
@@ -1388,7 +1195,7 @@ pub fn initialization(p: &Parameters, scale: &KCal) -> Option<State> {
         effective_size: 5,
         number_offspring: 0,
         seasons_till_next_mutation: None,
-        stored_resources: p.time_step_energy_use * 10.,
+        stored_resources: SEASON_RESOURCES * 10.,
         adaptation: ecology::Ecovector::from(p.minimum_adaptation),
     };
 
@@ -1402,6 +1209,7 @@ pub fn initialization(p: &Parameters, scale: &KCal) -> Option<State> {
             .collect(),
         families: vec![f1, f2],
         t: 0,
+        p: p,
     })
 }
 
@@ -1468,12 +1276,17 @@ pub mod submodels {
     }
 
     pub mod family_lifecycle {
-        use crate::{Family, KCal, Parameters};
+        use crate::{Family, OneYearResources, Parameters};
 
-        pub fn resources_at_season_end(resources: KCal, size: usize, p: &Parameters) -> KCal {
-            let mut resources_after: KCal = resources - (size as f32) * p.time_step_energy_use;
-            if resources_after > 0. {
-                resources_after *= 1. - p.storage_loss;
+        pub fn resources_at_season_end(
+            resources: OneYearResources,
+            size: usize,
+            p: &Parameters,
+        ) -> OneYearResources {
+            let mut resources_after: OneYearResources =
+                resources - p.season_resources * (size as f64);
+            if resources_after > OneYearResources::from(0.) {
+                resources_after = resources_after * (1. - p.storage_loss);
             }
             resources_after
         }
@@ -1487,14 +1300,14 @@ pub mod submodels {
                 Some(Family {
                     descendence: format!("{}:{:}", family.descendence, family.number_offspring),
                     location: family.location,
-                    memory: family.memory.clone(),
+                    history: family.history.clone(),
                     seasons_till_next_child: 12 * 2,
                     culture: family.culture,
 
                     effective_size: 2,
                     number_offspring: 0,
                     seasons_till_next_mutation: None,
-                    stored_resources: 0.,
+                    stored_resources: OneYearResources::from(0.),
                     adaptation: family.adaptation.clone(),
                 })
             }
@@ -1512,11 +1325,13 @@ pub mod submodels {
         }
         pub fn use_resources_and_maybe_shrink(
             size: &mut usize,
-            resources: &mut KCal,
+            resources: &mut OneYearResources,
             p: &Parameters,
         ) -> bool {
             let mut has_shrunk = false;
-            while resources_at_season_end(*resources, *size, p) < 0. && *size > 0 {
+            while resources_at_season_end(*resources, *size, p) < OneYearResources::from(0.)
+                && *size > 0
+            {
                 *size -= 1;
                 has_shrunk = true;
             }
@@ -1524,13 +1339,113 @@ pub mod submodels {
             has_shrunk
         }
 
-        pub fn is_moribund(family: &Family) -> bool {
-            family.effective_size < 2
+        pub fn can_survive(family: &Family) -> bool {
+            family.effective_size >= 2
         }
     }
 
     pub mod ecology {
-        use crate::KCal;
+        use crate::{OneYearResources, Parameters};
+
+        /**
+
+        This function models how much a family contributes to the group effort of
+        harvesting a particular ecoregion. The family's contribution is given by its
+        size, weighted with how well they know the ecoregion.
+
+        As a side effect, because this function is the one that knows about the family's
+        size, it also adds that size to a counter. This counter is used for the
+        per-culture census. (The caller knows the culture of the family.)
+
+        ```rust
+
+        let mut family= model::Family::default();
+        family.effective_size = 8;
+        let mut sum_effort = 0;
+        let (target, contribution) = model::raw_family_contribution(&mut family, 0, &mut sum_effort);
+        assert_eq!(sum_effort, 8);
+        *target += sum_effort as model::OneYearResources;
+        assert_eq!(family.stored_resources, 8.0)
+        ```
+         */
+        pub fn raw_family_contribution<'a>(
+            family: &'a mut crate::Family,
+            ecoregion: usize,
+            sum_effort: &mut f64,
+        ) -> (&'a mut OneYearResources, f64) {
+            family.adaptation = family.adaptation * 0.95;
+            family.adaptation.entries[ecoregion] += 0.05;
+            let contribution = family.effective_size as f64 * family.adaptation[ecoregion];
+            *sum_effort += contribution;
+            (&mut family.stored_resources, contribution)
+        }
+
+        pub fn adjust_culture(
+            group: &mut crate::collectives::Cooperative,
+            p: &Parameters,
+        ) -> crate::Culture {
+            let target_culture = group.culture;
+            for family in group.families.iter_mut() {
+                crate::submodels::culture::mutate_culture(
+                    &mut family.seasons_till_next_mutation,
+                    &mut family.culture,
+                    target_culture,
+                    p.culture_dimensionality,
+                    p.culture_mutation_rate,
+                );
+            }
+            target_culture
+        }
+
+        pub fn group_contribution<'a>(
+            group: &'a mut crate::collectives::Cooperative,
+            ecoregion: usize,
+            sum_effort: &mut f64,
+        ) -> Vec<(&'a mut OneYearResources, f64)> {
+            group
+                .families
+                .iter_mut()
+                .map(|family| raw_family_contribution(family, ecoregion, sum_effort))
+                .collect()
+        }
+
+        /**
+         */
+        pub fn exploit_patch<'a, P>(
+            mut groups: Vec<crate::collectives::Cooperative>,
+            mut patch: P,
+            p: &Parameters,
+        ) where
+            P: core::ops::DerefMut<Target = crate::Patch>,
+        {
+            for (ecoregion, (res, max_res)) in patch.resources.iter_mut() {
+                let mut total_groups_effort = 0.0;
+                groups
+                    .iter_mut()
+                    .map(|group| {
+                        let mut sum_effort = 0.0;
+                        let contributions: Vec<_> =
+                            group_contribution(group, *ecoregion, &mut sum_effort);
+                        total_groups_effort = total_groups_effort + sum_effort;
+                        (sum_effort, contributions)
+                    })
+                    .collect::<Vec<(f64, Vec<(&mut OneYearResources, f64)>)>>()
+                    .drain(..)
+                    .map(|(group_effort, mut contributions)| {
+                        let group_harvest = crate::ecology::population(
+                            *res * (group_effort / total_groups_effort),
+                            p,
+                        );
+                        let coefficient: f64 = f64::min(group_harvest / group_effort, 2.5);
+                        for (storage, contribution) in contributions.iter_mut() {
+                            **storage += p.season_resources * coefficient * *contribution;
+                        }
+                        *res -= crate::ecology::effort(coefficient * group_effort, *res, p);
+                    })
+                    .for_each(|()| ());
+                recover(res, *max_res, p.resource_recovery);
+            }
+        }
 
         /**
         Recover a patch, mutating its resources
@@ -1539,7 +1454,7 @@ pub mod submodels {
                 model) growth of resources in a patch up to a given maximum.
 
         The patch's `max_resouces` represents the maximum available for human
-                extraction. This is a proportion `accessible_resources` of the total
+                extraction. This is a proportion `maximum_resources_one_adult_can_harvest` of the total
                 primary production in that spot.
 
         For example, consider a patch with max_resources 2 kcal and current
@@ -1559,55 +1474,38 @@ pub mod submodels {
 
          */
         pub fn recover(
-            patch_resources: &mut KCal,
-            patch_max_resources: KCal,
-            resource_recovery: f32,
-            accessible_resources: f32,
+            patch_resources: &mut OneYearResources,
+            patch_max_resources: OneYearResources,
+            resource_recovery: f64,
         ) {
             if *patch_resources < patch_max_resources {
-                let inaccessible =
-                    patch_max_resources * (1. - accessible_resources) / accessible_resources;
-                let underlying_resources = *patch_resources + inaccessible;
-                *patch_resources += underlying_resources
-                    * resource_recovery
-                    * (1. - underlying_resources * accessible_resources / patch_max_resources);
-                // println!(
-                //     "Recovery of {} from {} towards {} ({}% of total)",
-                //     resource_recovery,
-                //     *patch_resources,
-                //     patch_max_resources,
-                //     accessible_resources * 100.
-                // );
-                if !patch_resources.is_normal() {
-                    println!(
-                        "The recovery of {} from {} towards {} ({}% of total) was not finite",
-                        resource_recovery,
-                        *patch_resources,
-                        patch_max_resources,
-                        accessible_resources * 100.
-                    );
-                }
+                *patch_resources = std::cmp::min(
+                    patch_max_resources,
+                    patch_max_resources * resource_recovery + *patch_resources,
+                )
             }
         }
     }
 
     pub mod parameters {
         use crate::movementgraph::MovementGraph;
-        use crate::KCal;
+        use crate::OneYearResources;
 
+        #[derive(Debug)]
         pub struct Parameters {
-            pub attention_probability: f32,
-            pub time_step_energy_use: KCal,
-            pub storage_loss: f32,
-            pub resource_recovery: f32,
+            pub attention_probability: f64,
+            pub storage_loss: f64,
+            pub resource_recovery: f64,
             pub culture_mutation_rate: f64,
             pub culture_dimensionality: u8,
             pub cooperation_threshold: u32,
-            pub cooperation_gain: f32,
-            pub accessible_resources: f32,
-            pub evidence_needed: f32,
-            pub payoff_std: f32,
-            pub minimum_adaptation: f32,
+            pub cooperation_gain: f64,
+            pub season_resources: OneYearResources,
+            pub maximum_resources_one_adult_can_harvest: OneYearResources,
+            pub evidence_needed: f64,
+            pub payoff_std: f64,
+            pub minimum_adaptation: f64,
+            pub resource_density: f64,
 
             pub dispersal_graph: MovementGraph,
         }
@@ -1616,41 +1514,30 @@ pub mod submodels {
             fn default() -> Parameters {
                 Parameters {
                     attention_probability: 0.1,
-                    time_step_energy_use: 1., // 2263. as KCal * 365.242_2 / 2.,
                     storage_loss: 0.33,
                     resource_recovery: 0.20,
                     culture_mutation_rate: 6e-3,
                     culture_dimensionality: 20,
                     cooperation_threshold: 6,
-                    cooperation_gain: 0.5,
-                    accessible_resources: 0.2,
+                    cooperation_gain: 0.9,
+                    season_resources: OneYearResources::from(0.5),
+                    maximum_resources_one_adult_can_harvest: OneYearResources::from(1.25),
                     evidence_needed: 0.3,
                     payoff_std: 0.1,
                     minimum_adaptation: 0.5,
+                    resource_density: 0.1,
 
-                    dispersal_graph: petgraph::graph::Graph::default(),
+                    dispersal_graph: MovementGraph::default(),
                 }
             }
         }
     }
 }
 
-pub fn run(mut s: State, p: Parameters, max_t: HalfYears) {
-    let mut knowledge = DashMap::new();
+pub fn run(mut s: State, max_t: Seasons, o: &observation::ObservationSettings) {
     loop {
-        let (families_by_location, k) = step(&mut s.families, &mut s.patches, knowledge, &p, s.t);
-        knowledge = k;
-        s.families = vec![];
-        for (location, families) in families_by_location {
-            for mut family in families {
-                family.memory.insert(
-                    family.location,
-                    family.stored_resources / family.effective_size as KCal,
-                );
-                family.location = location;
-                s.families.push(family);
-            }
-        }
+        step(&mut s.families, &mut s.patches, &s.p, s.t, o);
+
         if s.families.is_empty() {
             println!("Died out");
             break;

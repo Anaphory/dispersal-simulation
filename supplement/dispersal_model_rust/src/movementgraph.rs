@@ -1,5 +1,5 @@
 use crate::hexgrid;
-use crate::KCal;
+use crate::ecology::OneYearResources;
 use petgraph::algo::Measure;
 use petgraph::visit::{EdgeRef, IntoEdges, VisitMap, Visitable};
 use serde::{Deserialize, Serialize};
@@ -8,7 +8,7 @@ use std::collections::hash_map::Entry::{Occupied, Vacant};
 use std::collections::{BinaryHeap, HashMap};
 use std::hash::Hash;
 
-pub type NodeData = (hexgrid::Index, f64, f64, HashMap<usize, KCal>);
+pub type NodeData = (hexgrid::Index, f64, f64, HashMap<usize, f64>);
 pub type MovementGraph = petgraph::graph::Graph<NodeData, f64, petgraph::Undirected, usize>;
 
 // From petgraph

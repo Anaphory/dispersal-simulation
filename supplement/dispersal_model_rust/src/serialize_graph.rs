@@ -105,7 +105,7 @@ fn read_graph_from_db(
                 Ok((
                     *(expand_attested.entry(ecoregion).or_insert(len)),
                     // Population density is in individuals per 100km², area is in m²
-                    (popdensity * eco.get::<_, f64>(1)? / 100_000_000.) as f32,
+                    popdensity * eco.get::<_, f64>(1)? / 100_000_000.,
                 ))
             })
             .unwrap()
