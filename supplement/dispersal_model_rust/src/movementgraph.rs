@@ -1,8 +1,6 @@
 use crate::hexgrid;
-use crate::ecology::OneYearResources;
 use petgraph::algo::Measure;
 use petgraph::visit::{EdgeRef, IntoEdges, VisitMap, Visitable};
-use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::hash_map::Entry::{Occupied, Vacant};
 use std::collections::{BinaryHeap, HashMap};

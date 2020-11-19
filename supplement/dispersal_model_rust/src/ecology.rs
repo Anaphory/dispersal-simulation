@@ -108,7 +108,7 @@ impl std::fmt::Debug for OneYearResources {
 }
 
 pub fn population_to_resources(population: f64, p: &crate::Parameters) -> OneYearResources {
-    let mut lower_bound = OneYearResources::from(population);
+    let mut lower_bound = p.season_resources * population;
     let mut upper_bound = effort(population, OneYearResources::from(1.0), p);
     while upper_bound.c > lower_bound.c + 1e-8 {
         let mid = (lower_bound + upper_bound) * 0.5;
@@ -167,9 +167,7 @@ pub fn effort(
     p: &crate::Parameters,
 ) -> OneYearResources {
     let t = target_harvest;
-    OneYearResources {
-        c: t + t.powf(p.cooperation_gain) / res.c.powf(0.5) * p.resource_density,
-    }
+    p.season_resources * (t + t.powf(p.cooperation_gain) / res.c.powf(0.5) * p.resource_density)
 }
 
 use std::num::ParseFloatError;

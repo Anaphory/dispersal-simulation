@@ -40,7 +40,6 @@ compared to that history.
 
 use dashmap::DashMap;
 use rand::prelude::*;
-use rand_distr::StandardNormal;
 use std::collections::HashMap;
 
 use rayon::prelude::*;
@@ -385,9 +384,6 @@ fn step_part_2(
     o: &observation::ObservationSettings,
     t: Seasons,
 ) {
-    let patches_wrapper = patches;
-    //let knowledge_wrapper = Arc::new(Mutex::new(&mut knowledge));
-
     let families_by_location: DashMap<NodeId, Vec<&mut Family>> = DashMap::new();
     families.par_iter_mut().for_each(|f| {
         families_by_location
@@ -413,9 +409,12 @@ fn step_part_2(
                 );
             }
 
-            match patches_wrapper.get_mut(&patch_id) {
+            match patches.get_mut(&patch_id) {
                 None => {}
                 Some(patch) => {
+                    if (o.log_patch_resources > 0) && (t % o.log_patch_resources == 0) {
+                        println!("Patch at {:?}: {:?}", patch_id, patch.resources)
+                    }
                     submodels::ecology::exploit_patch(groups, patch, p);
                 }
             };
@@ -659,20 +658,19 @@ mod adaptation {
     where
         KD: Iterator<Item = (NodeId, f64)>,
     {
-        let threshold = if avoid_stay {
-            OneYearResources::from(0.)
-        } else {
-            p.season_resources * p.evidence_needed
-        };
+        let threshold = p.season_resources;
+        let evidence = p.season_resources * p.evidence_needed;
 
         // Triple: opportunity cost from not foraging, and cost from doing likely
         // heavy labor instead.
-        let COST_PER_WALKING_SECOND: OneYearResources =
+        let cost_per_walking_second: OneYearResources =
             OneYearResources::from(1.) / SECONDS_PER_YEAR * 3.;
-        // println!("{:?}", COST_PER_WALKING_SECOND);
 
         let destination_expectation = known_destinations.filter_map(|(i, d)| {
-            let movement_cost = COST_PER_WALKING_SECOND * d;
+            if family.location == i && avoid_stay {
+                return None;
+            }
+            let movement_cost = cost_per_walking_second * d * family.effective_size as f64;
             let pop = match population.get(&i) {
                 None => 0,
                 Some(k) => *k,
@@ -681,21 +679,21 @@ mod adaptation {
             } else {
                 family.effective_size
             });
-            let (now, later) = expected_quality(i, p, patches, family, movement_cost, pop);
+            let (now, later) = expected_quality(i, p, patches, movement_cost, pop);
             if now < p.season_resources {
                 return None;
             }
             // println!("{:?}, {:?}", (i, expected_quality(i, p, patches, family, movement_cost, 1)), pop);
-            Some((i, later))
+            Some((i, (now, later)))
         });
-        objectives::best_location(destination_expectation, threshold).or(Some(family.location))
+        objectives::best_location(destination_expectation, threshold, evidence)
+            .or(Some(family.location))
     }
 
     fn expected_quality(
         i: NodeId,
         p: &Parameters,
         patches: &DashMap<NodeId, Patch>,
-        family: &Family,
         movement_cost: OneYearResources,
         population: usize,
     ) -> (OneYearResources, OneYearResources) {
@@ -703,7 +701,7 @@ mod adaptation {
         let r = patches.get(&i).unwrap();
         let q: Vec<_> = r.resources.values().collect();
         let perhead = 1. / population as f64;
-        (
+        let (now, later) = (
             q.iter()
                 .map(|(res, _max_res)| res)
                 .sum::<OneYearResources>()
@@ -713,11 +711,16 @@ mod adaptation {
                 .map(|(res, max_res)| *res + *max_res * p.resource_recovery)
                 .sum::<OneYearResources>()
                 * perhead,
-        )
-        // Goal: Instead, use popcap-lookup of (res + max_res) * g' / N',
-        // where g' is the size of the relevant local culture group after
-        // family joins them (i.e. just family in the extreme case), an N'
-        // is the current population plus the size of the family.
+        );
+        println!(
+            "Option: {:?}, with current resources {:?} (expected: {:?}, for {:}) at {:?}",
+            i,
+            (now + movement_cost) / perhead,
+            now,
+            population,
+            movement_cost
+        );
+        (now, later)
     }
 }
 
@@ -741,10 +744,13 @@ mod objectives {
     */
     // That is, this function omputes the argmax of
     // `expected_resources_from_patch`, drawing at random between equal options.
-    pub fn best_location<Pair, N, I>(kd: Pair, threshold: N) -> Option<I>
+    pub fn best_location<Pair, I>(
+        kd: Pair,
+        short_term_minimum: OneYearResources,
+        long_term_precision: OneYearResources,
+    ) -> Option<I>
     where
-        Pair: Iterator<Item = (I, N)>,
-        N: PartialOrd + Default + std::fmt::Debug,
+        Pair: Iterator<Item = (I, (OneYearResources, OneYearResources))>,
     {
         let mut rng = rand::thread_rng();
 
@@ -752,28 +758,44 @@ mod objectives {
         // several equally-optimal options. It counts the number of best options
         // encountered so far.
         let mut n_best_before = 0;
+        let mut n_best_short_before = 0;
         let mut target: Option<I> = None;
-        let mut max_gain = N::default();
+        let mut max_gain = OneYearResources::from(0.0);
+        let mut max_short_term_gain = OneYearResources::from(0.0);
 
-        for (location, expected_gain) in kd {
-            if expected_gain >= threshold {
-                if expected_gain < max_gain {
-                    continue;
-                }
-                if expected_gain == max_gain {
-                    // println!("Considering {:?}: equal long-term options {:?}", location, expected_gain);
+        for (location, (expected_shortterm_gain, expected_longterm_gain)) in kd {
+            if expected_shortterm_gain >= short_term_minimum {
+                if expected_longterm_gain > max_gain + long_term_precision {
+                    target = Some(location);
+                    n_best_before = 0;
+                } else if expected_longterm_gain >= max_gain {
                     n_best_before += 1;
                     if rng.gen_range(0, n_best_before + 1) < n_best_before {
                         continue;
+                    } else {
+                        target = Some(location);
                     }
-                } else {
-                    n_best_before = 0
                 }
-                // println!("So {:?}", location);
-                target = Some(location);
-                max_gain = expected_gain;
+                max_gain = expected_longterm_gain;
             } else {
-                // println!("Rejected {:?}: bad short-term options ({:?} / {:?})", location, expected_gain, threshold);
+                match target {
+                    None => {
+                        continue;
+                    }
+                    _ => (),
+                }
+                if expected_shortterm_gain > max_short_term_gain {
+                    target = Some(location);
+                    n_best_short_before = 0;
+                } else if expected_shortterm_gain == max_short_term_gain {
+                    n_best_short_before += 1;
+                    if rng.gen_range(0, n_best_short_before + 1) < n_best_before {
+                        continue;
+                    } else {
+                        target = Some(location);
+                    }
+                }
+                max_short_term_gain = expected_shortterm_gain;
             }
         }
         target
@@ -908,11 +930,7 @@ mod interaction {
         Crema's results change for that different formula.
 
      */
-
-    pub fn effective_labor_through_cooperation(n_cooperators: f64, cooperation_gain: f64) -> f64 {
-        // 1. + (n_cooperators - 1.).powf(cooperation_gain) / 10.
-        n_cooperators.powf(1. + cooperation_gain)
-    }
+    use crate::ecology::effort;
 }
 
 /**
@@ -1033,6 +1051,7 @@ pub mod observation {
 
     pub struct ObservationSettings {
         pub log_every: Seasons,
+        pub log_patch_resources: Seasons,
     }
 
     /**
@@ -1078,9 +1097,8 @@ fn very_coarse_dist(x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
     (x1 - x2).abs() + (y1 - y2).abs()
 }
 
-pub fn initialization(p: Parameters, scale: &OneYearResources) -> Option<State> {
-    let SECONDS_PER_SEASON: f64 = SECONDS_PER_YEAR * SEASON_LENGTH_YEARS;
-    let SEASON_RESOURCES: OneYearResources = OneYearResources::from(SEASON_LENGTH_YEARS);
+pub fn initialization(p: Parameters, scale: f64) -> Option<State> {
+    let season_resources: OneYearResources = OneYearResources::from(SEASON_LENGTH_YEARS);
 
     let graph = &p.dispersal_graph;
 
@@ -1148,7 +1166,8 @@ pub fn initialization(p: Parameters, scale: &OneYearResources) -> Option<State> 
                         // the ecoregions, and are otherwise disadvantaged (see
                         // the adaptation formula), so this is hopefully not too
                         // bad.
-                        let q = ecology::population_to_resources(popcap, &p);
+                        let q = ecology::population_to_resources(popcap * scale, &p)
+                            / p.resource_recovery;
                         let res = OneYearResources::from(q);
                         let res_max = OneYearResources::from(q);
                         print!(
@@ -1180,7 +1199,7 @@ pub fn initialization(p: Parameters, scale: &OneYearResources) -> Option<State> 
         effective_size: 5,
         number_offspring: 0,
         seasons_till_next_mutation: None,
-        stored_resources: SEASON_RESOURCES * 10.,
+        stored_resources: season_resources * 10.,
         adaptation: ecology::Ecovector::from(p.minimum_adaptation),
     };
     let f2 = Family {
@@ -1195,7 +1214,7 @@ pub fn initialization(p: Parameters, scale: &OneYearResources) -> Option<State> 
         effective_size: 5,
         number_offspring: 0,
         seasons_till_next_mutation: None,
-        stored_resources: SEASON_RESOURCES * 10.,
+        stored_resources: season_resources * 10.,
         adaptation: ecology::Ecovector::from(p.minimum_adaptation),
     };
 
@@ -1440,7 +1459,9 @@ pub mod submodels {
                         for (storage, contribution) in contributions.iter_mut() {
                             **storage += p.season_resources * coefficient * *contribution;
                         }
-                        *res -= crate::ecology::effort(coefficient * group_effort, *res, p);
+                        let effort = crate::ecology::effort(coefficient * group_effort, *res, p);
+                        println!("Harvest: {:?} (@ {:})", effort, coefficient);
+                        *res -= effort;
                     })
                     .for_each(|()| ());
                 recover(res, *max_res, p.resource_recovery);
@@ -1522,7 +1543,7 @@ pub mod submodels {
                     cooperation_gain: 0.9,
                     season_resources: OneYearResources::from(0.5),
                     maximum_resources_one_adult_can_harvest: OneYearResources::from(1.25),
-                    evidence_needed: 0.3,
+                    evidence_needed: 1.0,
                     payoff_std: 0.1,
                     minimum_adaptation: 0.5,
                     resource_density: 0.1,

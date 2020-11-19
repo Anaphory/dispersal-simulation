@@ -1,7 +1,10 @@
-use crate::{Seasons, Parameters};
-use crate::ecology::OneYearResources;
+use crate::{Parameters, Seasons};
 
-pub fn parse_args(p: &mut Parameters, max_t: &mut Seasons, resource_scale: &mut OneYearResources) {
+pub fn parse_args<'a>(
+    p: &'a mut Parameters,
+    max_t: &'a mut Seasons,
+    resource_scale: &'a mut f64,
+) -> argparse::ArgumentParser<'a> {
     let mut parser = argparse::ArgumentParser::new();
     parser.set_description("Run a dispersal simulation");
     // TODO: Attach an ArgumentParser to the parameters object, so parameters can be set from the CLI.
@@ -30,6 +33,21 @@ pub fn parse_args(p: &mut Parameters, max_t: &mut Seasons, resource_scale: &mut 
         argparse::Store,
         "threshold under which cooperation happens",
     );
+    parser.refer(&mut p.resource_density).add_option(
+        &["--resource-scarcity"],
+        argparse::Store,
+        "Density of resources in a unit patch",
+    );
+    parser.refer(&mut p.storage_loss).add_option(
+        &["--storage-loss"],
+        argparse::Store,
+        "Proportion of per-family stored resources getting lost per season",
+    );
+    parser.refer(&mut p.resource_recovery).add_option(
+        &["--resource-recovery"],
+        argparse::Store,
+        "Proportion of resources to recover every season",
+    );
     parser.refer(resource_scale).add_option(
         &["--resources-scale"],
         argparse::Store,
@@ -46,5 +64,5 @@ pub fn parse_args(p: &mut Parameters, max_t: &mut Seasons, resource_scale: &mut 
         "number of half years to simulate",
     );
     println!("Starting…");
-    parser.parse_args_or_exit();
+    parser
 }
