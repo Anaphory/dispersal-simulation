@@ -301,6 +301,7 @@ fn procreate_and_migrate(
                 cc,
             );
             // println!("Family {:} moved to {:}", family.descendence, destination);
+            family.history.push(family.location);
             family.location = destination;
             family.stored_resources -= cost;
 
