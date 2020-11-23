@@ -1452,20 +1452,20 @@ pub mod submodels {
             }
 
             for (ecoregion, (res, max_res)) in patch.resources.iter_mut() {
-                let mut total_groups_effort = 0.0;
+                let mut total_squared_groups_effort = 0.0;
                 groups
                     .iter_mut()
                     .map(|group| {
                         let mut sum_effort = 0.0;
                         let contributions: Vec<_> =
                             group_contribution(group, *ecoregion, &mut sum_effort);
-                        total_groups_effort = total_groups_effort + sum_effort;
+                        total_squared_groups_effort += sum_effort.powi(2);
                         (sum_effort, contributions)
                     })
                     .collect::<Vec<(f64, Vec<(&mut OneYearResources, f64)>)>>()
                     .drain(..)
                     .for_each(|(group_effort, mut contributions)| {
-                        let group_harvest = *res / total_groups_effort;
+                        let group_harvest = *res * group_effort.powi(2) / total_squared_groups_effort;
                         let coefficient = std::cmp::min(group_harvest, OneYearResources::from(2.5));
                         for (storage, contribution) in contributions.iter_mut() {
                             **storage +=  coefficient *p.season_length_in_years * *contribution;
@@ -1529,7 +1529,6 @@ pub mod submodels {
             pub culture_mutation_rate: f64,
             pub culture_dimensionality: u8,
             pub cooperation_threshold: u32,
-            pub cooperation_gain: f64,
             pub season_resources: OneYearResources,
             pub maximum_resources_one_adult_can_harvest: OneYearResources,
             pub evidence_needed: f64,
@@ -1549,7 +1548,6 @@ pub mod submodels {
                     culture_mutation_rate: 6e-3,
                     culture_dimensionality: 20,
                     cooperation_threshold: 6,
-                    cooperation_gain: 0.8,
                     season_resources: OneYearResources::from(0.5),
                     maximum_resources_one_adult_can_harvest: OneYearResources::from(1.25),
                     evidence_needed: 0.1,

@@ -55,11 +55,6 @@ pub fn parse_args<'a>(
         argparse::Store,
         "Scale resources by this factor",
     );
-    parser.refer(&mut p.cooperation_gain).add_option(
-        &["--cooperation-gain"],
-        argparse::Store,
-        "exponent in benefits from cooperation",
-    );
     parser.refer(log_every).add_option(
         &["--log-every"],
         argparse::Store,
