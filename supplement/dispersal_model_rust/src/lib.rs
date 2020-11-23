@@ -606,6 +606,7 @@ mod adaptation {
             if now < p.season_resources {
                 return None;
             }
+
             Some((i, (now, later, movement_cost)))
         });
         objectives::best_location(destination_expectation, threshold, evidence)
@@ -678,12 +679,12 @@ mod objectives {
         let mut max_gain = OneYearResources::from(0.0);
         let mut max_short_term_gain = OneYearResources::from(0.0);
 
-        for (location, (expected_shortterm_gain, expected_longterm_gain, travel_cost)) in kd {
+        for (location, (expected_shortterm_gain, expected_long_term_gain, travel_cost)) in kd {
             if expected_shortterm_gain >= short_term_minimum {
-                if expected_longterm_gain > max_gain + long_term_precision {
+                if expected_long_term_gain > max_gain + long_term_precision {
                     target = Some((location, travel_cost));
                     n_best_before = 0;
-                } else if expected_longterm_gain >= max_gain {
+                } else if expected_long_term_gain >= max_gain - long_term_precision * 0.5 {
                     n_best_before += 1;
                     if rng.gen_range(0, n_best_before + 1) < n_best_before {
                         continue;
@@ -691,7 +692,7 @@ mod objectives {
                         target = Some((location, travel_cost));
                     }
                 }
-                max_gain = expected_longterm_gain;
+                max_gain = expected_long_term_gain;
             } else {
                 match target {
                     None => {
@@ -1499,7 +1500,6 @@ pub mod submodels {
 
         #[derive(Debug)]
         pub struct Parameters {
-            pub attention_probability: f64,
             pub resource_recovery_per_season: f64,
             pub culture_mutation_rate: f64,
             pub culture_dimensionality: u8,
@@ -1517,7 +1517,6 @@ pub mod submodels {
         impl Default for Parameters {
             fn default() -> Parameters {
                 Parameters {
-                    attention_probability: 0.1,
                     resource_recovery_per_season: 0.20,
                     culture_mutation_rate: 6e-3,
                     culture_dimensionality: 20,

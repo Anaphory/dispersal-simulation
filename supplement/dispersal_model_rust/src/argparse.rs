@@ -9,12 +9,6 @@ pub fn parse_args<'a>(
 ) -> argparse::ArgumentParser<'a> {
     let mut parser = argparse::ArgumentParser::new();
     parser.set_description("Run a dispersal simulation");
-    // TODO: Attach an ArgumentParser to the parameters object, so parameters can be set from the CLI.
-    parser.refer(&mut p.attention_probability).add_option(
-        &["--attention-probability"],
-        argparse::Store,
-        "attention probability",
-    );
     parser.refer(&mut p.minimum_adaptation).add_option(
         &["--minimum-adaptation"],
         argparse::Store,
