@@ -1021,14 +1021,14 @@ pub fn patch_from_ecoregions(ecoregion: i64, area_in_100_km2: f64) -> f64 {
     .collect();
 
     match logpopdensity.get(&ecoregion) {
-        None => return 0.,
-        Some(ldensity) => return area_in_100_km2 * ldensity.exp(),
+        None => 0.,
+        Some(ldensity) => area_in_100_km2 * ldensity.exp(),
     }
 }
 
 #[derive(Clone, Copy)]
 pub struct Ecovector {
-    pub entries: [f64; ATTESTED_ECOREGIONS],
+    pub entries: [f64; ATTESTED_ECOREGIONS + 1],
     pub minimum: f64,
 }
 
@@ -1036,7 +1036,7 @@ impl Mul<f64> for Ecovector {
     type Output = Self;
 
     fn mul(self, rhs: f64) -> Self::Output {
-        let mut result = [0.; ATTESTED_ECOREGIONS];
+        let mut result = [0.; ATTESTED_ECOREGIONS + 1];
         for (i, item) in self.entries.iter().enumerate() {
             result[i] = f64::max(self.minimum, item * rhs); //TODO: Move this part of the logic elsewhere
         }
@@ -1058,7 +1058,7 @@ impl Index<usize> for Ecovector {
 impl Default for Ecovector {
     fn default() -> Self {
         Ecovector {
-            entries: [0.5; ATTESTED_ECOREGIONS],
+            entries: [0.5; ATTESTED_ECOREGIONS + 1],
             minimum: 0.5,
         }
     }
@@ -1067,7 +1067,7 @@ impl Default for Ecovector {
 impl From<f64> for Ecovector {
     fn from(min: f64) -> Self {
         Ecovector {
-            entries: [min; ATTESTED_ECOREGIONS],
+            entries: [min; ATTESTED_ECOREGIONS + 1],
             minimum: min,
         }
     }

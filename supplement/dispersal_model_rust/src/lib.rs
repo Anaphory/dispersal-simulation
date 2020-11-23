@@ -292,12 +292,23 @@ fn procreate_and_migrate(
         .filter_map(|mut family| {
             let nearby = sensing::nearby_locations(family.location, &family.history, p);
 
-            let child = match submodels::family_lifecycle::maybe_procreate(&mut family) {
+            let d = adaptation::decide_on_moving(
+                &family,
+                nearby.iter().map(|(i, d)| (*i, *d)),
+                patches,
+                false,
+                p,
+                cc,
+            );
+            let destination = d.unwrap_or(family.location);
+            // println!("Family {:} moved to {:}", family.descendence, destination);
+            family.location = destination;
+
+            match submodels::family_lifecycle::maybe_procreate(&mut family) {
                 None => None,
                 // In terms of scheduling a new family can (and if possible
                 // should) move immediately when created. This behaviour is
-                // taken from del Castillo (2013). Also, a descendant family
-                // will move directly before their progenitor.
+                // taken from del Castillo (2013).
                 Some(mut descendant) => {
                     let d = adaptation::decide_on_moving(
                         &descendant,
@@ -316,21 +327,7 @@ fn procreate_and_migrate(
                     descendant.location = d.unwrap_or(family.location);
                     Some(descendant)
                 }
-            };
-            let d = adaptation::decide_on_moving(
-                &family,
-                nearby.iter().map(|(i, d)| (*i, *d)),
-                patches,
-                false,
-                p,
-                cc,
-            );
-
-            // Update cultures_by_location
-            let destination = d.unwrap_or(family.location);
-            family.location = destination;
-
-            child
+            }
         })
         .collect()
 }
@@ -1301,12 +1298,7 @@ pub mod submodels {
             size: usize,
             p: &Parameters,
         ) -> OneYearResources {
-            let mut resources_after: OneYearResources =
-                resources - p.season_resources * (size as f64);
-            if resources_after > OneYearResources::from(0.) {
-                resources_after = resources_after * (1. - p.storage_loss);
-            }
-            resources_after
+            resources - p.season_resources * (size as f64)
         }
 
         pub fn maybe_procreate(family: &mut Family) -> Option<Family> {
@@ -1514,7 +1506,6 @@ pub mod submodels {
         #[derive(Debug)]
         pub struct Parameters {
             pub attention_probability: f64,
-            pub storage_loss: f64,
             pub resource_recovery_per_season: f64,
             pub culture_mutation_rate: f64,
             pub culture_dimensionality: u8,
@@ -1535,15 +1526,14 @@ pub mod submodels {
             fn default() -> Parameters {
                 Parameters {
                     attention_probability: 0.1,
-                    storage_loss: 0.33,
                     resource_recovery_per_season: 0.20,
                     culture_mutation_rate: 6e-3,
                     culture_dimensionality: 20,
                     cooperation_threshold: 6,
-                    cooperation_gain: 0.9,
+                    cooperation_gain: 0.8,
                     season_resources: OneYearResources::from(0.5),
                     maximum_resources_one_adult_can_harvest: OneYearResources::from(1.25),
-                    evidence_needed: 1.0,
+                    evidence_needed: 0.1,
                     payoff_std: 0.1,
                     minimum_adaptation: 0.5,
                     resource_density: 0.1,
