@@ -4,6 +4,8 @@ pub fn parse_args<'a>(
     p: &'a mut Parameters,
     max_t: &'a mut Seasons,
     resource_scale: &'a mut f64,
+    resource_recovery_per_year: &'a mut f64,
+    log_every: &'a mut u32,
 ) -> argparse::ArgumentParser<'a> {
     let mut parser = argparse::ArgumentParser::new();
     parser.set_description("Run a dispersal simulation");
@@ -33,20 +35,20 @@ pub fn parse_args<'a>(
         argparse::Store,
         "threshold under which cooperation happens",
     );
+    parser.refer(&mut p.season_length_in_years).add_option(
+        &["--season-length"],
+        argparse::Store,
+        "Length of a season/time step, in years",
+    );
     parser.refer(&mut p.resource_density).add_option(
         &["--resource-scarcity"],
         argparse::Store,
         "Density of resources in a unit patch",
     );
-    parser.refer(&mut p.storage_loss).add_option(
-        &["--storage-loss"],
-        argparse::Store,
-        "Proportion of per-family stored resources getting lost per season",
-    );
-    parser.refer(&mut p.resource_recovery).add_option(
+    parser.refer(resource_recovery_per_year).add_option(
         &["--resource-recovery"],
         argparse::Store,
-        "Proportion of resources to recover every season",
+        "Proportion of resources to recover every year",
     );
     parser.refer(resource_scale).add_option(
         &["--resources-scale"],
@@ -58,10 +60,15 @@ pub fn parse_args<'a>(
         argparse::Store,
         "exponent in benefits from cooperation",
     );
+    parser.refer(log_every).add_option(
+        &["--log-every"],
+        argparse::Store,
+        "period of logging, in seasons",
+    );
     parser.refer(max_t).add_option(
         &["--steps"],
         argparse::Store,
-        "number of half years to simulate",
+        "number of seasons to simulate",
     );
     println!("Starting…");
     parser

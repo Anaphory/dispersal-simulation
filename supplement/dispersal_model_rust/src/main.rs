@@ -2,7 +2,6 @@ use model::argparse::parse_args;
 use model::movementgraph::MovementGraph;
 use model::submodels::parameters::Parameters;
 use model::*;
-use model::ecology::OneYearResources;
 use std::fs;
 
 fn main() -> Result<(), String> {
@@ -20,10 +19,18 @@ fn main() -> Result<(), String> {
     p.dispersal_graph = dispersal_graph;
     let mut max_t: Seasons = 20000;
     let mut scale = 1.0;
+    let mut recovery = p.resource_recovery_per_season / p.season_length_in_years;
+
+    let mut o = observation::ObservationSettings {
+        log_every: 1,
+        log_patch_resources: 1,
+    };
+
     {
-        let parser = parse_args(&mut p, &mut max_t, &mut scale);
+        let parser = parse_args(&mut p, &mut max_t, &mut scale, &mut recovery, &mut o.log_every);
         parser.parse_args_or_exit();
     };
+    p.resource_recovery_per_season = recovery * p.season_length_in_years;
     println!("# Initialization ...");
     // FIXME: There is something messed up in lat/long -> image pixels. It works
     // currently, but the names point out that I misunderstood something, eg.
@@ -32,10 +39,6 @@ fn main() -> Result<(), String> {
     let s = initialization(p, scale).unwrap();
     println!("Initialized");
 
-    let o = observation::ObservationSettings {
-        log_every: 20,
-        log_patch_resources: 0,
-    };
     run(s, max_t, &o);
     Ok(())
 }

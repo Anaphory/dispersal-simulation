@@ -9,8 +9,15 @@ fn main() -> Result<(), String> {
     let mut max_t: Seasons = 2000;
     let mut scale = 1.0;
     let mut spots = Vec::new();
+    let mut recovery = p.resource_recovery_per_season / p.season_length_in_years;
+
+    let mut o = model::observation::ObservationSettings {
+        log_every: 1,
+        log_patch_resources: 1,
+    };
+
     {
-        let mut parser = parse_args(&mut p, &mut max_t, &mut scale);
+        let mut parser = parse_args(&mut p, &mut max_t, &mut scale, &mut recovery, &mut o.log_every);
         parser.refer(&mut spots).add_option(
             &["--spot"],
             argparse::Collect,
@@ -18,6 +25,8 @@ fn main() -> Result<(), String> {
         );
         parser.parse_args_or_exit();
     };
+    p.resource_recovery_per_season = recovery * p.season_length_in_years;
+
     let mut dispersal_graph = MovementGraph::default();
     let mut from = None;
     for (i, n) in spots.iter().enumerate() {
@@ -35,10 +44,6 @@ fn main() -> Result<(), String> {
     let s = initialization(p, scale).unwrap();
     println!("Initialized");
 
-    let o = model::observation::ObservationSettings {
-        log_every: 1,
-        log_patch_resources: 1,
-    };
     run(s, max_t, &o);
     Ok(())
 }
