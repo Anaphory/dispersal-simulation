@@ -310,7 +310,7 @@ fn procreate_and_migrate(
                 // should) move immediately when created. This behaviour is
                 // taken from del Castillo (2013).
                 Some(mut descendant) => {
-                    let (destination, cost)= adaptation::decide_on_moving(
+                    let (destination, cost) = adaptation::decide_on_moving(
                         &descendant,
                         nearby.iter().filter_map(|(i, d)| {
                             if *i == family.location {
@@ -410,7 +410,7 @@ fn step_part_2(
                 None => {}
                 Some(patch) => {
                     if (o.log_patch_resources > 0) && (t % o.log_patch_resources == 0) {
-                        println!("Patch at {:?}: {:?}", patch_id, patch.resources)
+                        // println!("Patch at {:?}: {:?}", patch_id, patch.resources)
                     }
                     submodels::ecology::exploit_patch(groups, patch, p);
                 }
@@ -708,14 +708,7 @@ mod adaptation {
                 .sum::<OneYearResources>()
                 * perhead,
         );
-        println!(
-            "Option: {:?}, with current resources {:?} (per head: {:?}, for {:}) at {:?}",
-            i,
-            (now + movement_cost) / perhead,
-            now,
-            population,
-            movement_cost
-        );
+        // println!("Option: {:?}, with current resources {:?} (per head: {:?}, for {:}) at {:?}", i, (now + movement_cost) / perhead, now, population, movement_cost);
         (now, later)
     }
 }
@@ -880,7 +873,7 @@ mod sensing {
         .iter()
         .filter_map(|(n, v)| {
             if memory[..std::cmp::min(memory.len(), 16)].contains(&location)
-                || rng.gen::<f64>() < 1. / (2. + v / NORM)
+                || rng.gen::<f64>() < 1. / (2. + (v / NORM).powi(2))
             {
                 Some((*n, *v))
             } else {
@@ -926,9 +919,7 @@ mod interaction {
         Crema's results change for that different formula.
 
      */
-    pub fn x () {
-        
-    }
+    pub fn x() {}
 }
 /**
 
@@ -1141,7 +1132,7 @@ pub fn initialization(p: Parameters, scale: f64) -> Option<State> {
         let ecoregions = &geo.3;
 
         print!(
-            "Resources at {:} ({:}, {:}) –",
+            "Resources at {:} ({:}, {:})",
             next.index(),
             longitude,
             latitude
@@ -1167,7 +1158,7 @@ pub fn initialization(p: Parameters, scale: f64) -> Option<State> {
                         let res = OneYearResources::from(q);
                         let res_max = OneYearResources::from(q);
                         print!(
-                            " Filling ecoregion {:} with popcap {:} with {:?}.",
+                            ", Filling ecoregion {:} with popcap {:} with {:?}",
                             ecoregion, popcap, res
                         );
                         (ecoregion, (res, res_max))
@@ -1183,36 +1174,6 @@ pub fn initialization(p: Parameters, scale: f64) -> Option<State> {
             new_patches.push(q);
         }
     }
-    let f1 = Family {
-        descendence: String::from("A"),
-        location: start1,
-        history: vec![],
-        seasons_till_next_child: 4,
-        culture: Culture {
-            binary_representation: 0b000_000_000_000_000,
-        },
-
-        effective_size: 5,
-        number_offspring: 0,
-        seasons_till_next_mutation: None,
-        stored_resources: season_resources * 10.,
-        adaptation: ecology::Ecovector::from(p.minimum_adaptation),
-    };
-    let f2 = Family {
-        descendence: String::from("F"),
-        location: start2,
-        history: vec![],
-        seasons_till_next_child: 4,
-        culture: Culture {
-            binary_representation: 0b111_111_111_111_111,
-        },
-
-        effective_size: 5,
-        number_offspring: 0,
-        seasons_till_next_mutation: None,
-        stored_resources: season_resources * 10.,
-        adaptation: ecology::Ecovector::from(p.minimum_adaptation),
-    };
 
     Some(State {
         patches: patches
@@ -1222,7 +1183,38 @@ pub fn initialization(p: Parameters, scale: f64) -> Option<State> {
                 Some(q) => Some((i, q)),
             })
             .collect(),
-        families: vec![f1, f2],
+        families: vec![
+            Family {
+                descendence: String::from("A"),
+                location: start1,
+                history: vec![],
+                seasons_till_next_child: 4,
+                culture: Culture {
+                    binary_representation: 0b000_000_000_000_000,
+                },
+
+                effective_size: 5,
+                number_offspring: 0,
+                seasons_till_next_mutation: None,
+                stored_resources: season_resources * 10.,
+                adaptation: ecology::Ecovector::from(p.minimum_adaptation),
+            },
+            Family {
+                descendence: String::from("F"),
+                location: start2,
+                history: vec![],
+                seasons_till_next_child: 4,
+                culture: Culture {
+                    binary_representation: 0b111_111_111_111_111,
+                },
+
+                effective_size: 5,
+                number_offspring: 0,
+                seasons_till_next_mutation: None,
+                stored_resources: season_resources * 10.,
+                adaptation: ecology::Ecovector::from(p.minimum_adaptation),
+            },
+        ],
         t: 0,
         p: p,
     })
@@ -1465,13 +1457,14 @@ pub mod submodels {
                     .collect::<Vec<(f64, Vec<(&mut OneYearResources, f64)>)>>()
                     .drain(..)
                     .for_each(|(group_effort, mut contributions)| {
-                        let group_harvest = *res * group_effort.powi(2) / total_squared_groups_effort;
+                        let group_harvest =
+                            *res * group_effort.powi(2) / total_squared_groups_effort;
                         let coefficient = std::cmp::min(group_harvest, OneYearResources::from(2.5));
                         for (storage, contribution) in contributions.iter_mut() {
-                            **storage +=  coefficient *p.season_length_in_years * *contribution;
+                            **storage += coefficient * p.season_length_in_years * *contribution;
                         }
                         let effort = coefficient * group_effort;
-                        println!("Harvest: {:?} (@ {:?})", effort, coefficient);
+                        //println!("Harvest: {:?} (@ {:?})", effort, coefficient);
                         *res -= effort;
                     });
                 recover(res, *max_res, p.resource_recovery_per_season);
