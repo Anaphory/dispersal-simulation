@@ -1534,7 +1534,6 @@ pub mod submodels {
             pub evidence_needed: f64,
             pub payoff_std: f64,
             pub minimum_adaptation: f64,
-            pub resource_density: f64,
 
             pub season_length_in_years: f64,
             pub dispersal_graph: MovementGraph,
@@ -1553,7 +1552,6 @@ pub mod submodels {
                     evidence_needed: 0.1,
                     payoff_std: 0.1,
                     minimum_adaptation: 0.5,
-                    resource_density: 0.1,
 
                     season_length_in_years: 0.5,
                     dispersal_graph: MovementGraph::default(),

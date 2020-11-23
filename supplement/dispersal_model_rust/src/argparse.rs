@@ -40,11 +40,6 @@ pub fn parse_args<'a>(
         argparse::Store,
         "Length of a season/time step, in years",
     );
-    parser.refer(&mut p.resource_density).add_option(
-        &["--resource-scarcity"],
-        argparse::Store,
-        "Density of resources in a unit patch",
-    );
     parser.refer(resource_recovery_per_year).add_option(
         &["--resource-recovery"],
         argparse::Store,
