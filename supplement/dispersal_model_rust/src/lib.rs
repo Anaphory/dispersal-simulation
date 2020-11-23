@@ -926,9 +926,10 @@ mod interaction {
         Crema's results change for that different formula.
 
      */
-    use crate::ecology::effort;
+    pub fn x () {
+        
+    }
 }
-
 /**
 
 */
@@ -1162,8 +1163,7 @@ pub fn initialization(p: Parameters, scale: f64) -> Option<State> {
                         // the ecoregions, and are otherwise disadvantaged (see
                         // the adaptation formula), so this is hopefully not too
                         // bad.
-                        let q = ecology::population_to_resources(popcap * scale, &p)
-                            / p.resource_recovery_per_season;
+                        let q = popcap * scale / p.resource_recovery_per_season;
                         let res = OneYearResources::from(q);
                         let res_max = OneYearResources::from(q);
                         print!(
@@ -1428,6 +1428,29 @@ pub mod submodels {
         ) where
             P: core::ops::DerefMut<Target = crate::Patch>,
         {
+            for mut group in groups.iter_mut() {
+                let total_storage: OneYearResources = group
+                    .families
+                    .iter_mut()
+                    .map(|f| {
+                        let s = f.stored_resources;
+                        f.stored_resources = OneYearResources::from(0.0);
+                        s
+                    })
+                    .sum();
+
+                let mut sum_effort = 0.0;
+                let mut contributions: Vec<_> = group_contribution(
+                    &mut group,
+                    crate::ecology::ATTESTED_ECOREGIONS,
+                    &mut sum_effort,
+                );
+
+                for (storage, contribution) in contributions.iter_mut() {
+                    **storage = total_storage * *contribution / sum_effort;
+                }
+            }
+
             for (ecoregion, (res, max_res)) in patch.resources.iter_mut() {
                 let mut total_groups_effort = 0.0;
                 groups
@@ -1441,20 +1464,16 @@ pub mod submodels {
                     })
                     .collect::<Vec<(f64, Vec<(&mut OneYearResources, f64)>)>>()
                     .drain(..)
-                    .map(|(group_effort, mut contributions)| {
-                        let group_harvest = crate::ecology::population(
-                            *res * (group_effort / total_groups_effort),
-                            p,
-                        );
-                        let coefficient: f64 = f64::min(group_harvest / group_effort, 2.5);
+                    .for_each(|(group_effort, mut contributions)| {
+                        let group_harvest = *res / total_groups_effort;
+                        let coefficient = std::cmp::min(group_harvest, OneYearResources::from(2.5));
                         for (storage, contribution) in contributions.iter_mut() {
-                            **storage += p.season_resources * coefficient * *contribution;
+                            **storage +=  coefficient *p.season_length_in_years * *contribution;
                         }
-                        let effort = crate::ecology::effort(coefficient * group_effort, *res, p);
-                        println!("Harvest: {:?} (@ {:})", effort, coefficient);
+                        let effort = coefficient * group_effort;
+                        println!("Harvest: {:?} (@ {:?})", effort, coefficient);
                         *res -= effort;
-                    })
-                    .for_each(|()| ());
+                    });
                 recover(res, *max_res, p.resource_recovery_per_season);
             }
         }

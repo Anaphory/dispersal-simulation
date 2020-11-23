@@ -107,69 +107,6 @@ impl std::fmt::Debug for OneYearResources {
     }
 }
 
-pub fn population_to_resources(population: f64, p: &crate::Parameters) -> OneYearResources {
-    let mut lower_bound = p.season_resources * population;
-    let mut upper_bound = effort(population, OneYearResources::from(1.0), p);
-    while upper_bound.c > lower_bound.c + 1e-8 {
-        let mid = (lower_bound + upper_bound) * 0.5;
-        let e = effort(population, mid, p);
-        match e.cmp(&mid) {
-            std::cmp::Ordering::Equal => return mid,
-            std::cmp::Ordering::Greater => {
-                lower_bound = mid;
-            }
-            std::cmp::Ordering::Less => {
-                upper_bound = mid;
-            }
-        }
-    }
-    lower_bound
-}
-
-
-pub fn find_population_size(res: OneYearResources, p: &crate::Parameters) -> f64 {
-    let mut lower_bound = 1e-8;
-    let mut upper_bound = res.c;
-    while upper_bound > lower_bound + 1e-8 {
-        let mid = 0.5 * (lower_bound + upper_bound);
-        let e = effort(mid, res, p);
-        match e.cmp(&res) {
-            std::cmp::Ordering::Equal => return mid,
-            std::cmp::Ordering::Greater => {
-                upper_bound = mid;
-            }
-            std::cmp::Ordering::Less => {
-                lower_bound = mid;
-            }
-        }
-    }
-    lower_bound
-}
-
-pub fn population(res: OneYearResources, p: &crate::Parameters) -> f64 {
-    lazy_static::lazy_static! {
-        static ref LAST_VAL: dashmap::DashMap<usize, f64> = dashmap::DashMap::new();
-    }
-    let round_down_res = res.c.floor() as usize;
-    match LAST_VAL.entry(round_down_res) {
-        dashmap::mapref::entry::Entry::Occupied(kv) => *kv.get(),
-        dashmap::mapref::entry::Entry::Vacant(kv) => {
-            let pop = find_population_size(res, p);
-            kv.insert(pop);
-            pop
-        }
-    }
-}
-
-pub fn effort(
-    target_harvest: f64,
-    res: OneYearResources,
-    p: &crate::Parameters,
-) -> OneYearResources {
-    let t = target_harvest;
-    p.season_resources * (t + t.powf(p.cooperation_gain) / res.c.powf(0.5) * p.resource_density)
-}
-
 use std::num::ParseFloatError;
 use std::str::FromStr;
 impl FromStr for OneYearResources {
