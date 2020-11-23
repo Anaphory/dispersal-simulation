@@ -61,7 +61,6 @@ to be translated.
 
  */
 pub type Seasons = u32;
-const SEASON_LENGTH_YEARS: f64 = 0.5;
 const SECONDS_PER_YEAR: f64 = 365.24219 * 24. * 60. * 60.;
 
 /**
@@ -708,7 +707,7 @@ mod adaptation {
                 * perhead
                 - movement_cost,
             q.iter()
-                .map(|(res, max_res)| *res + *max_res * p.resource_recovery)
+                .map(|(res, max_res)| *res + *max_res * p.resource_recovery_per_season)
                 .sum::<OneYearResources>()
                 * perhead,
         );
@@ -1098,7 +1097,7 @@ fn very_coarse_dist(x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
 }
 
 pub fn initialization(p: Parameters, scale: f64) -> Option<State> {
-    let season_resources: OneYearResources = OneYearResources::from(SEASON_LENGTH_YEARS);
+    let season_resources: OneYearResources = OneYearResources::from(p.season_length_in_years);
 
     let graph = &p.dispersal_graph;
 
@@ -1167,7 +1166,7 @@ pub fn initialization(p: Parameters, scale: f64) -> Option<State> {
                         // the adaptation formula), so this is hopefully not too
                         // bad.
                         let q = ecology::population_to_resources(popcap * scale, &p)
-                            / p.resource_recovery;
+                            / p.resource_recovery_per_season;
                         let res = OneYearResources::from(q);
                         let res_max = OneYearResources::from(q);
                         print!(
@@ -1464,7 +1463,7 @@ pub mod submodels {
                         *res -= effort;
                     })
                     .for_each(|()| ());
-                recover(res, *max_res, p.resource_recovery);
+                recover(res, *max_res, p.resource_recovery_per_season);
             }
         }
 
@@ -1497,12 +1496,12 @@ pub mod submodels {
         pub fn recover(
             patch_resources: &mut OneYearResources,
             patch_max_resources: OneYearResources,
-            resource_recovery: f64,
+            resource_recovery_per_season: f64,
         ) {
             if *patch_resources < patch_max_resources {
                 *patch_resources = std::cmp::min(
                     patch_max_resources,
-                    patch_max_resources * resource_recovery + *patch_resources,
+                    patch_max_resources * resource_recovery_per_season + *patch_resources,
                 )
             }
         }
@@ -1516,7 +1515,7 @@ pub mod submodels {
         pub struct Parameters {
             pub attention_probability: f64,
             pub storage_loss: f64,
-            pub resource_recovery: f64,
+            pub resource_recovery_per_season: f64,
             pub culture_mutation_rate: f64,
             pub culture_dimensionality: u8,
             pub cooperation_threshold: u32,
@@ -1528,6 +1527,7 @@ pub mod submodels {
             pub minimum_adaptation: f64,
             pub resource_density: f64,
 
+            pub season_length_in_years: f64,
             pub dispersal_graph: MovementGraph,
         }
 
@@ -1536,7 +1536,7 @@ pub mod submodels {
                 Parameters {
                     attention_probability: 0.1,
                     storage_loss: 0.33,
-                    resource_recovery: 0.20,
+                    resource_recovery_per_season: 0.20,
                     culture_mutation_rate: 6e-3,
                     culture_dimensionality: 20,
                     cooperation_threshold: 6,
@@ -1548,6 +1548,7 @@ pub mod submodels {
                     minimum_adaptation: 0.5,
                     resource_density: 0.1,
 
+                    season_length_in_years: 0.5,
                     dispersal_graph: MovementGraph::default(),
                 }
             }
