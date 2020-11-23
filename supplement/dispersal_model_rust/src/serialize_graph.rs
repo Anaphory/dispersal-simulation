@@ -1,7 +1,6 @@
 use model::ecology;
 use model::hexgrid;
-use model::movementgraph::{MovementGraph, NodeData};
-use petgraph;
+use model::movementgraph::MovementGraph;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::prelude::*;

@@ -285,7 +285,8 @@ fn step_part_1(families: &mut Vec<Family>, patches: &mut DashMap<NodeId, Patch>,
 
     families.retain(|family| submodels::family_lifecycle::can_survive(&family));
 
-    let mut children = submodels::family_lifecycle::procreate_and_migrate(families, p, patches, &cc);
+    let mut children =
+        submodels::family_lifecycle::procreate_and_migrate(families, p, patches, &cc);
     families.extend(children.drain(..));
 }
 
@@ -797,7 +798,7 @@ mod sensing {
         )
         .iter()
         .filter_map(|(n, v)| {
-            if memory[..std::cmp::min(memory.len(), 16)].contains(&location)
+            if memory[..std::cmp::min(memory.len(), 16)].contains(n)
                 || rng.gen::<f64>() < 1. / (2. + (v / NORM).powi(2))
             {
                 Some((*n, *v))
@@ -1208,10 +1209,10 @@ pub mod submodels {
     }
 
     pub mod family_lifecycle {
-        use crate::{Family, OneYearResources, Parameters, NodeId, Patch};
-        use crate::{adaptation,sensing};
-        use rayon::prelude::*;
+        use crate::{adaptation, sensing};
+        use crate::{Family, NodeId, OneYearResources, Parameters, Patch};
         use dashmap::DashMap;
+        use rayon::prelude::*;
 
         pub fn procreate_and_migrate(
             families: &mut Vec<Family>,
