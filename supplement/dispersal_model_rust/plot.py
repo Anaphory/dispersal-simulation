@@ -52,12 +52,12 @@ for logfile in args.logfile:
                 plt.ylim(*args.ylim)
                 plt.gcf().set_size_inches((12, 16))
                 plt.savefig(args.output_dir / f"disp{m:08d}-{stem:}.png")
+                print(args.output_dir / f"disp{m:08d}-{stem:}.png")
                 plt.close()
             if line.startswith("GD_CD: {"):
                 n += 1
                 if n < args.start:
                     continue
-                print("gd_cd {:d}".format(n))
                 line = eval(line[len("GD_CD: "):])
                 q = numpy.zeros_like(all_q)
                 for i in range(q.shape[0]):

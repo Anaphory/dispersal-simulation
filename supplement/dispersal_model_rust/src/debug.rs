@@ -14,8 +14,15 @@ impl std::fmt::Debug for crate::Family {
             .field("size", &self.effective_size)
             .field("seasons_till_next_child", &self.seasons_till_next_child)
             .field("location", &self.location)
+            .field("history", &self.history)
             .field("culture", &format_args!("{:020b}", &self.culture))
             .field("stored_resources", &self.stored_resources)
             .finish()
+    }
+}
+
+impl std::fmt::Debug for crate::Culture {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        self.binary_representation.fmt(f)
     }
 }

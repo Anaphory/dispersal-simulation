@@ -161,34 +161,17 @@ impl PartialEq for Family {
     }
 }
 
-impl Default for Family {
-    fn default() -> Family {
-        Family {
-            descendence: String::from("A"),
-            location: petgraph::graph::NodeIndex::new(0),
-            history: vec![],
-            seasons_till_next_child: 4,
-            culture: Culture::from(0b000_000_000_000_000),
-            effective_size: 5,
-            number_offspring: 0,
-            seasons_till_next_mutation: None,
-            stored_resources: OneYearResources::from(0.0),
-            adaptation: ecology::Ecovector::from(0.5),
-        }
-    }
-}
-
 /**
-Families in the same location with compatible cultures can cooperate to decrease
-their cost for extracting resources. (Following XXX, cooperation could also
-mean sharing resources between different families. To simplify the model, this
-implementation does not contain that effect.) The cooperative groups formed by
-cooperating families are higher-level agents created ad-hoc in each time step.
-They do not persist or have effect beyond a single time step. Resource
-exploitation happens at the level of the cooperative group and is distributed to
-the individual families after the fact.
+
+Families in the same location with compatible cultures can band together to
+share resources between different families, and to compete against other bands.
+The cooperative bands formed by cooperating families are higher-level agents
+created ad-hoc in each time step. They do not persist or have effect beyond a
+single time step. Resource exploitation happens at the level of the cooperative
+group and is distributed to the individual families after the fact.
 
  */
+use collectives::Cooperative;
 
 /**
 ## 2.3 Cultures
@@ -206,12 +189,6 @@ which is faster to use in computations and more efficient to store.
 #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Clone, Copy)]
 pub struct Culture {
     binary_representation: u64,
-}
-
-impl std::fmt::Debug for Culture {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-        self.binary_representation.fmt(f)
-    }
 }
 
 impl std::fmt::Binary for Culture {
@@ -280,60 +257,6 @@ fn step(
     step_part_1(families, patches, p);
     step_part_2(families, patches, p, o, t);
 }
-
-fn procreate_and_migrate(
-    families: &mut Vec<Family>,
-    p: &Parameters,
-    patches: &mut DashMap<NodeId, Patch>,
-    cc: &DashMap<NodeId, usize>,
-) -> Vec<Family> {
-    families
-        .par_iter_mut()
-        .filter_map(|mut family| {
-            let nearby = sensing::nearby_locations(family.location, &family.history, p);
-
-            let (destination, cost) = adaptation::decide_on_moving(
-                &family,
-                nearby.iter().map(|(i, d)| (*i, *d)),
-                patches,
-                false,
-                p,
-                cc,
-            );
-            // println!("Family {:} moved to {:}", family.descendence, destination);
-            family.history.push(family.location);
-            family.location = destination;
-            family.stored_resources -= cost;
-
-            match submodels::family_lifecycle::maybe_procreate(&mut family) {
-                None => None,
-                // In terms of scheduling a new family can (and if possible
-                // should) move immediately when created. This behaviour is
-                // taken from del Castillo (2013).
-                Some(mut descendant) => {
-                    let (destination, cost) = adaptation::decide_on_moving(
-                        &descendant,
-                        nearby.iter().filter_map(|(i, d)| {
-                            if *i == family.location {
-                                None
-                            } else {
-                                Some((*i, *d))
-                            }
-                        }),
-                        patches,
-                        true,
-                        p,
-                        cc,
-                    );
-                    descendant.location = destination;
-                    family.stored_resources -= cost;
-                    Some(descendant)
-                }
-            }
-        })
-        .collect()
-}
-
 /**
 The first part focuses on the individual families, which shrink, grow, die,
 split, and move. It constructs the mapping of families at the end of the season,
@@ -362,7 +285,7 @@ fn step_part_1(families: &mut Vec<Family>, patches: &mut DashMap<NodeId, Patch>,
 
     families.retain(|family| submodels::family_lifecycle::can_survive(&family));
 
-    let mut children = procreate_and_migrate(families, p, patches, &cc);
+    let mut children = submodels::family_lifecycle::procreate_and_migrate(families, p, patches, &cc);
     families.extend(children.drain(..));
 }
 
@@ -425,6 +348,7 @@ fn step_part_2(
         println!("t: {:}", t);
         observation::print_gd_cd(&cultures_by_location, p);
         observation::print_population_by_location(&cultures_by_location, p);
+        println!("F: {:?}", families.get(0));
     }
 }
 
@@ -1284,7 +1208,63 @@ pub mod submodels {
     }
 
     pub mod family_lifecycle {
-        use crate::{Family, OneYearResources, Parameters};
+        use crate::{Family, OneYearResources, Parameters, NodeId, Patch};
+        use crate::{adaptation,sensing};
+        use rayon::prelude::*;
+        use dashmap::DashMap;
+
+        pub fn procreate_and_migrate(
+            families: &mut Vec<Family>,
+            p: &Parameters,
+            patches: &mut DashMap<NodeId, Patch>,
+            cc: &DashMap<NodeId, usize>,
+        ) -> Vec<Family> {
+            families
+                .par_iter_mut()
+                .filter_map(|mut family| {
+                    let nearby = sensing::nearby_locations(family.location, &family.history, p);
+
+                    let (destination, cost) = adaptation::decide_on_moving(
+                        &family,
+                        nearby.iter().map(|(i, d)| (*i, *d)),
+                        patches,
+                        false,
+                        p,
+                        cc,
+                    );
+                    // println!("Family {:} moved to {:}", family.descendence, destination);
+                    family.history.push(family.location);
+                    family.location = destination;
+                    family.stored_resources -= cost;
+
+                    match maybe_procreate(&mut family) {
+                        None => None,
+                        // In terms of scheduling a new family can (and if possible
+                        // should) move immediately when created. This behaviour is
+                        // taken from del Castillo (2013).
+                        Some(mut descendant) => {
+                            let (destination, cost) = adaptation::decide_on_moving(
+                                &descendant,
+                                nearby.iter().filter_map(|(i, d)| {
+                                    if *i == family.location {
+                                        None
+                                    } else {
+                                        Some((*i, *d))
+                                    }
+                                }),
+                                patches,
+                                true,
+                                p,
+                                cc,
+                            );
+                            descendant.location = destination;
+                            family.stored_resources -= cost;
+                            Some(descendant)
+                        }
+                    }
+                })
+                .collect()
+        }
 
         pub fn resources_at_season_end(
             resources: OneYearResources,
