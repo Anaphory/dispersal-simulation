@@ -2,6 +2,7 @@ import sys
 import argparse
 from pathlib import Path
 
+import datetime;
 import numpy
 import matplotlib.pyplot as plt
 
@@ -26,6 +27,8 @@ def bitvec_to_color(i: int):
 
 for logfile in args.logfile:
     stem = Path(logfile.name).stem
+    if stem == "<stdin>":
+        stem = hex(int(datetime.datetime.now().timestamp()))
     all_q = numpy.zeros((51, args.max_cdif))
     m = 0
     n = 0
