@@ -292,7 +292,7 @@ fn procreate_and_migrate(
         .filter_map(|mut family| {
             let nearby = sensing::nearby_locations(family.location, &family.history, p);
 
-            let d = adaptation::decide_on_moving(
+            let (destination, cost) = adaptation::decide_on_moving(
                 &family,
                 nearby.iter().map(|(i, d)| (*i, *d)),
                 patches,
@@ -300,9 +300,9 @@ fn procreate_and_migrate(
                 p,
                 cc,
             );
-            let destination = d.unwrap_or(family.location);
             // println!("Family {:} moved to {:}", family.descendence, destination);
             family.location = destination;
+            family.stored_resources -= cost;
 
             match submodels::family_lifecycle::maybe_procreate(&mut family) {
                 None => None,
@@ -310,7 +310,7 @@ fn procreate_and_migrate(
                 // should) move immediately when created. This behaviour is
                 // taken from del Castillo (2013).
                 Some(mut descendant) => {
-                    let d = adaptation::decide_on_moving(
+                    let (destination, cost)= adaptation::decide_on_moving(
                         &descendant,
                         nearby.iter().filter_map(|(i, d)| {
                             if *i == family.location {
@@ -324,7 +324,8 @@ fn procreate_and_migrate(
                         p,
                         cc,
                     );
-                    descendant.location = d.unwrap_or(family.location);
+                    descendant.location = destination;
+                    family.stored_resources -= cost;
                     Some(descendant)
                 }
             }
@@ -650,7 +651,7 @@ mod adaptation {
         avoid_stay: bool,
         p: &Parameters,
         population: &DashMap<NodeId, usize>,
-    ) -> Option<NodeId>
+    ) -> (NodeId, OneYearResources)
     where
         KD: Iterator<Item = (NodeId, f64)>,
     {
@@ -679,11 +680,10 @@ mod adaptation {
             if now < p.season_resources {
                 return None;
             }
-            // println!("{:?}, {:?}", (i, expected_quality(i, p, patches, family, movement_cost, 1)), pop);
-            Some((i, (now, later)))
+            Some((i, (now, later, movement_cost)))
         });
         objectives::best_location(destination_expectation, threshold, evidence)
-            .or(Some(family.location))
+            .unwrap_or((family.location, OneYearResources::from(0.0)))
     }
 
     fn expected_quality(
@@ -709,7 +709,7 @@ mod adaptation {
                 * perhead,
         );
         println!(
-            "Option: {:?}, with current resources {:?} (expected: {:?}, for {:}) at {:?}",
+            "Option: {:?}, with current resources {:?} (per head: {:?}, for {:}) at {:?}",
             i,
             (now + movement_cost) / perhead,
             now,
@@ -744,9 +744,9 @@ mod objectives {
         kd: Pair,
         short_term_minimum: OneYearResources,
         long_term_precision: OneYearResources,
-    ) -> Option<I>
+    ) -> Option<(I, OneYearResources)>
     where
-        Pair: Iterator<Item = (I, (OneYearResources, OneYearResources))>,
+        Pair: Iterator<Item = (I, (OneYearResources, OneYearResources, OneYearResources))>,
     {
         let mut rng = rand::thread_rng();
 
@@ -755,21 +755,21 @@ mod objectives {
         // encountered so far.
         let mut n_best_before = 0;
         let mut n_best_short_before = 0;
-        let mut target: Option<I> = None;
+        let mut target: Option<(I, OneYearResources)> = None;
         let mut max_gain = OneYearResources::from(0.0);
         let mut max_short_term_gain = OneYearResources::from(0.0);
 
-        for (location, (expected_shortterm_gain, expected_longterm_gain)) in kd {
+        for (location, (expected_shortterm_gain, expected_longterm_gain, travel_cost)) in kd {
             if expected_shortterm_gain >= short_term_minimum {
                 if expected_longterm_gain > max_gain + long_term_precision {
-                    target = Some(location);
+                    target = Some((location, travel_cost));
                     n_best_before = 0;
                 } else if expected_longterm_gain >= max_gain {
                     n_best_before += 1;
                     if rng.gen_range(0, n_best_before + 1) < n_best_before {
                         continue;
                     } else {
-                        target = Some(location);
+                        target = Some((location, travel_cost));
                     }
                 }
                 max_gain = expected_longterm_gain;
@@ -781,14 +781,14 @@ mod objectives {
                     _ => (),
                 }
                 if expected_shortterm_gain > max_short_term_gain {
-                    target = Some(location);
+                    target = Some((location, travel_cost));
                     n_best_short_before = 0;
                 } else if expected_shortterm_gain == max_short_term_gain {
                     n_best_short_before += 1;
                     if rng.gen_range(0, n_best_short_before + 1) < n_best_before {
                         continue;
                     } else {
-                        target = Some(location);
+                        target = Some((location, travel_cost));
                     }
                 }
                 max_short_term_gain = expected_shortterm_gain;
@@ -1421,7 +1421,7 @@ pub mod submodels {
 
         /**
          */
-        pub fn exploit_patch<'a, P>(
+        pub fn exploit_patch<P>(
             mut groups: Vec<crate::collectives::Cooperative>,
             mut patch: P,
             p: &Parameters,
