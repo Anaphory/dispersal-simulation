@@ -684,7 +684,7 @@ mod objectives {
                 if expected_long_term_gain > max_gain + long_term_precision {
                     target = Some((location, travel_cost));
                     n_best_before = 0;
-                } else if expected_long_term_gain >= max_gain - long_term_precision * 0.5 {
+                } else if expected_long_term_gain >= max_gain - long_term_precision {
                     n_best_before += 1;
                     if rng.gen_range(0, n_best_before + 1) < n_best_before {
                         continue;
