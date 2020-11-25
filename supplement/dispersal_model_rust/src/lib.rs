@@ -667,6 +667,7 @@ mod objectives {
     ) -> Option<(I, OneYearResources)>
     where
         Pair: Iterator<Item = (I, (OneYearResources, OneYearResources, OneYearResources))>,
+        I: std::fmt::Debug,
     {
         let mut rng = rand::thread_rng();
 
@@ -714,6 +715,7 @@ mod objectives {
                 max_short_term_gain = expected_shortterm_gain;
             }
         }
+        // println!("Moving to {:?}", target);
         target
     }
 }
