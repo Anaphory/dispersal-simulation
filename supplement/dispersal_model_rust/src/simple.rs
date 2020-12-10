@@ -1,8 +1,8 @@
+use model::argparse::parse_args;
 use model::hexgrid;
 use model::movementgraph::MovementGraph;
 use model::submodels::parameters::Parameters;
-use model::argparse::parse_args;
-use model::{run,initialization,Seasons};
+use model::{initialization, run, Seasons};
 
 fn main() -> Result<(), String> {
     let mut p = Parameters::default();
@@ -17,7 +17,13 @@ fn main() -> Result<(), String> {
     };
 
     {
-        let mut parser = parse_args(&mut p, &mut max_t, &mut scale, &mut recovery, &mut o.log_every);
+        let mut parser = parse_args(
+            &mut p,
+            &mut max_t,
+            &mut scale,
+            &mut recovery,
+            &mut o.log_every,
+        );
         parser.refer(&mut spots).add_option(
             &["--spot"],
             argparse::Collect,
@@ -30,11 +36,17 @@ fn main() -> Result<(), String> {
     let mut dispersal_graph = MovementGraph::default();
     let mut from = None;
     for (i, n) in spots.iter().enumerate() {
-        let to = dispersal_graph.add_node(
-            (0 as hexgrid::Index, 0., -(i as f64), vec![(0, (2.0_f64).powi(*n))].drain(..).collect()));
+        let to = dispersal_graph.add_node((
+            0 as hexgrid::Index,
+            0.,
+            -(i as f64),
+            vec![(0, (2.0_f64).powi(*n))].drain(..).collect(),
+        ));
         match from {
             None => (),
-            Some(f) => {dispersal_graph.add_edge(f, to, 1.);}
+            Some(f) => {
+                dispersal_graph.add_edge(f, to, 1.);
+            }
         }
         from = Some(to)
     }

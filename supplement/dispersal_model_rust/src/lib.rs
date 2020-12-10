@@ -280,7 +280,7 @@ fn step_part_1(families: &mut Vec<Family>, patches: &mut DashMap<NodeId, Patch>,
             family.seasons_till_next_child = std::cmp::max(family.seasons_till_next_child, 2)
         }
 
-        submodels::family_lifecycle::maybe_grow(&mut family);
+        submodels::family_lifecycle::maybe_grow(&mut family, p.season_length_in_years);
     });
 
     families.retain(|family| submodels::family_lifecycle::can_survive(&family));
@@ -581,8 +581,7 @@ mod adaptation {
     where
         KD: Iterator<Item = (NodeId, f64)>,
     {
-        let threshold = p.season_resources;
-        let evidence = p.season_resources * p.evidence_needed;
+        let evidence = OneYearResources::from(p.season_length_in_years) * p.evidence_needed;
 
         // Triple: opportunity cost from not foraging, and cost from doing likely
         // heavy labor instead.
@@ -602,14 +601,11 @@ mod adaptation {
             } else {
                 family.effective_size
             });
-            let (now, later) = expected_quality(i, p, patches, movement_cost, pop);
-            if now < p.season_resources {
-                return None;
-            }
+            let now = expected_quality(i, p, patches, pop);
 
-            Some((i, (now, later, movement_cost)))
+            Some((i, (now, movement_cost)))
         });
-        objectives::best_location(destination_expectation, threshold, evidence)
+        objectives::best_location(destination_expectation, evidence)
             .unwrap_or((family.location, OneYearResources::from(0.0)))
     }
 
@@ -617,26 +613,21 @@ mod adaptation {
         i: NodeId,
         p: &Parameters,
         patches: &DashMap<NodeId, Patch>,
-        movement_cost: OneYearResources,
         population: usize,
-    ) -> (OneYearResources, OneYearResources) {
+    ) -> OneYearResources {
         // Minimal knowledge about quality of a patch: Its current plus max resources.
+        let mut rng = rand::thread_rng();
         let r = patches.get(&i).unwrap();
         let q: Vec<_> = r.resources.values().collect();
         let perhead = 1. / population as f64;
-        let (now, later) = (
-            q.iter()
-                .map(|(res, _max_res)| res)
-                .sum::<OneYearResources>()
-                * perhead
-                - movement_cost,
-            q.iter()
-                .map(|(res, max_res)| *res + *max_res * p.resource_recovery_per_season)
-                .sum::<OneYearResources>()
-                * perhead,
-        );
+        let now = q
+            .iter()
+            .map(|(res, max_res)| *res + *max_res * p.resource_recovery_per_season)
+            .sum::<OneYearResources>()
+            * perhead
+            * rng.gen_range(0., 1.);
         // println!("Option: {:?}, with current resources {:?} (per head: {:?}, for {:}) at {:?}", i, (now + movement_cost) / perhead, now, population, movement_cost);
-        (now, later)
+        now
     }
 }
 
@@ -662,11 +653,10 @@ mod objectives {
     // `expected_resources_from_patch`, drawing at random between equal options.
     pub fn best_location<Pair, I>(
         kd: Pair,
-        short_term_minimum: OneYearResources,
-        long_term_precision: OneYearResources,
+        precision: OneYearResources,
     ) -> Option<(I, OneYearResources)>
     where
-        Pair: Iterator<Item = (I, (OneYearResources, OneYearResources, OneYearResources))>,
+        Pair: Iterator<Item = (I, (OneYearResources, OneYearResources))>,
         I: std::fmt::Debug,
     {
         let mut rng = rand::thread_rng();
@@ -680,39 +670,19 @@ mod objectives {
         let mut max_gain = OneYearResources::from(0.0);
         let mut max_short_term_gain = OneYearResources::from(0.0);
 
-        for (location, (expected_shortterm_gain, expected_long_term_gain, travel_cost)) in kd {
-            if expected_shortterm_gain >= short_term_minimum {
-                if expected_long_term_gain > max_gain + long_term_precision {
+        for (location, (expected_shortterm_gain, travel_cost)) in kd {
+            // println!("{:?}: short {:?} move {:?}", location, expected_shortterm_gain, travel_cost);
+            if expected_shortterm_gain > max_gain + precision {
+                target = Some((location, travel_cost));
+                max_gain = expected_shortterm_gain;
+                n_best_before = 0;
+            } else if expected_shortterm_gain >= max_gain - precision {
+                n_best_before += 1;
+                if rng.gen_range(0, n_best_before + 1) < n_best_before {
+                    continue;
+                } else {
                     target = Some((location, travel_cost));
-                    n_best_before = 0;
-                } else if expected_long_term_gain >= max_gain - long_term_precision {
-                    n_best_before += 1;
-                    if rng.gen_range(0, n_best_before + 1) < n_best_before {
-                        continue;
-                    } else {
-                        target = Some((location, travel_cost));
-                    }
                 }
-                max_gain = expected_long_term_gain;
-            } else {
-                match target {
-                    None => {
-                        continue;
-                    }
-                    _ => (),
-                }
-                if expected_shortterm_gain > max_short_term_gain {
-                    target = Some((location, travel_cost));
-                    n_best_short_before = 0;
-                } else if expected_shortterm_gain == max_short_term_gain {
-                    n_best_short_before += 1;
-                    if rng.gen_range(0, n_best_short_before + 1) < n_best_before {
-                        continue;
-                    } else {
-                        target = Some((location, travel_cost));
-                    }
-                }
-                max_short_term_gain = expected_shortterm_gain;
             }
         }
         // println!("Moving to {:?}", target);
@@ -777,9 +747,25 @@ mod prediction {}
 > mechanisms by which agents obtain information modeled explicitly, or are
 > individuals simply assumed to know these variables?
 
- */
+We take this a bit backwards: Kelly (2013), Table 4.1 (reproduced in the
+supplementary material) lists mobility data for 70 hunter-gatherer groups,
+including figueres for the yearly territory of a group where that number could
+be inferred. Three quarters of the listed territories are about 2000 km² or
+less. In our model, this corresponds to roughly 5 patches (each with an area of
+ca. 400 km²) being visited per year. To give some leeway, we permit our agents
+up to 6 moves per year, so a season corresponds to two months. Three quarters of
+the total yearly distance the groups move are reported to be 320 km or less, so
+in this simulation the maximum distance moved per season is about 53.3 km. The
+simulation is centered around distances measured in time units (seconds,
+seasons, years). In all but mangroves, the terrain speed factor is greater than
+one (see `supplement/distances/ecoreginos.py`). If humans generally prefer 2%
+downhill slopes, they have to encounter about the same amount in uphill slopes,
+which are navigated at about 0.7740708353271509 m/s. At that speed, 53.3 km
+correspond do about 68899 s or 19 hours. We therefore give individuals a maximum
+“sensing” range of 68899 seconds. Individuals will know about patches within
+this range from their current patch, but not about patches further away.
 
-const NORM: f64 = 8. * 60. * 60.; // seconds
+ */
 
 mod sensing {
     use crate::*;
@@ -787,29 +773,13 @@ mod sensing {
     /// Individuals know about nearby locations. The exploration is not
     /// explicitly modelled.
 
-    pub fn nearby_locations(
-        location: NodeId,
-        memory: &[NodeId],
-        p: &Parameters,
-    ) -> Vec<(NodeId, f64)> {
-        let mut rng = rand::thread_rng();
+    pub fn nearby_locations(location: NodeId, p: &Parameters) -> HashMap<NodeId, f64> {
         movementgraph::bounded_dijkstra(
             &p.dispersal_graph,
             location,
-            NORM * 12., //4 complete days, or 12 days of travel
+            68899., // NORM * 12., //4 complete days, or 12 days of travel
             |e| *petgraph::graph::EdgeReference::weight(&e),
         )
-        .iter()
-        .filter_map(|(n, v)| {
-            if memory[..std::cmp::min(memory.len(), 16)].contains(n)
-                || rng.gen::<f64>() < 1. / (2. + (v / NORM).powi(2))
-            {
-                Some((*n, *v))
-            } else {
-                None
-            }
-        })
-        .collect()
     }
 }
 
@@ -1015,8 +985,6 @@ fn very_coarse_dist(x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
 }
 
 pub fn initialization(p: Parameters, scale: f64) -> Option<State> {
-    let season_resources: OneYearResources = OneYearResources::from(p.season_length_in_years);
-
     let graph = &p.dispersal_graph;
 
     let mut m_start1: Option<NodeId> = None;
@@ -1125,7 +1093,7 @@ pub fn initialization(p: Parameters, scale: f64) -> Option<State> {
                 effective_size: 5,
                 number_offspring: 0,
                 seasons_till_next_mutation: None,
-                stored_resources: season_resources * 10.,
+                stored_resources: OneYearResources::from(1.),
                 adaptation: ecology::Ecovector::from(p.minimum_adaptation),
             },
             Family {
@@ -1140,7 +1108,7 @@ pub fn initialization(p: Parameters, scale: f64) -> Option<State> {
                 effective_size: 5,
                 number_offspring: 0,
                 seasons_till_next_mutation: None,
-                stored_resources: season_resources * 10.,
+                stored_resources: OneYearResources::from(1.),
                 adaptation: ecology::Ecovector::from(p.minimum_adaptation),
             },
         ],
@@ -1226,7 +1194,8 @@ pub mod submodels {
             families
                 .par_iter_mut()
                 .filter_map(|mut family| {
-                    let nearby = sensing::nearby_locations(family.location, &family.history, p);
+                    let nearby = sensing::nearby_locations(family.location, p);
+                    // println!("{:?}", nearby);
 
                     let (destination, cost) = adaptation::decide_on_moving(
                         &family,
@@ -1241,7 +1210,7 @@ pub mod submodels {
                     family.location = destination;
                     family.stored_resources -= cost;
 
-                    match maybe_procreate(&mut family) {
+                    match maybe_procreate(&mut family, p.season_length_in_years) {
                         None => None,
                         // In terms of scheduling a new family can (and if possible
                         // should) move immediately when created. This behaviour is
@@ -1275,10 +1244,10 @@ pub mod submodels {
             size: usize,
             p: &Parameters,
         ) -> OneYearResources {
-            resources - p.season_resources * (size as f64)
+            resources - OneYearResources::from(size as f64) * p.season_length_in_years
         }
 
-        pub fn maybe_procreate(family: &mut Family) -> Option<Family> {
+        pub fn maybe_procreate(family: &mut Family, season_length_in_years: f64) -> Option<Family> {
             if family.effective_size < 10 {
                 None
             } else {
@@ -1288,7 +1257,7 @@ pub mod submodels {
                     descendence: format!("{}:{:}", family.descendence, family.number_offspring),
                     location: family.location,
                     history: family.history.clone(),
-                    seasons_till_next_child: 12 * 2,
+                    seasons_till_next_child: (12. / season_length_in_years) as u32,
                     culture: family.culture,
 
                     effective_size: 2,
@@ -1300,11 +1269,11 @@ pub mod submodels {
             }
         }
 
-        pub fn maybe_grow(family: &mut Family) {
+        pub fn maybe_grow(family: &mut Family, season_length_in_years: f64) {
             // print!("Growing {:} in {:}: size {:} ", family.descendence, family.seasons_till_next_child, family.effective_size);
             if family.seasons_till_next_child == 0 {
                 family.effective_size += 1;
-                family.seasons_till_next_child = 2;
+                family.seasons_till_next_child = (1.2 / season_length_in_years) as u32;
             } else {
                 family.seasons_till_next_child -= 1;
             }
@@ -1429,8 +1398,8 @@ pub mod submodels {
             }
 
             for (ecoregion, (res, max_res)) in patch.resources.iter_mut() {
-                let mut total_squared_groups_effort = 0.0;
-                groups
+                let mut total_squared_groups_effort = 1.0;
+                let mut work = groups
                     .iter_mut()
                     .map(|group| {
                         let mut sum_effort = 0.0;
@@ -1439,18 +1408,29 @@ pub mod submodels {
                         total_squared_groups_effort += sum_effort.powi(2);
                         (sum_effort, contributions)
                     })
-                    .collect::<Vec<(f64, Vec<(&mut OneYearResources, f64)>)>>()
-                    .drain(..)
+                    .collect::<Vec<(f64, Vec<(&mut OneYearResources, f64)>)>>();
+                // println!("{:?} from {:?}", total_squared_groups_effort, work);
+                work.drain(..)
                     .for_each(|(group_effort, mut contributions)| {
+                        assert!(group_effort > 0.);
+                        // println!("group effort: {:?}", group_effort);
                         let group_harvest =
                             *res * group_effort.powi(2) / total_squared_groups_effort;
-                        let coefficient = std::cmp::min(group_harvest, OneYearResources::from(2.5));
+                        assert!(group_harvest > OneYearResources::from(0.));
+                        // println!("group harvest: {:?}", group_harvest);
+                        let coefficient = std::cmp::min(
+                            group_harvest / group_effort,
+                            OneYearResources::from(2.5),
+                        );
+                        assert!(coefficient > OneYearResources::from(0.));
+                        // println!("coefficient: {:?}", coefficient);
                         for (storage, contribution) in contributions.iter_mut() {
                             **storage += coefficient * p.season_length_in_years * *contribution;
                         }
                         let effort = coefficient * group_effort;
-                        //println!("Harvest: {:?} (@ {:?})", effort, coefficient);
+                        // println!("Harvest: {:?} (@ {:?}) from {:?}", effort, coefficient, res);
                         *res -= effort;
+                        assert!(*res >= OneYearResources::from(0.));
                     });
                 recover(res, *max_res, p.resource_recovery_per_season);
             }
@@ -1506,7 +1486,6 @@ pub mod submodels {
             pub culture_mutation_rate: f64,
             pub culture_dimensionality: u8,
             pub cooperation_threshold: u32,
-            pub season_resources: OneYearResources,
             pub maximum_resources_one_adult_can_harvest: OneYearResources,
             pub evidence_needed: f64,
             pub payoff_std: f64,
@@ -1519,17 +1498,16 @@ pub mod submodels {
         impl Default for Parameters {
             fn default() -> Parameters {
                 Parameters {
-                    resource_recovery_per_season: 0.20,
+                    resource_recovery_per_season: 0.10,
                     culture_mutation_rate: 6e-3,
                     culture_dimensionality: 20,
                     cooperation_threshold: 6,
-                    season_resources: OneYearResources::from(0.5),
-                    maximum_resources_one_adult_can_harvest: OneYearResources::from(1.25),
+                    maximum_resources_one_adult_can_harvest: OneYearResources::from(0.25),
                     evidence_needed: 0.1,
                     payoff_std: 0.1,
                     minimum_adaptation: 0.5,
 
-                    season_length_in_years: 0.5,
+                    season_length_in_years: 1. / 6.,
                     dispersal_graph: MovementGraph::default(),
                 }
             }
