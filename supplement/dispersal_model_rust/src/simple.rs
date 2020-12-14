@@ -13,7 +13,10 @@ fn main() -> Result<(), String> {
 
     let mut o = model::observation::ObservationSettings {
         log_every: 1,
+        log_gdcd: 0,
         log_patch_resources: 1,
+        store_every: 100,
+        statefile: "simple-state.json".to_string(),
     };
 
     {
@@ -23,6 +26,7 @@ fn main() -> Result<(), String> {
             &mut scale,
             &mut recovery,
             &mut o.log_every,
+            &mut o.statefile,
         );
         parser.refer(&mut spots).add_option(
             &["--spot"],

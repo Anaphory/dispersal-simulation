@@ -6,6 +6,7 @@ pub fn parse_args<'a>(
     resource_scale: &'a mut f64,
     resource_recovery_per_year: &'a mut f64,
     log_every: &'a mut u32,
+    statefile: &'a mut String,
 ) -> argparse::ArgumentParser<'a> {
     let mut parser = argparse::ArgumentParser::new();
     parser.set_description("Run a dispersal simulation");
@@ -54,6 +55,12 @@ pub fn parse_args<'a>(
         argparse::Store,
         "number of seasons to simulate",
     );
+    parser.refer(statefile).add_option(
+        &["--statefile"],
+        argparse::Store,
+        "File to read state from and store back to",
+    );
+
     println!("Starting…");
     parser
 }

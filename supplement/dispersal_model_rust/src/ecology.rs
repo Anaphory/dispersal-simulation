@@ -3,7 +3,7 @@ use std::ops::{Div, Index, Mul};
 /**
 OneYearResources is a number with units.
 */
-#[derive(PartialEq, PartialOrd, Default, Clone, Copy)]
+#[derive(PartialEq, PartialOrd, Default, Clone, Copy, Serialize, Deserialize)]
 pub struct OneYearResources {
     c: f64,
 }
@@ -156,6 +156,8 @@ pub fn load_density_tif() -> Option<(Vec<u16>, u32)> {
     Some((vec, width))
 }
 
+mod array_serde;
+use array_serde::BigArray;
 pub const ATTESTED_ECOREGIONS: usize = 303;
 
 #[allow(clippy::excessive_precision, clippy::unreadable_literal)]
@@ -963,8 +965,10 @@ pub fn patch_from_ecoregions(ecoregion: i64, area_in_100_km2: f64) -> f64 {
     }
 }
 
-#[derive(Clone, Copy)]
+use serde_derive::{Deserialize, Serialize};
+#[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct Ecovector {
+    #[serde(with = "BigArray")]
     pub entries: [f64; ATTESTED_ECOREGIONS + 1],
     pub minimum: f64,
 }

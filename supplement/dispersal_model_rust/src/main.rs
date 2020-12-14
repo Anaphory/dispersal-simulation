@@ -23,7 +23,10 @@ fn main() -> Result<(), String> {
 
     let mut o = observation::ObservationSettings {
         log_every: 1,
+        log_gdcd: 0,
         log_patch_resources: 1,
+        store_every: 100,
+        statefile: "state.json".to_string(),
     };
 
     {
@@ -33,6 +36,7 @@ fn main() -> Result<(), String> {
             &mut scale,
             &mut recovery,
             &mut o.log_every,
+            &mut o.statefile,
         );
         parser.parse_args_or_exit();
     };

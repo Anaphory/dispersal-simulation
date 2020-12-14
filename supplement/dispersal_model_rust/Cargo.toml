@@ -16,6 +16,10 @@ name = "simulation"
 path = "src/main.rs"
 
 [[bin]]
+name = "resume"
+path = "src/resume.rs"
+
+[[bin]]
 name = "simple"
 path = "src/simple.rs"
 
@@ -32,7 +36,9 @@ tiff = ">=0.5.0"
 argparse = ">=0.0.0"
 lazy_static = ">=0.0.0"
 petgraph = { version = ">=0.0.0", features = ["serde-1"] }
-serde = ">=0.0.0"
+serde = { version = ">=0.0.0", features = ["serde_derive"] }
+serde_derive = ">=0.0.0"
+serde_json = ">=0.0.0"
 bincode = ">=0.0.0"
 rusqlite = ">=0.0.0"
-dashmap = ">=3.0.0"
+dashmap = { version = ">=3.0.0", features = ["serde"] }

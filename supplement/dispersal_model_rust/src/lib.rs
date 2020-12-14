@@ -38,15 +38,19 @@ compared to that history.
 
 // Load useful modules
 
+use serde_derive::{Deserialize, Serialize};
 use dashmap::DashMap;
+
+use std::fs::File;
+use std::io::prelude::*;
 use rand::prelude::*;
 use std::collections::HashMap;
 
 use rayon::prelude::*;
 
 pub mod argparse;
-mod debug;
 pub mod ecology;
+mod debug;
 
 use submodels::parameters::Parameters;
 
@@ -103,6 +107,7 @@ fundamentally reasonable dynamics.
 https://www.nature.com/articles/s41597-020-0552-1
 
  */
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Patch {
     /// For every local ecoregion, the tuple of resources currently accessible
     /// in this patch, and the maximum possible resources available in a time
@@ -118,6 +123,8 @@ migrate between nodes and form links to other families in the context of
 cooperation to extract resources.
 
  */
+
+#[derive(Serialize, Deserialize)]
 pub struct Family {
     /// The agent's history of decendence, also serving as unique ID.
     pub descendence: String,
@@ -186,7 +193,7 @@ so a binary vector is equivalent to an unsigned integer of sufficient size,
 which is faster to use in computations and more efficient to store.
 
  */
-#[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Clone, Copy)]
+#[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Clone, Copy, Serialize, Deserialize)]
 pub struct Culture {
     binary_representation: u64,
 }
@@ -215,7 +222,7 @@ one season each, since the start of the simulation, and stores a copy of
 the model parameters.
 
  */
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct State {
     /// The patches of the model, indexed by node ID in a graph. This set is
     /// fixed, although the properties of the patches may change with time.
@@ -224,7 +231,7 @@ pub struct State {
     /// changes over time as new families are added and old families die out.
     families: Vec<Family>,
     /// The current time step, in half years since start of the simulation.
-    t: Seasons,
+    pub t: Seasons,
     /// The parameters of the model
     p: Parameters,
 }
@@ -347,9 +354,12 @@ fn step_part_2(
 
     if (o.log_every > 0) && (t % o.log_every == 0) {
         println!("t: {:}", t);
-        observation::print_gd_cd(&cultures_by_location, p);
         observation::print_population_by_location(&cultures_by_location, p);
         println!("F: {:?}", families.get(0));
+    }
+    if (o.log_gdcd > 0) && (t % o.log_gdcd == 0) {
+        println!("t: {:}", t);
+        observation::print_gd_cd(&cultures_by_location, p);
     }
 }
 
@@ -938,7 +948,10 @@ pub mod observation {
 
     pub struct ObservationSettings {
         pub log_every: Seasons,
+        pub log_gdcd: Seasons,
+        pub store_every: Seasons,
         pub log_patch_resources: Seasons,
+        pub statefile: String,
     }
 
     /**
@@ -1206,6 +1219,7 @@ pub mod submodels {
                         cc,
                     );
                     // println!("Family {:} moved to {:}", family.descendence, destination);
+                    
                     family.history.push(family.location);
                     family.location = destination;
                     family.stored_resources -= cost;
@@ -1257,7 +1271,7 @@ pub mod submodels {
                     descendence: format!("{}:{:}", family.descendence, family.number_offspring),
                     location: family.location,
                     history: family.history.clone(),
-                    seasons_till_next_child: (12. / season_length_in_years) as u32,
+                    seasons_till_next_child: (12. / season_length_in_years) as u32 + 1,
                     culture: family.culture,
 
                     effective_size: 2,
@@ -1477,10 +1491,11 @@ pub mod submodels {
     }
 
     pub mod parameters {
+        use serde_derive::{Deserialize, Serialize};
         use crate::movementgraph::MovementGraph;
         use crate::OneYearResources;
 
-        #[derive(Debug)]
+        #[derive(Debug, Serialize, Deserialize)]
         pub struct Parameters {
             pub resource_recovery_per_season: f64,
             pub culture_mutation_rate: f64,
@@ -1523,10 +1538,19 @@ pub fn run(mut s: State, max_t: Seasons, o: &observation::ObservationSettings) {
             println!("Died out");
             break;
         }
-        s.t += 1;
-        if s.t > max_t {
+        if (s.t == max_t) || (o.store_every > 0) && (s.t % o.store_every == 0) {
+            match File::create(&o.statefile) {
+                Ok(mut f) => { match f.write(&serde_json::to_vec_pretty(&s).unwrap()) {
+                    Ok(_) => (),
+                    Err(_) => println!("Failed to store state.")
+                }; },
+                Err(_) => println!("Failed to store state: Could not create file.")
+            };
+        }
+        if s.t >= max_t {
             println!("Ended");
             break;
         }
+        s.t += 1;
     }
 }
