@@ -1,3 +1,4 @@
+#![allow(clippy::redundant_field_names, clippy::implicit_hasher)]
 /*!
 Model Description
 =================
@@ -38,19 +39,19 @@ compared to that history.
 
 // Load useful modules
 
-use serde_derive::{Deserialize, Serialize};
 use dashmap::DashMap;
+use serde_derive::{Deserialize, Serialize};
 
-use std::fs::File;
-use std::io::prelude::*;
 use rand::prelude::*;
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::prelude::*;
 
 use rayon::prelude::*;
 
 pub mod argparse;
-pub mod ecology;
 mod debug;
+pub mod ecology;
 
 use submodels::parameters::Parameters;
 
@@ -124,7 +125,7 @@ cooperation to extract resources.
 
  */
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Family {
     /// The agent's history of decendence, also serving as unique ID.
     pub descendence: String,
@@ -178,8 +179,11 @@ single time step. Resource exploitation happens at the level of the cooperative
 group and is distributed to the individual families after the fact.
 
  */
-use collectives::Cooperative;
-
+pub struct Cooperative<'a> {
+    pub families: Vec<&'a mut Family>,
+    pub culture: Culture,
+    pub total_stored: OneYearResources,
+}
 /**
 ## 2.3 Cultures
 
@@ -222,7 +226,7 @@ one season each, since the start of the simulation, and stores a copy of
 the model parameters.
 
  */
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct State {
     /// The patches of the model, indexed by node ID in a graph. This set is
     /// fixed, although the properties of the patches may change with time.
@@ -257,12 +261,14 @@ The structure of a single time step consist of two parts, as follows.
 fn step(
     families: &mut Vec<Family>,
     patches: &mut DashMap<NodeId, Patch>,
+    storage: &DashMap<NodeId, HashMap<Culture, OneYearResources>>,
     p: &Parameters,
     t: Seasons,
+    nearby_cache: &mut DashMap<NodeId, Vec<(NodeId, OneYearResources)>>,
     o: &observation::ObservationSettings,
-) {
-    step_part_1(families, patches, p);
-    step_part_2(families, patches, p, o, t);
+) -> DashMap<NodeId, HashMap<Culture, OneYearResources>> {
+    step_part_1(families, patches, storage, nearby_cache, p);
+    step_part_2(families, patches, p, o, t)
 }
 /**
 The first part focuses on the individual families, which shrink, grow, die,
@@ -272,7 +278,13 @@ family depends on the distribution of the families at he start of the season and
 not at the time of movement, it can happen entirely in parallel.
 
  */
-fn step_part_1(families: &mut Vec<Family>, patches: &mut DashMap<NodeId, Patch>, p: &Parameters) {
+fn step_part_1(
+    families: &mut Vec<Family>,
+    patches: &mut DashMap<NodeId, Patch>,
+    storage: &DashMap<NodeId, HashMap<Culture, OneYearResources>>,
+    nearby_cache: &mut DashMap<NodeId, Vec<(NodeId, OneYearResources)>>,
+    p: &Parameters,
+) {
     let cc: DashMap<NodeId, usize> = DashMap::new();
     for f in families.iter() {
         *cc.entry(f.location).or_insert(0) += f.effective_size;
@@ -292,8 +304,14 @@ fn step_part_1(families: &mut Vec<Family>, patches: &mut DashMap<NodeId, Patch>,
 
     families.retain(|family| submodels::family_lifecycle::can_survive(&family));
 
-    let mut children =
-        submodels::family_lifecycle::procreate_and_migrate(families, p, patches, &cc);
+    let mut children = submodels::family_lifecycle::procreate_and_migrate(
+        families,
+        storage,
+        p,
+        patches,
+        &cc,
+        nearby_cache,
+    );
     families.extend(children.drain(..));
 }
 
@@ -312,7 +330,7 @@ fn step_part_2(
     p: &Parameters,
     o: &observation::ObservationSettings,
     t: Seasons,
-) {
+) -> DashMap<NodeId, HashMap<Culture, OneYearResources>> {
     let families_by_location: DashMap<NodeId, Vec<&mut Family>> = DashMap::new();
     families.par_iter_mut().for_each(|f| {
         families_by_location
@@ -321,6 +339,7 @@ fn step_part_2(
             .push(f)
     });
 
+    let stored_resources = DashMap::new();
     let cultures_by_location: HashMap<NodeId, HashMap<Culture, usize>> = families_by_location
         // TODO: Change when DashMap directly supports par_iter
         .into_iter()
@@ -330,8 +349,12 @@ fn step_part_2(
 
             let mut groups = crate::collectives::cooperatives(families, p);
 
+            let mut cs = stored_resources
+                .entry(patch_id)
+                .or_insert_with(HashMap::new);
             for group in groups.iter_mut() {
                 let group_culture = submodels::ecology::adjust_culture(group, p);
+                cs.insert(group_culture, group.total_stored);
                 cc.insert(
                     group_culture,
                     group.families.iter().map(|f| f.effective_size).sum(),
@@ -361,6 +384,7 @@ fn step_part_2(
         println!("t: {:}", t);
         observation::print_gd_cd(&cultures_by_location, p);
     }
+    stored_resources
 }
 
 /**
@@ -589,7 +613,7 @@ mod adaptation {
         population: &DashMap<NodeId, usize>,
     ) -> (NodeId, OneYearResources)
     where
-        KD: Iterator<Item = (NodeId, f64)>,
+        KD: Iterator<Item = &'a (NodeId, OneYearResources)>,
     {
         let evidence = OneYearResources::from(p.season_length_in_years) * p.evidence_needed;
 
@@ -598,11 +622,13 @@ mod adaptation {
         let cost_per_walking_second: OneYearResources =
             OneYearResources::from(1.) / SECONDS_PER_YEAR * 3.;
 
-        let destination_expectation = known_destinations.filter_map(|(i, d)| {
+        let destination_expectation = known_destinations.filter_map(|(i_, d_)| {
+            let i = *i_;
+            let d = *d_;
             if family.location == i && avoid_stay {
                 return None;
             }
-            let movement_cost = cost_per_walking_second * d * family.effective_size as f64;
+            let movement_cost = d * family.effective_size as f64;
             let pop = match population.get(&i) {
                 None => 0,
                 Some(k) => *k,
@@ -630,14 +656,11 @@ mod adaptation {
         let r = patches.get(&i).unwrap();
         let q: Vec<_> = r.resources.values().collect();
         let perhead = 1. / population as f64;
-        let now = q
-            .iter()
+        q.iter()
             .map(|(res, max_res)| *res + *max_res * p.resource_recovery_per_season)
             .sum::<OneYearResources>()
             * perhead
-            * rng.gen_range(0., 1.);
-        // println!("Option: {:?}, with current resources {:?} (per head: {:?}, for {:}) at {:?}", i, (now + movement_cost) / perhead, now, population, movement_cost);
-        now
+            * rng.gen_range(0., 1.)
     }
 }
 
@@ -783,13 +806,27 @@ mod sensing {
     /// Individuals know about nearby locations. The exploration is not
     /// explicitly modelled.
 
-    pub fn nearby_locations(location: NodeId, p: &Parameters) -> HashMap<NodeId, f64> {
+    pub fn nearby_locations(location: NodeId, p: &Parameters) -> Vec<(NodeId, OneYearResources)> {
+        // Triple: opportunity cost from not foraging, and cost from doing likely
+        // heavy labor instead.
+        let cost_per_walking_second: OneYearResources =
+            OneYearResources::from(1.) / SECONDS_PER_YEAR * 3.;
+
         movementgraph::bounded_dijkstra(
             &p.dispersal_graph,
             location,
             68899., // NORM * 12., //4 complete days, or 12 days of travel
             |e| *petgraph::graph::EdgeReference::weight(&e),
         )
+        .drain()
+        .filter_map(|(n, d)| {
+            if d.is_normal() {
+                Some((n, cost_per_walking_second * d))
+            } else {
+                None
+            }
+        })
+        .collect()
     }
 }
 
@@ -862,10 +899,6 @@ comments?
  */
 pub mod collectives {
     use crate::*;
-    pub struct Cooperative<'a> {
-        pub families: Vec<&'a mut Family>,
-        pub culture: Culture,
-    }
 
     pub fn cooperatives<'a>(
         mut families_in_this_location: Vec<&'a mut Family>,
@@ -875,6 +908,8 @@ pub mod collectives {
         let mut groups: Vec<Cooperative<'a>> = vec![];
 
         for family in families_in_this_location.drain(..) {
+            let storage = family.stored_resources;
+            family.stored_resources = OneYearResources::from(0.0);
             let mut joined_group: Option<&mut Cooperative<'a>> = None;
             for group in groups.iter_mut() {
                 let mut join = true;
@@ -899,6 +934,7 @@ pub mod collectives {
                     let group = Cooperative {
                         culture: family.culture,
                         families: vec![family],
+                        total_stored: storage,
                     };
                     groups.push(group);
                 }
@@ -907,6 +943,7 @@ pub mod collectives {
                         group.culture = family.culture
                     }
                     group.families.push(family);
+                    group.total_stored += storage;
                 }
             }
         }
@@ -1194,33 +1231,35 @@ pub mod submodels {
 
     pub mod family_lifecycle {
         use crate::{adaptation, sensing};
-        use crate::{Family, NodeId, OneYearResources, Parameters, Patch};
+        use crate::{Culture, Family, NodeId, OneYearResources, Parameters, Patch};
         use dashmap::DashMap;
         use rayon::prelude::*;
+        use std::collections::HashMap;
 
         pub fn procreate_and_migrate(
             families: &mut Vec<Family>,
+            storage: &DashMap<NodeId, HashMap<Culture, OneYearResources>>,
             p: &Parameters,
             patches: &mut DashMap<NodeId, Patch>,
             cc: &DashMap<NodeId, usize>,
+            nearby_cache: &mut DashMap<NodeId, Vec<(NodeId, OneYearResources)>>,
         ) -> Vec<Family> {
             families
                 .par_iter_mut()
                 .filter_map(|mut family| {
-                    let nearby = sensing::nearby_locations(family.location, p);
+                    let nearby = nearby_cache
+                        .entry(family.location)
+                        .or_insert_with(|| sensing::nearby_locations(family.location, p));
                     // println!("{:?}", nearby);
 
-                    let (destination, cost) = adaptation::decide_on_moving(
-                        &family,
-                        nearby.iter().map(|(i, d)| (*i, *d)),
-                        patches,
-                        false,
-                        p,
-                        cc,
-                    );
+                    let (destination, cost) =
+                        adaptation::decide_on_moving(&family, nearby.iter(), patches, false, p, cc);
                     // println!("Family {:} moved to {:}", family.descendence, destination);
-                    
                     family.history.push(family.location);
+                    if family.history.len() > 14 {
+                        family.history =
+                            family.history[family.history.len() - 10..family.history.len()].into()
+                    }
                     family.location = destination;
                     family.stored_resources -= cost;
 
@@ -1232,13 +1271,7 @@ pub mod submodels {
                         Some(mut descendant) => {
                             let (destination, cost) = adaptation::decide_on_moving(
                                 &descendant,
-                                nearby.iter().filter_map(|(i, d)| {
-                                    if *i == family.location {
-                                        None
-                                    } else {
-                                        Some((*i, *d))
-                                    }
-                                }),
+                                nearby.iter(),
                                 patches,
                                 true,
                                 p,
@@ -1350,10 +1383,7 @@ pub mod submodels {
             (&mut family.stored_resources, contribution)
         }
 
-        pub fn adjust_culture(
-            group: &mut crate::collectives::Cooperative,
-            p: &Parameters,
-        ) -> crate::Culture {
+        pub fn adjust_culture(group: &mut crate::Cooperative, p: &Parameters) -> crate::Culture {
             let target_culture = group.culture;
             for family in group.families.iter_mut() {
                 crate::submodels::culture::mutate_culture(
@@ -1368,7 +1398,7 @@ pub mod submodels {
         }
 
         pub fn group_contribution<'a>(
-            group: &'a mut crate::collectives::Cooperative,
+            group: &'a mut crate::Cooperative,
             ecoregion: usize,
             sum_effort: &mut f64,
         ) -> Vec<(&'a mut OneYearResources, f64)> {
@@ -1381,25 +1411,13 @@ pub mod submodels {
 
         /**
          */
-        pub fn exploit_patch<P>(
-            mut groups: Vec<crate::collectives::Cooperative>,
-            mut patch: P,
-            p: &Parameters,
-        ) where
+        pub fn exploit_patch<P>(mut groups: Vec<crate::Cooperative>, mut patch: P, p: &Parameters)
+        where
             P: core::ops::DerefMut<Target = crate::Patch>,
         {
             for mut group in groups.iter_mut() {
-                let total_storage: OneYearResources = group
-                    .families
-                    .iter_mut()
-                    .map(|f| {
-                        let s = f.stored_resources;
-                        f.stored_resources = OneYearResources::from(0.0);
-                        s
-                    })
-                    .sum();
-
                 let mut sum_effort = 0.0;
+                let group_storage = group.total_stored;
                 let mut contributions: Vec<_> = group_contribution(
                     &mut group,
                     crate::ecology::ATTESTED_ECOREGIONS,
@@ -1407,7 +1425,7 @@ pub mod submodels {
                 );
 
                 for (storage, contribution) in contributions.iter_mut() {
-                    **storage = total_storage * *contribution / sum_effort;
+                    **storage = group_storage * *contribution / sum_effort;
                 }
             }
 
@@ -1491,9 +1509,9 @@ pub mod submodels {
     }
 
     pub mod parameters {
-        use serde_derive::{Deserialize, Serialize};
         use crate::movementgraph::MovementGraph;
         use crate::OneYearResources;
+        use serde_derive::{Deserialize, Serialize};
 
         #[derive(Debug, Serialize, Deserialize, Clone)]
         pub struct Parameters {
@@ -1542,8 +1560,18 @@ pub fn store_state(state: State, statefile: String) -> Result<(), String> {
 }
 
 pub fn run(mut s: State, max_t: Seasons, o: &observation::ObservationSettings) {
+    let mut stored_resources = DashMap::new();
+    let mut cache = DashMap::new();
     loop {
-        step(&mut s.families, &mut s.patches, &s.p, s.t, o);
+        stored_resources = step(
+            &mut s.families,
+            &mut s.patches,
+            &stored_resources,
+            &s.p,
+            s.t,
+            &mut cache,
+            o,
+        );
 
         if s.families.is_empty() {
             println!("Died out");
