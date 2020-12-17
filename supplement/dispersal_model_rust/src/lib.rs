@@ -1278,7 +1278,7 @@ pub mod submodels {
                     number_offspring: 0,
                     seasons_till_next_mutation: None,
                     stored_resources: OneYearResources::from(0.),
-                    adaptation: family.adaptation.clone(),
+                    adaptation: family.adaptation,
                 })
             }
         }
@@ -1495,7 +1495,7 @@ pub mod submodels {
         use crate::movementgraph::MovementGraph;
         use crate::OneYearResources;
 
-        #[derive(Debug, Serialize, Deserialize)]
+        #[derive(Debug, Serialize, Deserialize, Clone)]
         pub struct Parameters {
             pub resource_recovery_per_season: f64,
             pub culture_mutation_rate: f64,
@@ -1530,6 +1530,17 @@ pub mod submodels {
     }
 }
 
+pub fn store_state(state: State, statefile: String) -> Result<(), String> {
+    let file = match File::create(statefile) {
+        Ok(f) => f,
+        Err(_) => return Err("Could not create state file".to_string()),
+    };
+    match serde_json::to_writer_pretty(file, &state) {
+        Ok(_) => Ok(()),
+        Err(_) => Err("Failed to store state.".to_string()),
+    }
+}
+
 pub fn run(mut s: State, max_t: Seasons, o: &observation::ObservationSettings) {
     loop {
         step(&mut s.families, &mut s.patches, &s.p, s.t, o);
@@ -1539,13 +1550,12 @@ pub fn run(mut s: State, max_t: Seasons, o: &observation::ObservationSettings) {
             break;
         }
         if (s.t == max_t) || (o.store_every > 0) && (s.t % o.store_every == 0) {
-            match File::create(&o.statefile) {
-                Ok(mut f) => { match f.write(&serde_json::to_vec_pretty(&s).unwrap()) {
-                    Ok(_) => (),
-                    Err(_) => println!("Failed to store state.")
-                }; },
-                Err(_) => println!("Failed to store state: Could not create file.")
-            };
+            println!("{:} % {:}", s.t, o.store_every);
+            let to_be_stored = s.clone();
+            let file = o.statefile.to_string();
+            std::thread::spawn(|| {
+                store_state(to_be_stored, file).unwrap_or_else(|r| println!("{:}", r))
+            });
         }
         if s.t >= max_t {
             println!("Ended");
