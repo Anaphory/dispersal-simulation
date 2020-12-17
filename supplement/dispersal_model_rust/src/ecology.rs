@@ -977,6 +977,7 @@ impl Mul<f64> for Ecovector {
     type Output = Self;
 
     fn mul(self, rhs: f64) -> Self::Output {
+        #[allow(clippy::suspicious_arithmetic_impl)]
         let mut result = [0.; ATTESTED_ECOREGIONS + 1];
         for (i, item) in self.entries.iter().enumerate() {
             result[i] = f64::max(self.minimum, item * rhs); //TODO: Move this part of the logic elsewhere
