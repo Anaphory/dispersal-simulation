@@ -1,3 +1,4 @@
+use crate::observation::ObservationSettings;
 use crate::{Parameters, Seasons};
 
 pub fn parse_args<'a>(
@@ -5,8 +6,7 @@ pub fn parse_args<'a>(
     max_t: &'a mut Seasons,
     resource_scale: &'a mut f64,
     resource_recovery_per_year: &'a mut f64,
-    log_every: &'a mut u32,
-    statefile: &'a mut String,
+    observation: &'a mut ObservationSettings,
 ) -> argparse::ArgumentParser<'a> {
     let mut parser = argparse::ArgumentParser::new();
     parser.set_description("Run a dispersal simulation");
@@ -45,20 +45,25 @@ pub fn parse_args<'a>(
         argparse::Store,
         "Scale resources by this factor",
     );
-    parser.refer(log_every).add_option(
+    parser.refer(&mut observation.store_every).add_option(
+        &["--store-every"],
+        argparse::Store,
+        "period of state saving, in seasons",
+    );
+    parser.refer(&mut observation.log_every).add_option(
         &["--log-every"],
         argparse::Store,
         "period of logging, in seasons",
+    );
+    parser.refer(&mut observation.statefile).add_option(
+        &["--statefile"],
+        argparse::Store,
+        "File to read state from and store back to",
     );
     parser.refer(max_t).add_option(
         &["--steps"],
         argparse::Store,
         "number of seasons to simulate",
-    );
-    parser.refer(statefile).add_option(
-        &["--statefile"],
-        argparse::Store,
-        "File to read state from and store back to",
     );
 
     println!("Starting…");

@@ -30,14 +30,7 @@ fn main() -> Result<(), String> {
     };
 
     {
-        let parser = parse_args(
-            &mut p,
-            &mut max_t,
-            &mut scale,
-            &mut recovery,
-            &mut o.log_every,
-            &mut o.statefile,
-        );
+        let parser = parse_args(&mut p, &mut max_t, &mut scale, &mut recovery, &mut o);
         parser.parse_args_or_exit();
     };
     p.resource_recovery_per_season = recovery * p.season_length_in_years;

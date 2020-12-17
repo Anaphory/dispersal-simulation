@@ -1,11 +1,6 @@
-use serde::{Deserialize, Serialize};
-
-use model::argparse::parse_args;
-use model::movementgraph::MovementGraph;
-use model::submodels::parameters::Parameters;
+use ::argparse;
 use model::*;
 use std::fs;
-use ::argparse;
 
 fn main() -> Result<(), String> {
     let mut o = observation::ObservationSettings {
@@ -22,14 +17,14 @@ fn main() -> Result<(), String> {
         let mut parser = argparse::ArgumentParser::new();
         parser.set_description("Resume a dispersal simulation");
         parser.refer(&mut o.statefile).add_option(
-            &["--resume-from"],
-            argparse::Store,
-            "File to read initial state from",
-        );
-        parser.refer(&mut statefile).add_option(
             &["--statefile"],
             argparse::Store,
             "File to write state to",
+        );
+        parser.refer(&mut statefile).add_option(
+            &["--resume-from"],
+            argparse::Store,
+            "File to read initial state from",
         );
         parser.refer(&mut o.log_every).add_option(
             &["--log-every"],

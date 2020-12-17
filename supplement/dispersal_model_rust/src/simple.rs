@@ -20,14 +20,7 @@ fn main() -> Result<(), String> {
     };
 
     {
-        let mut parser = parse_args(
-            &mut p,
-            &mut max_t,
-            &mut scale,
-            &mut recovery,
-            &mut o.log_every,
-            &mut o.statefile,
-        );
+        let mut parser = parse_args(&mut p, &mut max_t, &mut scale, &mut recovery, &mut o);
         parser.refer(&mut spots).add_option(
             &["--spot"],
             argparse::Collect,
