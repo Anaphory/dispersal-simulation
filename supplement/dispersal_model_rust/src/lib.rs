@@ -45,7 +45,6 @@ use serde_derive::{Deserialize, Serialize};
 use rand::prelude::*;
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::prelude::*;
 
 use rayon::prelude::*;
 
@@ -604,61 +603,69 @@ Agents also adapt to local environment: TODO
 mod adaptation {
     use crate::*;
 
-    pub fn decide_on_moving<'a, KD>(
+    pub fn decide_on_moving<'a>(
         family: &'a Family,
-        known_destinations: KD,
+        storage: &DashMap<NodeId, HashMap<Culture, OneYearResources>>,
+        known_destinations: &[(NodeId, OneYearResources)],
         patches: &'a DashMap<NodeId, Patch>,
         avoid_stay: bool,
         p: &Parameters,
         population: &DashMap<NodeId, usize>,
-    ) -> (NodeId, OneYearResources)
-    where
-        KD: Iterator<Item = &'a (NodeId, OneYearResources)>,
-    {
+    ) -> (NodeId, OneYearResources) {
         let evidence = OneYearResources::from(p.season_length_in_years) * p.evidence_needed;
 
-        // Triple: opportunity cost from not foraging, and cost from doing likely
-        // heavy labor instead.
-        let cost_per_walking_second: OneYearResources =
-            OneYearResources::from(1.) / SECONDS_PER_YEAR * 3.;
-
-        let destination_expectation = known_destinations.filter_map(|(i_, d_)| {
-            let i = *i_;
+        let destination_expectation = known_destinations.iter().filter_map(|(i, d_)| {
             let d = *d_;
-            if family.location == i && avoid_stay {
+            if family.location == *i && avoid_stay {
                 return None;
             }
             let movement_cost = d * family.effective_size as f64;
             let pop = match population.get(&i) {
                 None => 0,
                 Some(k) => *k,
-            } + (if family.location == i {
+            } + (if family.location == *i {
                 0
             } else {
                 family.effective_size
             });
-            let now = expected_quality(i, p, patches, pop);
+
+            let stored_by_friendlies = match storage.get(i) {
+                None => OneYearResources::from(0.0),
+                Some(h) => {
+                    match h.iter().find(|c| {
+                        emergence::similar_culture(family.culture, *c.0, p.cooperation_threshold)
+                    }) {
+                        None => OneYearResources::from(0.0),
+                        Some((_, v)) => *v,
+                    }
+                }
+            } - if *i == family.location {
+                family.stored_resources
+            } else {
+                OneYearResources::from(0.0)
+            };
+
+            let now = expected_quality( p, patches.get(i).unwrap(), stored_by_friendlies, pop);
 
             Some((i, (now, movement_cost)))
-        });
-        objectives::best_location(destination_expectation, evidence)
-            .unwrap_or((family.location, OneYearResources::from(0.0)))
+        }).collect();
+        objectives::best_location(destination_expectation, family.location, evidence)
     }
 
-    fn expected_quality(
-        i: NodeId,
+    fn expected_quality<P>(
         p: &Parameters,
-        patches: &DashMap<NodeId, Patch>,
+        patch: P,
+        stored_by_friendlies: OneYearResources,
         population: usize,
-    ) -> OneYearResources {
+    )  -> OneYearResources where P: core::ops::Deref<Target = Patch>{
         // Minimal knowledge about quality of a patch: Its current plus max resources.
         let mut rng = rand::thread_rng();
-        let r = patches.get(&i).unwrap();
-        let q: Vec<_> = r.resources.values().collect();
+        let q: Vec<_> = patch.resources.values().collect();
         let perhead = 1. / population as f64;
-        q.iter()
-            .map(|(res, max_res)| *res + *max_res * p.resource_recovery_per_season)
-            .sum::<OneYearResources>()
+        (stored_by_friendlies
+            + q.iter()
+                .map(|(res, max_res)| *res + *max_res * p.resource_recovery_per_season)
+                .sum::<OneYearResources>())
             * perhead
             * rng.gen_range(0., 1.)
     }
@@ -684,42 +691,43 @@ mod objectives {
     */
     // That is, this function omputes the argmax of
     // `expected_resources_from_patch`, drawing at random between equal options.
-    pub fn best_location<Pair, I>(
-        kd: Pair,
+    pub fn best_location(
+        kd: Vec<(&NodeId, (OneYearResources, OneYearResources))>,
+        null: NodeId,
         precision: OneYearResources,
-    ) -> Option<(I, OneYearResources)>
-    where
-        Pair: Iterator<Item = (I, (OneYearResources, OneYearResources))>,
-        I: std::fmt::Debug,
-    {
-        let mut rng = rand::thread_rng();
-
-        // This variable `n_best_before` is used to randomly draw between
-        // several equally-optimal options. It counts the number of best options
+    ) -> (NodeId, OneYearResources) {
+        // The additional integer `i` is used to randomly draw between several
+        // equally-optimal options. It counts the number of best options
         // encountered so far.
-        let mut n_best_before = 0;
-        let mut n_best_short_before = 0;
-        let mut target: Option<(I, OneYearResources)> = None;
-        let mut max_gain = OneYearResources::from(0.0);
-        let mut max_short_term_gain = OneYearResources::from(0.0);
 
-        for (location, (expected_shortterm_gain, travel_cost)) in kd {
-            // println!("{:?}: short {:?} move {:?}", location, expected_shortterm_gain, travel_cost);
-            if expected_shortterm_gain > max_gain + precision {
-                target = Some((location, travel_cost));
-                max_gain = expected_shortterm_gain;
-                n_best_before = 0;
-            } else if expected_shortterm_gain >= max_gain - precision {
-                n_best_before += 1;
-                if rng.gen_range(0, n_best_before + 1) < n_best_before {
-                    continue;
+        let (mut target, mut max_gain, mut t_cost, mut i) = (
+            &null,
+            OneYearResources::from(0.0),
+            OneYearResources::from(0.0),
+            0_usize,
+        );
+        let mut rng = rand::thread_rng();
+        for (location, (gain, l_cost)) in kd {
+            let g = gain - l_cost;
+            let m = max_gain - t_cost;
+            if g > m + precision || i == 0 {
+                target = location;
+                max_gain = max_gain.max(gain);
+                t_cost = l_cost;
+                i += 1;
+            } else if g >= m - precision {
+                if rng.gen_range(0, i + 1) < i {
+                    i += 1
                 } else {
-                    target = Some((location, travel_cost));
+                    target = location;
+                    max_gain = max_gain.max(gain);
+                    t_cost = l_cost;
+                    i += 1;
                 }
+            } else {
             }
         }
-        // println!("Moving to {:?}", target);
-        target
+        (*target, t_cost)
     }
 }
 /**
@@ -865,6 +873,7 @@ mod interaction {
         Crema's results change for that different formula.
 
      */
+    #[allow(dead_code)]
     pub fn x() {}
 }
 /**
@@ -1253,7 +1262,7 @@ pub mod submodels {
                     // println!("{:?}", nearby);
 
                     let (destination, cost) =
-                        adaptation::decide_on_moving(&family, nearby.iter(), patches, false, p, cc);
+                        adaptation::decide_on_moving(&family, storage, &nearby, patches, false, p, cc);
                     // println!("Family {:} moved to {:}", family.descendence, destination);
                     family.history.push(family.location);
                     if family.history.len() > 14 {
@@ -1271,11 +1280,12 @@ pub mod submodels {
                         Some(mut descendant) => {
                             let (destination, cost) = adaptation::decide_on_moving(
                                 &descendant,
-                                nearby.iter(),
+                                storage,
+                                &nearby,
                                 patches,
                                 true,
                                 p,
-                                cc,
+                                cc
                             );
                             descendant.location = destination;
                             family.stored_resources -= cost;
@@ -1523,6 +1533,7 @@ pub mod submodels {
             pub evidence_needed: f64,
             pub payoff_std: f64,
             pub minimum_adaptation: f64,
+            pub warfare: bool,
 
             pub season_length_in_years: f64,
             pub dispersal_graph: MovementGraph,
@@ -1539,6 +1550,7 @@ pub mod submodels {
                     evidence_needed: 0.1,
                     payoff_std: 0.1,
                     minimum_adaptation: 0.5,
+                    warfare: true,
 
                     season_length_in_years: 1. / 6.,
                     dispersal_graph: MovementGraph::default(),
