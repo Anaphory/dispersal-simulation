@@ -989,6 +989,15 @@ impl Mul<f64> for Ecovector {
     }
 }
 
+use std::slice::Iter;
+impl<'a> IntoIterator for &'a Ecovector {
+    type Item = &'a f64;
+    type IntoIter = Iter<'a, f64>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.entries.iter()
+    }
+}
+
 impl Index<usize> for Ecovector {
     type Output = f64;
 

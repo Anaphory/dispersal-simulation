@@ -65,13 +65,15 @@ for logfile in args.logfile:
                 m += 1
                 if m < args.start:
                     continue
-                content = eval(line[len("POPULATION: ") :])
-                population = [(x, y, sum(p.values())) for x, y, p in content]
-                colors = [bitvec_to_color(max(p, key=p.get)) for x, y, p in content]
-                q = numpy.array(population).T
-                pop.append(q[2].sum())
-                q[2] /= 4  # Scale population to pixels
-                plt.scatter(*q[:2], q[2], c=colors, alpha=0.8, linewidths=0.0)
+                content = [(x, y, n, bitvec_to_color(c))
+                      for x, y, p in eval(line[len("POPULATION: ") :])
+                      for c, n in p.items()]
+                content.sort(
+                    key=lambda x: x[2],
+                    reverse=True)
+                xs, ys, ns, cs = zip(*content)
+                ns = numpy.array(ns) / 4 # Scale population to pixels
+                plt.scatter(xs, ys, ns, c=cs, alpha=0.5, linewidths=0.0)
                 plt.xlim(*args.xlim)
                 plt.ylim(*args.ylim)
                 plt.gcf().set_size_inches((12, 16))
@@ -80,7 +82,7 @@ for logfile in args.logfile:
                 plt.close()
 
         scatter: t.Dict[t.Tuple[int, int], int] = {}
-        for ((x1, y1, p1), (x2, y2, p2)) in itertools.combinations_with_replacement(content, 2):
+        for ((x1, y1, p1, c1), (x2, y2, p2)) in itertools.combinations_with_replacement(content, 2):
             # if abs(y1-y2) > 2.7:
             #     continue
             # if abs(x1-x2) > 2.7/cos(π*(y1+y2)/2):

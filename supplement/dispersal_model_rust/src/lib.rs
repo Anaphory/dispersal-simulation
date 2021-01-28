@@ -343,10 +343,12 @@ fn step_part_2(
         // TODO: Change when DashMap directly supports par_iter
         .into_iter()
         .par_bridge()
-        .map(|(patch_id, families)| {
+        .map(|(patch_id, mut families)| {
+            families.shuffle(&mut rand::thread_rng());
+
             let mut cc = HashMap::new();
 
-            let mut groups = crate::collectives::cooperatives(families, p);
+            let mut groups = crate::collectives::cooperate_or_fight(families, p);
 
             let mut cs = stored_resources
                 .entry(patch_id)
@@ -614,57 +616,75 @@ mod adaptation {
     ) -> (NodeId, OneYearResources) {
         let evidence = OneYearResources::from(p.season_length_in_years) * p.evidence_needed;
 
-        let destination_expectation = known_destinations.iter().filter_map(|(i, d_)| {
-            let d = *d_;
-            if family.location == *i && avoid_stay {
-                return None;
-            }
-            let movement_cost = d * family.effective_size as f64;
-            let pop = match population.get(&i) {
-                None => 0,
-                Some(k) => *k,
-            } + (if family.location == *i {
-                0
-            } else {
-                family.effective_size
-            });
-
-            let stored_by_friendlies = match storage.get(i) {
-                None => OneYearResources::from(0.0),
-                Some(h) => {
-                    match h.iter().find(|c| {
-                        emergence::similar_culture(family.culture, *c.0, p.cooperation_threshold)
-                    }) {
-                        None => OneYearResources::from(0.0),
-                        Some((_, v)) => *v,
-                    }
+        let destination_expectation = known_destinations
+            .iter()
+            .filter_map(|(i, d_)| {
+                let d = *d_;
+                if family.location == *i && avoid_stay {
+                    return None;
                 }
-            } - if *i == family.location {
-                family.stored_resources
-            } else {
-                OneYearResources::from(0.0)
-            };
+                let movement_cost = d * family.effective_size as f64;
+                let pop = match population.get(&i) {
+                    None => 0,
+                    Some(k) => *k,
+                } + (if family.location == *i {
+                    0
+                } else {
+                    family.effective_size
+                });
 
-            let now = expected_quality( p, patches.get(i).unwrap(), stored_by_friendlies, pop);
+                let stored_by_friendlies = match storage.get(i) {
+                    None => OneYearResources::from(0.0),
+                    Some(h) => {
+                        match h.iter().find(|c| {
+                            emergence::similar_culture(
+                                family.culture,
+                                *c.0,
+                                p.cooperation_threshold,
+                            )
+                        }) {
+                            None => OneYearResources::from(0.0),
+                            Some((_, v)) => *v,
+                        }
+                    }
+                } - if *i == family.location {
+                    family.stored_resources
+                } else {
+                    OneYearResources::from(0.0)
+                };
 
-            Some((i, (now, movement_cost)))
-        }).collect();
+                let now = expected_quality(
+                    p,
+                    &family.adaptation,
+                    patches.get(i).unwrap(),
+                    stored_by_friendlies,
+                    pop,
+                );
+
+                Some((i, (now, movement_cost)))
+            })
+            .collect();
         objectives::best_location(destination_expectation, family.location, evidence)
     }
 
     fn expected_quality<P>(
         p: &Parameters,
+        adaptation: &ecology::Ecovector,
         patch: P,
         stored_by_friendlies: OneYearResources,
         population: usize,
-    )  -> OneYearResources where P: core::ops::Deref<Target = Patch>{
+    ) -> OneYearResources
+    where
+        P: core::ops::Deref<Target = Patch>,
+    {
         // Minimal knowledge about quality of a patch: Its current plus max resources.
         let mut rng = rand::thread_rng();
         let q: Vec<_> = patch.resources.values().collect();
         let perhead = 1. / population as f64;
         (stored_by_friendlies
             + q.iter()
-                .map(|(res, max_res)| *res + *max_res * p.resource_recovery_per_season)
+                .zip(adaptation)
+                .map(|((res, max_res), e)| (*res + *max_res * p.resource_recovery_per_season) * *e)
                 .sum::<OneYearResources>())
             * perhead
             * rng.gen_range(0., 1.)
@@ -909,7 +929,7 @@ comments?
 pub mod collectives {
     use crate::*;
 
-    pub fn cooperatives<'a>(
+    pub fn cooperate_or_fight<'a>(
         mut families_in_this_location: Vec<&'a mut Family>,
         p: &Parameters,
     ) -> Vec<Cooperative<'a>> {
@@ -917,19 +937,33 @@ pub mod collectives {
         let mut groups: Vec<Cooperative<'a>> = vec![];
 
         for family in families_in_this_location.drain(..) {
-            let storage = family.stored_resources;
-            family.stored_resources = OneYearResources::from(0.0);
             let mut joined_group: Option<&mut Cooperative<'a>> = None;
             for group in groups.iter_mut() {
                 let mut join = true;
-                for other_family in group.families.iter() {
+                for other_family in group.families.iter_mut() {
                     if !emergence::similar_culture(
                         family.culture,
                         other_family.culture,
                         p.cooperation_threshold,
                     ) {
                         join = false;
-                        break;
+                        let case = rng.next_u32();
+                        let reduction =
+                            std::cmp::min(family.effective_size, other_family.effective_size);
+                        if case & 1 > 0 {
+                            other_family.effective_size -= reduction;
+                            if other_family.effective_size == 0 {
+                                family.stored_resources += other_family.stored_resources;
+                                other_family.stored_resources = OneYearResources::default();
+                            }
+                        }
+                        if case & 2 > 0 {
+                            family.effective_size -= reduction;
+                            if family.effective_size == 0 {
+                                group.total_stored += family.stored_resources;
+                                family.stored_resources = OneYearResources::default();
+                            }
+                        }
                     }
                 }
                 if join {
@@ -937,26 +971,34 @@ pub mod collectives {
                     break;
                 }
             }
-            let _size = family.effective_size as f64;
             match joined_group {
                 None => {
-                    let group = Cooperative {
+                    groups.push(Cooperative {
                         culture: family.culture,
                         families: vec![family],
-                        total_stored: storage,
-                    };
-                    groups.push(group);
+                        total_stored: OneYearResources::default(),
+                    });
                 }
                 Some(group) => {
-                    if rng.gen_range(0, group.families.len()) == group.families.len() {
+                    if rng.gen_range(0, group.families.len()) == 0 {
                         group.culture = family.culture
                     }
                     group.families.push(family);
-                    group.total_stored += storage;
                 }
             }
         }
-        groups
+        groups.drain(..).filter_map(|mut group| {
+            let mut groupsize = 0;
+            for family in group.families.iter_mut() {
+                group.total_stored += family.stored_resources;
+                family.stored_resources = OneYearResources::default();
+                groupsize += family.effective_size;
+            }
+            match groupsize > 0 {
+                true => Some(group),
+                false => None
+            }
+        }).collect()
     }
 }
 
@@ -1261,8 +1303,9 @@ pub mod submodels {
                         .or_insert_with(|| sensing::nearby_locations(family.location, p));
                     // println!("{:?}", nearby);
 
-                    let (destination, cost) =
-                        adaptation::decide_on_moving(&family, storage, &nearby, patches, false, p, cc);
+                    let (destination, cost) = adaptation::decide_on_moving(
+                        &family, storage, &nearby, patches, false, p, cc,
+                    );
                     // println!("Family {:} moved to {:}", family.descendence, destination);
                     family.history.push(family.location);
                     if family.history.len() > 14 {
@@ -1285,7 +1328,7 @@ pub mod submodels {
                                 patches,
                                 true,
                                 p,
-                                cc
+                                cc,
                             );
                             descendant.location = destination;
                             family.stored_resources -= cost;
@@ -1504,15 +1547,18 @@ pub mod submodels {
         ```
 
          */
+        use rand::Rng;
         pub fn recover(
             patch_resources: &mut OneYearResources,
             patch_max_resources: OneYearResources,
             resource_recovery_per_season: f64,
         ) {
             if *patch_resources < patch_max_resources {
+                let mut rng = rand::thread_rng();
                 *patch_resources = std::cmp::min(
                     patch_max_resources,
-                    patch_max_resources * resource_recovery_per_season + *patch_resources,
+                    patch_max_resources * resource_recovery_per_season * 2. * rng.gen_range(0., 1.)
+                        + *patch_resources,
                 )
             }
         }
