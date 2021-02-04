@@ -1034,6 +1034,7 @@ pub mod observation {
         );
     }
 
+    #[derive(Debug, Serialize, Deserialize, Clone)]
     pub struct ObservationSettings {
         pub log_every: Seasons,
         pub log_gdcd: Seasons,
@@ -1357,7 +1358,7 @@ pub mod submodels {
                     descendence: format!("{}:{:}", family.descendence, family.number_offspring),
                     location: family.location,
                     history: family.history.clone(),
-                    seasons_till_next_child: (12. / season_length_in_years) as u32 + 1,
+                    seasons_till_next_child: (14. / season_length_in_years) as u32 + 1,
                     culture: family.culture,
 
                     effective_size: 2,
@@ -1379,6 +1380,7 @@ pub mod submodels {
             }
             // println!("becomes {:} ({:})", family.effective_size, family.seasons_till_next_child);
         }
+
         pub fn use_resources_and_maybe_shrink(
             size: &mut usize,
             resources: &mut OneYearResources,
@@ -1597,6 +1599,7 @@ pub mod submodels {
                     payoff_std: 0.1,
                     minimum_adaptation: 0.5,
                     warfare: true,
+                    // I found that Kelly (2013), the guy who collected data like Binford but maybe more faithfully to science and the sources, has data on hunter-gatherer migrations, so I could make a case for 6 migration steps/seasons per year, and for estimating a maximum distance of each of these steps. Together with a discussion I had with Peter and Nico about two weeks ago, I managed to put something new together. The downside is that with 6 seasons per year, it also takes about a factor of 3 longer to simulate the same number of years, so I'm only 250 years into the simulation with this.
 
                     season_length_in_years: 1. / 6.,
                     dispersal_graph: MovementGraph::default(),

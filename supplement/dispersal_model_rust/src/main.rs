@@ -22,10 +22,10 @@ fn main() -> Result<(), String> {
     let mut recovery = p.resource_recovery_per_season / p.season_length_in_years;
 
     let mut o = observation::ObservationSettings {
-        log_every: 1,
+        log_every: 30, // Every 5 years, by default parameters
         log_gdcd: 0,
-        log_patch_resources: 1,
-        store_every: 100,
+        log_patch_resources: 30,
+        store_every: 60,
         statefile: "state.json".to_string(),
     };
 
@@ -39,6 +39,8 @@ fn main() -> Result<(), String> {
     // currently, but the names point out that I misunderstood something, eg.
     // with the layout of the tiff in memory or similar.
 
+    println!(" {:?}", o);
+    println!(" {:?}", p);
     let s = initialization(p, scale).unwrap();
     println!("Initialized");
 
