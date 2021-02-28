@@ -699,8 +699,7 @@ mod adaptation {
                 }
 
                 Some((i, (now, movement_cost)))
-            })
-            .collect();
+            });
         objectives::best_location(destination_expectation, family.location, evidence)
     }
 
@@ -748,11 +747,14 @@ mod objectives {
     */
     // That is, this function omputes the argmax of
     // `expected_resources_from_patch`, drawing at random between equal options.
-    pub fn best_location(
-        kd: Vec<(&NodeId, (OneYearResources, OneYearResources))>,
+    pub fn best_location<'a, KD>(
+        kd: KD,
         null: NodeId,
         precision: OneYearResources,
-    ) -> (NodeId, OneYearResources) {
+    ) -> (NodeId, OneYearResources)
+    where
+        KD: IntoIterator<Item = (&'a NodeId, (OneYearResources, OneYearResources))>,
+    {
         // The additional integer `i` is used to randomly draw between several
         // equally-optimal options. It counts the number of best options
         // encountered so far.

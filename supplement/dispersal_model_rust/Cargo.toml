@@ -3,7 +3,7 @@ name = "dispersal_model_rust"
 version = "0.1.0"
 authors = ["Gereon A. Kaiping <gkaiping@geo.uzh.ch>"]
 edition = "2018"
-debug = false
+debug = 1
 
 [profile.release]
 debug = false

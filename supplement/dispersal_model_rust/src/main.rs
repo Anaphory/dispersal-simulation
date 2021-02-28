@@ -25,7 +25,7 @@ fn main() -> Result<(), String> {
         log_every: 30, // Every 5 years, by default parameters
         log_gdcd: 0,
         log_patch_resources: 30,
-        store_every: 60,
+        store_every: 600,
         statefile: "state.json".to_string(),
     };
 
