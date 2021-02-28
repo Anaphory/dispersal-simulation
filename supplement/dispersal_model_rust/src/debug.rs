@@ -12,7 +12,6 @@ impl std::fmt::Debug for crate::Family {
         f.debug_struct("Family")
             .field("descendence", &self.descendence)
             .field("size", &self.effective_size)
-            .field("seasons_till_next_child", &self.seasons_till_next_child)
             .field("location", &self.location)
             .field("history", &self.history)
             .field("culture", &format_args!("{:020b}", &self.culture))

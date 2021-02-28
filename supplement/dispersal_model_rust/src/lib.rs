@@ -145,7 +145,7 @@ pub struct Family {
     pub adaptation: ecology::Ecovector,
     /// The number of seasons to wait until the next child (reset to 2 when
     /// starvation happens)
-    pub seasons_till_next_child: Seasons,
+    pub seasons_till_next_adult: Seasons,
 
     /// For bookkeeping purposes (eg. generating descendant's ‘descendence’
     /// values), keep track of the number of offspring families this family has
@@ -260,12 +260,12 @@ The structure of a single time step consist of two parts, as follows.
 fn step(
     families: &mut Vec<Family>,
     patches: &mut DashMap<NodeId, Patch>,
-    storage: &DashMap<NodeId, HashMap<Culture, OneYearResources>>,
+    storage: &DashMap<NodeId, HashMap<Culture, (usize, OneYearResources)>>,
     p: &Parameters,
     t: Seasons,
     nearby_cache: &mut DashMap<NodeId, Vec<(NodeId, OneYearResources)>>,
     o: &observation::ObservationSettings,
-) -> DashMap<NodeId, HashMap<Culture, OneYearResources>> {
+) -> DashMap<NodeId, HashMap<Culture, (usize, OneYearResources)>> {
     step_part_1(families, patches, storage, nearby_cache, p);
     step_part_2(families, patches, p, o, t)
 }
@@ -280,7 +280,7 @@ not at the time of movement, it can happen entirely in parallel.
 fn step_part_1(
     families: &mut Vec<Family>,
     patches: &mut DashMap<NodeId, Patch>,
-    storage: &DashMap<NodeId, HashMap<Culture, OneYearResources>>,
+    storage: &DashMap<NodeId, HashMap<Culture, (usize, OneYearResources)>>,
     nearby_cache: &mut DashMap<NodeId, Vec<(NodeId, OneYearResources)>>,
     p: &Parameters,
 ) {
@@ -295,7 +295,9 @@ fn step_part_1(
             &mut family.stored_resources,
             p,
         ) {
-            family.seasons_till_next_child = std::cmp::max(family.seasons_till_next_child, 2)
+            // TODO: Think some more about what happens to the children logic when you starve
+            // For now, for simplicity's sake, all children starve.
+            family.seasons_till_next_adult = (15. / p.season_length_in_years) as u32 + 1;
         }
 
         submodels::family_lifecycle::maybe_grow(&mut family, p.season_length_in_years);
@@ -329,7 +331,7 @@ fn step_part_2(
     p: &Parameters,
     o: &observation::ObservationSettings,
     t: Seasons,
-) -> DashMap<NodeId, HashMap<Culture, OneYearResources>> {
+) -> DashMap<NodeId, HashMap<Culture, (usize, OneYearResources)>> {
     let families_by_location: DashMap<NodeId, Vec<&mut Family>> = DashMap::new();
     families.par_iter_mut().for_each(|f| {
         families_by_location
@@ -355,11 +357,9 @@ fn step_part_2(
                 .or_insert_with(HashMap::new);
             for group in groups.iter_mut() {
                 let group_culture = submodels::ecology::adjust_culture(group, p);
-                cs.insert(group_culture, group.total_stored);
-                cc.insert(
-                    group_culture,
-                    group.families.iter().map(|f| f.effective_size).sum(),
-                );
+                let group_size = group.families.iter().map(|f| f.effective_size).sum();
+                cs.insert(group_culture, (group_size, group.total_stored));
+                cc.insert(group_culture, group_size);
             }
 
             match patches.get_mut(&patch_id) {
@@ -607,7 +607,7 @@ mod adaptation {
 
     pub fn decide_on_moving<'a>(
         family: &'a Family,
-        storage: &DashMap<NodeId, HashMap<Culture, OneYearResources>>,
+        storage: &DashMap<NodeId, HashMap<Culture, (usize, OneYearResources)>>,
         known_destinations: &[(NodeId, OneYearResources)],
         patches: &'a DashMap<NodeId, Patch>,
         avoid_stay: bool,
@@ -633,8 +633,8 @@ mod adaptation {
                     family.effective_size
                 });
 
-                let stored_by_friendlies = match storage.get(i) {
-                    None => OneYearResources::from(0.0),
+                let (friends, mut stored_by_friendlies) = match storage.get(i) {
+                    None => (0, OneYearResources::from(0.0)),
                     Some(h) => {
                         match h.iter().find(|c| {
                             emergence::similar_culture(
@@ -643,23 +643,28 @@ mod adaptation {
                                 p.cooperation_threshold,
                             )
                         }) {
-                            None => OneYearResources::from(0.0),
+                            None => (0, OneYearResources::from(0.0)),
                             Some((_, v)) => *v,
                         }
                     }
-                } - if *i == family.location {
-                    family.stored_resources
-                } else {
-                    OneYearResources::from(0.0)
+                };
+                if *i == family.location {
+                    stored_by_friendlies -= family.stored_resources
                 };
 
-                let now = expected_quality(
+                let mut now = expected_quality(
                     p,
                     &family.adaptation,
                     patches.get(i).unwrap(),
                     stored_by_friendlies,
                     pop,
                 );
+                if pop > 2 * friends {
+                    now = now / (2.0_f64).powi((pop - 2 * friends) as i32 / 5 + 1);
+                    // A family would usually have a size around 5, I guess, and
+                    // each family encountered has probability 1/2 to mess with
+                    // this family.
+                }
 
                 Some((i, (now, movement_cost)))
             })
@@ -987,18 +992,22 @@ pub mod collectives {
                 }
             }
         }
-        groups.drain(..).filter_map(|mut group| {
-            let mut groupsize = 0;
-            for family in group.families.iter_mut() {
-                group.total_stored += family.stored_resources;
-                family.stored_resources = OneYearResources::default();
-                groupsize += family.effective_size;
-            }
-            match groupsize > 0 {
-                true => Some(group),
-                false => None
-            }
-        }).collect()
+        groups
+            .drain(..)
+            .filter_map(|mut group| {
+                let mut groupsize = 0;
+                for family in group.families.iter_mut() {
+                    group.total_stored += family.stored_resources;
+                    family.stored_resources = OneYearResources::default();
+                    groupsize += family.effective_size;
+                }
+                if groupsize > 0 {
+                    Some(group)
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 }
 
@@ -1187,7 +1196,7 @@ pub fn initialization(p: Parameters, scale: f64) -> Option<State> {
                 descendence: String::from("A"),
                 location: start1,
                 history: vec![],
-                seasons_till_next_child: 4,
+                seasons_till_next_adult: 4,
                 culture: Culture {
                     binary_representation: 0b000_000_000_000_000,
                 },
@@ -1202,7 +1211,7 @@ pub fn initialization(p: Parameters, scale: f64) -> Option<State> {
                 descendence: String::from("F"),
                 location: start2,
                 history: vec![],
-                seasons_till_next_child: 4,
+                seasons_till_next_adult: 4,
                 culture: Culture {
                     binary_representation: 0b111_111_111_111_111,
                 },
@@ -1290,7 +1299,7 @@ pub mod submodels {
 
         pub fn procreate_and_migrate(
             families: &mut Vec<Family>,
-            storage: &DashMap<NodeId, HashMap<Culture, OneYearResources>>,
+            storage: &DashMap<NodeId, HashMap<Culture, (usize, OneYearResources)>>,
             p: &Parameters,
             patches: &mut DashMap<NodeId, Patch>,
             cc: &DashMap<NodeId, usize>,
@@ -1358,7 +1367,7 @@ pub mod submodels {
                     descendence: format!("{}:{:}", family.descendence, family.number_offspring),
                     location: family.location,
                     history: family.history.clone(),
-                    seasons_till_next_child: (14. / season_length_in_years) as u32 + 1,
+                    seasons_till_next_adult: (15. / season_length_in_years) as u32 + 1,
                     culture: family.culture,
 
                     effective_size: 2,
@@ -1371,16 +1380,28 @@ pub mod submodels {
         }
 
         pub fn maybe_grow(family: &mut Family, season_length_in_years: f64) {
-            // print!("Growing {:} in {:}: size {:} ", family.descendence, family.seasons_till_next_child, family.effective_size);
-            if family.seasons_till_next_child == 0 {
+            // print!("Growing {:} in {:}: size {:} ", family.descendence, family.seasons_till_next_adult, family.effective_size);
+            if family.seasons_till_next_adult == 0 {
                 family.effective_size += 1;
-                family.seasons_till_next_child = (1.2 / season_length_in_years) as u32;
+                // According to @goodman1985menarche, the spacing of births
+                // where infant survives until birth of next sibling is
+                // $2.85±1.35$. It has been hypothesized [@?] that the interval
+                // may be lower in populations at the pop cap, so me take μ-σ.
+                // According to @volk2013infant, the mean child mortality rate
+                // (cumulativeprobability of dying prior to approximate sexual
+                // maturity at age 15) of modern hunter-gatherers is 48.8%, so
+                // the mean interval of new adults is the mean interval of
+                // children, divided by one minus that rate.
+                //
+                // 2.9296875 == (2.85-1.35) / (1.-0.488)
+                family.seasons_till_next_adult = (2.929_687_5 / season_length_in_years) as u32;
             } else {
-                family.seasons_till_next_child -= 1;
+                family.seasons_till_next_adult -= 1;
             }
-            // println!("becomes {:} ({:})", family.effective_size, family.seasons_till_next_child);
+            // println!("becomes {:} ({:})", family.effective_size, family.seasons_till_next_adult);
         }
 
+        // Find at least a proxy for children using resources, or model children explicitly
         pub fn use_resources_and_maybe_shrink(
             size: &mut usize,
             resources: &mut OneYearResources,
@@ -1600,7 +1621,6 @@ pub mod submodels {
                     minimum_adaptation: 0.5,
                     warfare: true,
                     // I found that Kelly (2013), the guy who collected data like Binford but maybe more faithfully to science and the sources, has data on hunter-gatherer migrations, so I could make a case for 6 migration steps/seasons per year, and for estimating a maximum distance of each of these steps. Together with a discussion I had with Peter and Nico about two weeks ago, I managed to put something new together. The downside is that with 6 seasons per year, it also takes about a factor of 3 longer to simulate the same number of years, so I'm only 250 years into the simulation with this.
-
                     season_length_in_years: 1. / 6.,
                     dispersal_graph: MovementGraph::default(),
                 }
