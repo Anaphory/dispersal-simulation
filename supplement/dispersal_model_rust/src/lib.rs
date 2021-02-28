@@ -43,7 +43,7 @@ use dashmap::DashMap;
 use serde_derive::{Deserialize, Serialize};
 
 use rand::prelude::*;
-use std::collections::HashMap;
+use rustc_hash::{FxHashMap, FxHasher};
 use std::fs::File;
 
 use rayon::prelude::*;
@@ -112,7 +112,7 @@ pub struct Patch {
     /// For every local ecoregion, the tuple of resources currently accessible
     /// in this patch, and the maximum possible resources available in a time
     /// step, both in OYR.
-    resources: HashMap<usize, (OneYearResources, OneYearResources)>,
+    resources: FxHashMap<usize, (OneYearResources, OneYearResources)>,
 }
 
 /**
@@ -260,12 +260,24 @@ The structure of a single time step consist of two parts, as follows.
 fn step(
     families: &mut Vec<Family>,
     patches: &mut DashMap<NodeId, Patch>,
-    storage: &DashMap<NodeId, HashMap<Culture, (usize, OneYearResources)>>,
+    storage: &DashMap<
+        NodeId,
+        FxHashMap<Culture, (usize, OneYearResources)>,
+        std::hash::BuildHasherDefault<FxHasher>,
+    >,
     p: &Parameters,
     t: Seasons,
-    nearby_cache: &mut DashMap<NodeId, Vec<(NodeId, OneYearResources)>>,
+    nearby_cache: &mut DashMap<
+        NodeId,
+        Vec<(NodeId, OneYearResources)>,
+        std::hash::BuildHasherDefault<FxHasher>,
+    >,
     o: &observation::ObservationSettings,
-) -> DashMap<NodeId, HashMap<Culture, (usize, OneYearResources)>> {
+) -> DashMap<
+    NodeId,
+    FxHashMap<Culture, (usize, OneYearResources)>,
+    std::hash::BuildHasherDefault<FxHasher>,
+> {
     step_part_1(families, patches, storage, nearby_cache, p);
     step_part_2(families, patches, p, o, t)
 }
@@ -280,11 +292,19 @@ not at the time of movement, it can happen entirely in parallel.
 fn step_part_1(
     families: &mut Vec<Family>,
     patches: &mut DashMap<NodeId, Patch>,
-    storage: &DashMap<NodeId, HashMap<Culture, (usize, OneYearResources)>>,
-    nearby_cache: &mut DashMap<NodeId, Vec<(NodeId, OneYearResources)>>,
+    storage: &DashMap<
+        NodeId,
+        FxHashMap<Culture, (usize, OneYearResources)>,
+        std::hash::BuildHasherDefault<FxHasher>,
+    >,
+    nearby_cache: &mut DashMap<
+        NodeId,
+        Vec<(NodeId, OneYearResources)>,
+        std::hash::BuildHasherDefault<FxHasher>,
+    >,
     p: &Parameters,
 ) {
-    let cc: DashMap<NodeId, usize> = DashMap::new();
+    let cc: DashMap<NodeId, usize, std::hash::BuildHasherDefault<FxHasher>> = DashMap::default();
     for f in families.iter() {
         *cc.entry(f.location).or_insert(0) += f.effective_size;
     }
@@ -331,8 +351,16 @@ fn step_part_2(
     p: &Parameters,
     o: &observation::ObservationSettings,
     t: Seasons,
-) -> DashMap<NodeId, HashMap<Culture, (usize, OneYearResources)>> {
-    let families_by_location: DashMap<NodeId, Vec<&mut Family>> = DashMap::new();
+) -> DashMap<
+    NodeId,
+    FxHashMap<Culture, (usize, OneYearResources)>,
+    std::hash::BuildHasherDefault<FxHasher>,
+> {
+    let families_by_location: DashMap<
+        NodeId,
+        Vec<&mut Family>,
+        std::hash::BuildHasherDefault<FxHasher>,
+    > = DashMap::default();
     families.par_iter_mut().for_each(|f| {
         families_by_location
             .entry(f.location)
@@ -340,21 +368,21 @@ fn step_part_2(
             .push(f)
     });
 
-    let stored_resources = DashMap::new();
-    let cultures_by_location: HashMap<NodeId, HashMap<Culture, usize>> = families_by_location
+    let stored_resources = DashMap::default();
+    let cultures_by_location: FxHashMap<NodeId, FxHashMap<Culture, usize>> = families_by_location
         // TODO: Change when DashMap directly supports par_iter
         .into_iter()
         .par_bridge()
         .map(|(patch_id, mut families)| {
             families.shuffle(&mut rand::thread_rng());
 
-            let mut cc = HashMap::new();
+            let mut cc = FxHashMap::default();
 
             let mut groups = crate::collectives::cooperate_or_fight(families, p);
 
             let mut cs = stored_resources
                 .entry(patch_id)
-                .or_insert_with(HashMap::new);
+                .or_insert_with(FxHashMap::default);
             for group in groups.iter_mut() {
                 let group_culture = submodels::ecology::adjust_culture(group, p);
                 let group_size = group.families.iter().map(|f| f.effective_size).sum();
@@ -505,11 +533,11 @@ mod emergence {
 
      */
     pub fn cultural_distance_by_geographical_distance(
-        cultures_by_location: &HashMap<NodeId, HashMap<Culture, usize>>,
+        cultures_by_location: &FxHashMap<NodeId, FxHashMap<Culture, usize>>,
         max_geo_distance: i32,
         p: &Parameters,
-    ) -> HashMap<i32, HashMap<u32, usize>> {
-        let mut gd_cd: HashMap<i32, HashMap<u32, usize>> = HashMap::new();
+    ) -> FxHashMap<i32, FxHashMap<u32, usize>> {
+        let mut gd_cd: FxHashMap<i32, FxHashMap<u32, usize>> = FxHashMap::default();
         for (l1, cs1) in cultures_by_location {
             let l1h3 = p.dispersal_graph.node_weight(*l1).unwrap().0;
             for (l2, cs2) in cultures_by_location {
@@ -523,7 +551,7 @@ mod emergence {
                         if l1 == l2 && c1 == c2 {
                             *gd_cd
                                 .entry(gd)
-                                .or_insert_with(HashMap::new)
+                                .or_insert_with(FxHashMap::default)
                                 .entry(0)
                                 .or_insert(0) += count1 * (count2 - 1) / 2;
                             break;
@@ -531,7 +559,7 @@ mod emergence {
                         let cd = submodels::culture::distance(*c1, *c2);
                         *gd_cd
                             .entry(gd)
-                            .or_insert_with(HashMap::new)
+                            .or_insert_with(FxHashMap::default)
                             .entry(cd)
                             .or_insert(0) += count1 * count2;
                     }
@@ -607,12 +635,16 @@ mod adaptation {
 
     pub fn decide_on_moving<'a>(
         family: &'a Family,
-        storage: &DashMap<NodeId, HashMap<Culture, (usize, OneYearResources)>>,
+        storage: &DashMap<
+            NodeId,
+            FxHashMap<Culture, (usize, OneYearResources)>,
+            std::hash::BuildHasherDefault<FxHasher>,
+        >,
         known_destinations: &[(NodeId, OneYearResources)],
         patches: &'a DashMap<NodeId, Patch>,
         avoid_stay: bool,
         p: &Parameters,
-        population: &DashMap<NodeId, usize>,
+        population: &DashMap<NodeId, usize, std::hash::BuildHasherDefault<FxHasher>>,
     ) -> (NodeId, OneYearResources) {
         let evidence = OneYearResources::from(p.season_length_in_years) * p.evidence_needed;
 
@@ -1028,7 +1060,7 @@ pub mod observation {
     sizes, for each spot in each time step.
     */
     pub fn print_population_by_location(
-        cultures_by_location: &HashMap<NodeId, HashMap<Culture, usize>>,
+        cultures_by_location: &FxHashMap<NodeId, FxHashMap<Culture, usize>>,
         p: &Parameters,
     ) {
         println!(
@@ -1060,10 +1092,10 @@ pub mod observation {
     this data only about once per generation, i.e. every 60 time steps.
     */
     pub fn print_gd_cd(
-        cultures_by_location: &HashMap<NodeId, HashMap<Culture, usize>>,
+        cultures_by_location: &FxHashMap<NodeId, FxHashMap<Culture, usize>>,
         p: &Parameters,
     ) {
-        let gd_cd: HashMap<i32, HashMap<u32, usize>> =
+        let gd_cd: FxHashMap<i32, FxHashMap<u32, usize>> =
             emergence::cultural_distance_by_geographical_distance(
                 cultures_by_location,
                 5 * 5 * 2,
@@ -1122,7 +1154,7 @@ pub fn initialization(p: Parameters, scale: f64) -> Option<State> {
 
     println!("Starts: {:}, {:}", start1.index(), start2.index());
 
-    let mut patches: HashMap<NodeId, Option<Patch>> = HashMap::new();
+    let mut patches: FxHashMap<NodeId, Option<Patch>> = FxHashMap::default();
     let mut new_patches: std::collections::BinaryHeap<NodeId> = std::collections::BinaryHeap::new();
     new_patches.push(start1);
     new_patches.push(start2);
@@ -1295,15 +1327,23 @@ pub mod submodels {
         use crate::{Culture, Family, NodeId, OneYearResources, Parameters, Patch};
         use dashmap::DashMap;
         use rayon::prelude::*;
-        use std::collections::HashMap;
+        use rustc_hash::{FxHashMap, FxHasher};
 
         pub fn procreate_and_migrate(
             families: &mut Vec<Family>,
-            storage: &DashMap<NodeId, HashMap<Culture, (usize, OneYearResources)>>,
+            storage: &DashMap<
+                NodeId,
+                FxHashMap<Culture, (usize, OneYearResources)>,
+                std::hash::BuildHasherDefault<FxHasher>,
+            >,
             p: &Parameters,
             patches: &mut DashMap<NodeId, Patch>,
-            cc: &DashMap<NodeId, usize>,
-            nearby_cache: &mut DashMap<NodeId, Vec<(NodeId, OneYearResources)>>,
+            cc: &DashMap<NodeId, usize, std::hash::BuildHasherDefault<FxHasher>>,
+            nearby_cache: &mut DashMap<
+                NodeId,
+                Vec<(NodeId, OneYearResources)>,
+                std::hash::BuildHasherDefault<FxHasher>,
+            >,
         ) -> Vec<Family> {
             families
                 .par_iter_mut()
@@ -1641,8 +1681,9 @@ pub fn store_state(state: State, statefile: String) -> Result<(), String> {
 }
 
 pub fn run(mut s: State, max_t: Seasons, o: &observation::ObservationSettings) {
-    let mut stored_resources = DashMap::new();
-    let mut cache = DashMap::new();
+    let mut stored_resources: DashMap<_, _, std::hash::BuildHasherDefault<FxHasher>> =
+        DashMap::default();
+    let mut cache: DashMap<_, _, std::hash::BuildHasherDefault<FxHasher>> = DashMap::default();
     loop {
         stored_resources = step(
             &mut s.families,
