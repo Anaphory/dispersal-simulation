@@ -724,7 +724,7 @@ mod adaptation {
                 .map(|((res, max_res), e)| (*res + *max_res * p.resource_recovery_per_season) * *e)
                 .sum::<OneYearResources>())
             * perhead
-            * rng.gen_range(0., 1.)
+            * rng.gen_range(0.0..1.0)
     }
 }
 
@@ -776,7 +776,7 @@ mod objectives {
                 t_cost = l_cost;
                 i += 1;
             } else if g >= m - precision {
-                if rng.gen_range(0, i + 1) < i {
+                if rng.gen_range(0..(i + 1)) < i {
                     i += 1
                 } else {
                     target = location;
@@ -1019,7 +1019,7 @@ pub mod collectives {
                     });
                 }
                 Some(group) => {
-                    if rng.gen_range(0, group.families.len()) == 0 {
+                    if rng.gen_range(0..group.families.len()) == 0 {
                         group.culture = family.culture
                     }
                     group.families.push(family);
@@ -1312,7 +1312,7 @@ pub mod submodels {
                     );
                 }
                 Some(0) => {
-                    let i: u8 = rand::thread_rng().gen_range(0, culture_dimensionality);
+                    let i: u8 = rand::thread_rng().gen_range(0..culture_dimensionality);
                     family_culture.binary_representation ^= 1 << i;
                     *family_seasons_till_next_mutation =
                         Some(random::<f64>().log(1. - culture_mutation_rate) as u32);
@@ -1622,7 +1622,7 @@ pub mod submodels {
                 let mut rng = rand::thread_rng();
                 *patch_resources = std::cmp::min(
                     patch_max_resources,
-                    patch_max_resources * resource_recovery_per_season * 2. * rng.gen_range(0., 1.)
+                    patch_max_resources * resource_recovery_per_season * 2. * rng.gen_range(0.0..1.0)
                         + *patch_resources,
                 )
             }

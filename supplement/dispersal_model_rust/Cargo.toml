@@ -32,7 +32,7 @@ path = "src/serialize_graph.rs"
 
 [dependencies]
 rustc-hash = ">=0.0.0"
-rand = ">=0.0.0"
+rand = ">=0.8.0"
 rand_distr = ">=0.0.0"
 rayon = ">=0.0.0"
 libh3 = ">=0.0.0"
