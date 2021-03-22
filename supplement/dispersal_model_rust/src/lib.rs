@@ -542,7 +542,7 @@ mod emergence {
             let l1h3 = p.dispersal_graph.node_weight(*l1).unwrap().0;
             for (l2, cs2) in cultures_by_location {
                 let l2h3 = p.dispersal_graph[*l2].0;
-                let gd = hexgrid::hex_distance(l1h3, l2h3);
+                let gd = 13; // Calculate network distance??
                 if gd > max_geo_distance {
                     continue;
                 }
@@ -1123,7 +1123,6 @@ pub mod observation {
 > those data should be provided.
 
 */
-pub mod hexgrid;
 
 fn very_coarse_dist(x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
     (x1 - x2).abs() + (y1 - y2).abs()
