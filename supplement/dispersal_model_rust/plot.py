@@ -52,13 +52,12 @@ args = parser.parse_args()
 args.output_dir.mkdir(parents=True, exist_ok=True)
 
 
-def bitvec_to_color(i: int):
-    r = (bin(i & 0b000000000000111111).count("1") - 1) / 5
-    g = (bin(i & 0b000000111111000000).count("1") - 1) / 5
-    b = (bin(i & 0b111111000000000000).count("1") - 1) / 5
-    r, g, b = min(max(r, 0), 1), min(max(g, 0), 1), min(max(b, 0), 1)
-    return 1 - r, 1 - g, b
-
+def bitvec_to_color(i: int, top=[0, 0, 0]):
+    rgb = bin(i)[-1:0:-3].count('1'), bin(i)[-2:0:-3].count('1'), bin(i)[-3:0:-3].count('1')
+    top[0] = max(rgb[0] + 1, top[0])
+    top[1] = max(rgb[1] + 1, top[1])
+    top[2] = max(rgb[2], top[2])
+    return [rgb[i] / top[i] for i in range(3)]
 
 season_length_in_years = 1 / 6.0
 
@@ -94,6 +93,9 @@ def compute_contained_population(population, containment_functions=cf):
 CUTOFF = 30
 
 for logfile in args.logfile:
+    bitvec_to_color.__defaults__[0][0] = 1
+    bitvec_to_color.__defaults__[0][1] = 1
+    bitvec_to_color.__defaults__[0][2] = 1
     popcaps = {}
     actual_pops = {}
     stem = Path(logfile.name).stem
@@ -176,6 +178,21 @@ for logfile in args.logfile:
                         actual_pops[loc].append(nn)
                     except KeyError:
                         print(f"Did not find {loc}.")
+
+    plt.scatter(
+        xs,
+        ys,
+        ns / 4,
+        c=[bitvec_to_color(c) for c in cs],
+        alpha=0.5,
+        linewidths=0.0,
+    )
+    plt.xlim(*args.xlim)
+    plt.ylim(*args.ylim)
+    plt.gcf().set_size_inches((12, 16))
+    plt.savefig(args.output_dir / f"disp-last-{stem:}.png")
+    print(args.output_dir / f"disp-last-{stem:}.png")
+    plt.close()
 
     caps = compute_contained_population(popcaps.items())
 
