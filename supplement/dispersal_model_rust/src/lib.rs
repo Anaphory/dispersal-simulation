@@ -692,10 +692,11 @@ mod adaptation {
                     pop,
                 );
                 if pop > 2 * friends {
-                    now = now / (2.0_f64).powi((pop - 2 * friends) as i32 / 5 + 1);
+                    now = now * (p.enemy_discount).powi((pop - 2 * friends) as i32 + 1);
                     // A family would usually have a size around 5, I guess, and
                     // each family encountered has probability 1/2 to mess with
-                    // this family.
+                    // this family. So each individual has a chance of 0.5^0.2 –
+                    // and that's the default of the parameter.
                 }
 
                 Some((i, (now, movement_cost)))
@@ -986,17 +987,16 @@ pub mod collectives {
                         p.cooperation_threshold,
                     ) {
                         join = false;
-                        let case = rng.next_u32();
                         let reduction =
                             std::cmp::min(family.effective_size, other_family.effective_size);
-                        if case & 1 > 0 {
+                        if rng.next_u32() < p.fight_deadliness {
                             other_family.effective_size -= reduction;
                             if other_family.effective_size == 0 {
                                 family.stored_resources += other_family.stored_resources;
                                 other_family.stored_resources = OneYearResources::default();
                             }
                         }
-                        if case & 2 > 0 {
+                        if rng.next_u32() < p.fight_deadliness {
                             family.effective_size -= reduction;
                             if family.effective_size == 0 {
                                 group.total_stored += family.stored_resources;
@@ -1644,7 +1644,8 @@ pub mod submodels {
             pub evidence_needed: f64,
             pub payoff_std: f64,
             pub minimum_adaptation: f64,
-            pub warfare: bool,
+            pub fight_deadliness: u32,
+            pub enemy_discount: f64,
 
             pub season_length_in_years: f64,
             pub dispersal_graph: MovementGraph,
@@ -1661,8 +1662,20 @@ pub mod submodels {
                     evidence_needed: 0.1,
                     payoff_std: 0.1,
                     minimum_adaptation: 0.5,
-                    warfare: true,
-                    // I found that Kelly (2013), the guy who collected data like Binford but maybe more faithfully to science and the sources, has data on hunter-gatherer migrations, so I could make a case for 6 migration steps/seasons per year, and for estimating a maximum distance of each of these steps. Together with a discussion I had with Peter and Nico about two weeks ago, I managed to put something new together. The downside is that with 6 seasons per year, it also takes about a factor of 3 longer to simulate the same number of years, so I'm only 250 years into the simulation with this.
+                    fight_deadliness: (1<<31),
+                    enemy_discount: (0.5_f64).powf(0.2),
+
+                    // I found that Kelly (2013), the guy who collected data
+                    // like Binford but maybe more faithfully to science and the
+                    // sources, has data on hunter-gatherer migrations, so I
+                    // could make a case for 6 migration steps/seasons per year,
+                    // and for estimating a maximum distance of each of these
+                    // steps. Together with a discussion I had with Peter and
+                    // Nico about two weeks ago, I managed to put something new
+                    // together. The downside is that with 6 seasons per year,
+                    // it also takes about a factor of 3 longer to simulate the
+                    // same number of years, so I'm only 250 years into the
+                    // simulation with this.
                     season_length_in_years: 1. / 6.,
                     dispersal_graph: MovementGraph::default(),
                 }

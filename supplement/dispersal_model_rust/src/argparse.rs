@@ -35,6 +35,16 @@ pub fn parse_args<'a>(
         argparse::Store,
         "Length of a season/time step, in years",
     );
+    parser.refer(&mut p.enemy_discount).add_option(
+        &["--enemy-discount"],
+        argparse::Store,
+        "How much is the value of a location discounted for a single enemy (which is not countered by a friendly)? The default is to discount a location by 1/2 for every 5 enemies (so 0.87055056)",
+    );
+    parser.refer(&mut p.fight_deadliness).add_option(
+        &["--fight-deadliness"],
+        argparse::Store,
+        "Probability to die, in per 2**31",
+    );
     parser.refer(resource_recovery_per_year).add_option(
         &["--resource-recovery"],
         argparse::Store,
