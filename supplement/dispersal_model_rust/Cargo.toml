@@ -36,7 +36,7 @@ rand = ">=0.8.0"
 rand_distr = ">=0.0.0"
 rayon = ">=0.0.0"
 libh3 = ">=0.0.0"
-tiff = ">=0.5.0"
+tiff = ">=0.6.0"
 argparse = ">=0.0.0"
 lazy_static = ">=0.0.0"
 petgraph = { version = ">=0.0.0", features = ["serde-1"] }
