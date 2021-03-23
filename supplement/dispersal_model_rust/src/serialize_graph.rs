@@ -1,5 +1,4 @@
 use model::ecology;
-use model::hexgrid;
 use model::movementgraph::MovementGraph;
 use std::collections::HashMap;
 use std::fs::File;
@@ -114,7 +113,7 @@ fn read_graph_from_db(
         let h = hexbin;
         h3_to_graph.insert(
             h,
-            graph.add_node((h as hexgrid::Index, longitude, latitude, ecos)),
+            graph.add_node((h as u64, longitude, latitude, ecos)),
         );
     }
     println!("{:} nodes added.", graph.node_count());

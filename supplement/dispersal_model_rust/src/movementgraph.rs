@@ -1,4 +1,3 @@
-use crate::hexgrid;
 use petgraph::algo::Measure;
 use petgraph::visit::{EdgeRef, IntoEdges, VisitMap, Visitable};
 use std::cmp::Ordering;
@@ -6,7 +5,7 @@ use std::collections::hash_map::Entry::{Occupied, Vacant};
 use std::collections::{BinaryHeap, HashMap};
 use std::hash::Hash;
 
-pub type NodeData = (hexgrid::Index, f64, f64, HashMap<usize, f64>);
+pub type NodeData = (u64, f64, f64, HashMap<usize, f64>);
 pub type MovementGraph = petgraph::graph::Graph<NodeData, f64, petgraph::Undirected, usize>;
 
 // From petgraph
