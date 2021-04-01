@@ -1,5 +1,4 @@
 use model::argparse::parse_args;
-use model::hexgrid;
 use model::movementgraph::MovementGraph;
 use model::submodels::parameters::Parameters;
 use model::{initialization, run, Seasons};
@@ -34,7 +33,7 @@ fn main() -> Result<(), String> {
     let mut from = None;
     for (i, n) in spots.iter().enumerate() {
         let to = dispersal_graph.add_node((
-            0 as hexgrid::Index,
+            0,
             0.,
             -(i as f64),
             vec![(0, (2.0_f64).powi(*n))].drain(..).collect(),
