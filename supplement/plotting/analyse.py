@@ -7,6 +7,7 @@ import sklearn.ensemble
 from matplotlib import pyplot as plt
 from osm import areas
 
+from tqdm import tqdm
 from interpret_data import data, times, populations
 
 all_predictors = [
@@ -55,6 +56,30 @@ data["bad"] = (
     + (data["Amazonas_pop"] < 0.6) * 1
 )
 
+x = []
+for i, indicator in enumerate(indicators):
+    for p, predictor in enumerate(all_predictors):
+        a = plt.subplot(
+            len(indicators),
+            len(all_predictors),
+            len(all_predictors) * i + p + 1,
+            sharex=x[p] if i else None,
+            sharey=plt.gca() if p else None,
+        )
+        if i != len(indicators) - 1:
+            a.tick_params(labelbottom=False)
+        else:
+            plt.xlabel(predictor)
+        if i == 0:
+            x.append(plt.gca())
+        if p != 0:
+            a.tick_params(labelleft=False)
+        else:
+            plt.ylabel(indicator)
+        plt.scatter(data[predictor], data[indicator], c=data["bad"], alpha=0.2, marker="+")
+plt.subplots_adjust(hspace=0, wspace=0, left=0.035, right=1, top=1, bottom=0.05)
+plt.show()
+
 predictors = all_predictors[:]
 models = {}
 for indicator in indicators:
@@ -70,7 +95,6 @@ for indicator in indicators:
     print()
     models[indicator] = model
 
-for indicator in indicators:
     plt.scatter(data[indicator], data["est_" + indicator])
     plt.title(indicator)
     plt.show()
@@ -87,36 +111,34 @@ for key in predictors:
 data.to_csv("summary.csv")
 
 min = numpy.infty
-while True:
-    parameter_values = {
-        parameter: values[numpy.random.randint(len(values))]
-        for (parameter, values) in parameter_choices.items()
-    }
-    param = [[parameter_values[i] for i in predictors]]
-    characteristics = {k: models[k].predict(param)[0] for k in indicators}
+all_param = [x for x in tqdm(itertools.product(*parameter_choices.values()))]
+numpy.random.shuffle(all_param)
+for param in tqdm(all_param):
+    parameter_values = dict(zip(parameter_choices, param))
+    characteristics = {k: models[k].predict([param])[0] for k in indicators}
 
     badness = (
         numpy.hstack(
             (
-                (models["Florida_cultures"].predict(param) < 2),
-                (models["Florida_cultures"].predict(param) > 20),
-                (models["Florida_cultures"].predict(param) > 50),
-                (models["Florida_cultures"].predict(param) > 100),
-                (models["Tierra del Fuego (Isla Grande)_cultures"].predict(param) < 2),
-                (models["Tierra del Fuego (Isla Grande)_cultures"].predict(param) > 20),
-                (models["Haida Nation islands_cultures"].predict(param) > 2),
-                (models["Haida Nation islands_cultures"].predict(param) > 10),
-                (models["Amazonas_arrival"].predict(param) < 500),
-                (models["Haida Nation islands_pop"].predict(param) < 0.4),
-                (models["Haida Nation islands_pop"].predict(param) < 0.3),
-                (models["Alaska_pop"].predict(param) < 0.4),
-                (models["Alaska_pop"].predict(param) < 0.3),
-                (models["Baja California Sur_pop"].predict(param) < 0.4),
-                (models["Baja California Sur_pop"].predict(param) < 0.3),
-                (models["California_pop"].predict(param) < 0.4),
-                (models["California_pop"].predict(param) < 0.3),
-                (models["Amazonas_pop"].predict(param) < 0.4),
-                (models["Amazonas_pop"].predict(param) < 0.3),
+                (characteristics["Florida_cultures"] < 2),
+                (characteristics["Florida_cultures"] > 20),
+                (characteristics["Florida_cultures"] > 50),
+                (characteristics["Florida_cultures"] > 100),
+                (characteristics["Tierra del Fuego (Isla Grande)_cultures"] < 2),
+                (characteristics["Tierra del Fuego (Isla Grande)_cultures"] > 20),
+                (characteristics["Haida Nation islands_cultures"] > 2),
+                (characteristics["Haida Nation islands_cultures"] > 10),
+                (characteristics["Amazonas_arrival"] < 500),
+                (characteristics["Haida Nation islands_pop"] < 0.4),
+                (characteristics["Haida Nation islands_pop"] < 0.3),
+                (characteristics["Alaska_pop"] < 0.4),
+                (characteristics["Alaska_pop"] < 0.3),
+                (characteristics["Baja California Sur_pop"] < 0.4),
+                (characteristics["Baja California Sur_pop"] < 0.3),
+                (characteristics["California_pop"] < 0.4),
+                (characteristics["California_pop"] < 0.3),
+                (characteristics["Amazonas_pop"] < 0.4),
+                (characteristics["Amazonas_pop"] < 0.3),
             )
         )
         * 1
@@ -133,7 +155,7 @@ while True:
                     "--culture-dimensionality {culture_dimensionality}",
                     "--cooperation-threshold {cooperation_threshold}",
                     "--minimum-adaptation {minimum_adaptation}",
-                    "--fight-deadliness {deadliness}",
+                    "--fight-deadliness {fight_deadliness}",
                     "--enemy-discount {enemy_discount}",
                     "--season-length {season_length_in_years}",
                     "--resource-recovery {resource_recovery}",
@@ -141,7 +163,6 @@ while True:
                 ]
             ).format(
                 resource_recovery=1 / parameter_values["until_resource_recovery"],
-                deadliness=int(parameter_values["fight_deadliness"] * 2 ** 32 + 0.5),
                 **parameter_values
             )
         )

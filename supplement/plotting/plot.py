@@ -65,6 +65,12 @@ parser.add_argument(
     default=False,
     help="Generate all intermediate dispersal plots",
 )
+parser.add_argument(
+    "--gd-cd",
+    action="store_true",
+    default=False,
+    help="Generate georaphical distance/cultural distance plots",
+)
 args = parser.parse_args()
 try:
     args.output_dir.mkdir(parents=True)
@@ -579,6 +585,9 @@ for logfile in args.logfile:
         bbox_inches="tight",
     )
     plt.close()
+
+    if not args.gd_cd:
+        continue
 
     print("Computing geographic distance vs. cultural distance…")
     start = None
