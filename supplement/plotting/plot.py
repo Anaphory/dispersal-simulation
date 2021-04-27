@@ -1,7 +1,9 @@
 #!/home/cluster/gkaipi/.pyenv/shims/python
 # -*- encoding: utf-8 -*-
+from ast import literal_eval
 import sys
 import json
+import shutil
 import argparse
 import itertools
 import typing as t
@@ -45,11 +47,23 @@ parser.add_argument(
     "--ylim", type=lambda x: [int(i) for i in x.split(":")], default="-60:90"
 )
 parser.add_argument(
+    "--last-only",
+    action="store_true",
+    default=False,
+    help="investigate only the last two years",
+)
+parser.add_argument(
     "--start-year",
     "-t",
     default=1400,
     type=int,
     help="First year where the whole continent is settled, so it works as a starting point",
+)
+parser.add_argument(
+    "--all-steps",
+    action="store_true",
+    default=False,
+    help="Generate all intermediate dispersal plots",
 )
 args = parser.parse_args()
 try:
@@ -135,6 +149,64 @@ def compute_contained_population(population, containment_functions=cf):
     return pop, [count_cultures(cs) for cs in culture]
 
 
+def plot_content(content, ts, pop, subpops, cultures_by_location, plot=True):
+    # smallest to be plotted last:
+    content.sort(key=lambda xync: xync[2], reverse=True)
+    xs, ys, ns, cs = zip(*content)
+    ns = numpy.array(ns)  # Scale population to pixels
+    if plot:
+        plt.text(
+            0.08,
+            0.99,
+            "{:7d}".format(int(timestamp)),
+            fontsize="large",
+            ha="right",
+            va="top",
+            transform=plt.gca().transAxes,
+        )
+        plt.scatter(
+            xs,
+            ys,
+            ns / 4,
+            c=[bitvec_to_color(c) for c in cs],
+            alpha=0.5,
+            linewidths=0.0,
+        )
+        plt.xlim(*args.xlim)
+        plt.ylim(*args.ylim)
+        plt.gcf().set_size_inches((12, 16))
+        plt.savefig(
+            str(args.output_dir / "disp{m:08d}-{stem:}.png".format(m=m, stem=stem)),
+            bbox_inches="tight",
+        )
+        plt.close()
+    print(
+        str(
+            (
+                args.output_dir / "disp{m:08d}-{stem:}.png".format(m=m, stem=stem)
+            ).absolute()
+        )
+    )
+
+    ts.append(timestamp)
+    pop.append(ns.sum())
+    populations, cultures = compute_contained_population(
+        ((x, y), (p, c)) for x, y, p, c in content
+    )
+    subpops.append(populations)
+    cultures_by_location.append(cultures)
+
+    sns = {
+        (x, y): sum(n for x, y, n, c in p)
+        for (x, y), p in itertools.groupby(content, key=lambda x: (x[0], x[1]))
+    }
+    for loc, nn in sns.items():
+        try:
+            actual_pops[loc].append(nn)
+        except KeyError:
+            print("Did not find {loc}.".format(loc=loc))
+
+
 CUTOFF = 30
 
 for logfile in args.logfile:
@@ -200,9 +272,15 @@ for logfile in args.logfile:
                         pass
                 params[param] = value
             season_length_in_years = params["season_length_in_years"]
+            if args.last_only:
+                recent_contents = [
+                    None for _ in range(int(2 / season_length_in_years) + 1)
+                ]
 
-            edges = eval(re.findall(r"edges: ([(), 0-9]*),", line[igraph:end_graph])[0])
-            nodes = eval(
+            edges = literal_eval(
+                re.findall(r"edges: ([(), 0-9]*),", line[igraph:end_graph])[0]
+            )
+            nodes = literal_eval(
                 re.findall(
                     r"node weights: *(\{([0-9]+: *\(.*\{[^}]*\} *\)[, ]*)+\})",
                     line[igraph:end_graph],
@@ -228,70 +306,23 @@ for logfile in args.logfile:
             timestamp = int(line[3:]) * season_length_in_years
         elif line.startswith("POPULATION: ["):
             m += 1
-            if m < args.start:
+            if args.last_only:
+                recent_contents.pop()
+                recent_contents.insert(0, line[len("POPULATION: ") :])
                 continue
-            content = [
-                (x, y, n, c)
-                for x, y, p in eval(line[len("POPULATION: ") :])
-                for c, n in p.items()
-            ]
-            # smallest to be plotted last:
-            content.sort(key=lambda xync: xync[2], reverse=True)
-            xs, ys, ns, cs = zip(*content)
-            ns = numpy.array(ns)  # Scale population to pixels
-            plt.text(
-                0.08,
-                0.99,
-                "{:7d}".format(int(timestamp)),
-                fontsize="large",
-                ha="right",
-                va="top",
-                transform=plt.gca().transAxes,
+            try:
+                content = [
+                    (x, y, n, c)
+                    for x, y, p in literal_eval(line[len("POPULATION: ") :])
+                    for c, n in p.items()
+                ]
+            except SyntaxError:
+                continue
+            if timestamp < args.start:
+                continue
+            plot_content(
+                content, ts, pop, subpops, cultures_by_location, plot=args.all_steps
             )
-            plt.scatter(
-                xs,
-                ys,
-                ns / 4,
-                c=[bitvec_to_color(c) for c in cs],
-                alpha=0.5,
-                linewidths=0.0,
-            )
-            plt.xlim(*args.xlim)
-            plt.ylim(*args.ylim)
-            plt.gcf().set_size_inches((12, 16))
-            plt.savefig(
-                str(args.output_dir / "disp{m:08d}-{stem:}.png".format(m=m, stem=stem)),
-                bbox_inches="tight",
-            )
-            print(
-                str(
-                    (
-                        args.output_dir
-                        / "disp{m:08d}-{stem:}.png".format(m=m, stem=stem)
-                    ).absolute()
-                )
-            )
-            plt.close()
-
-            ts.append(timestamp)
-            pop.append(ns.sum())
-            populations, cultures = compute_contained_population(
-                ((x, y), (p, c)) for x, y, p, c in content
-            )
-            subpops.append(populations)
-            cultures_by_location.append(cultures)
-
-            if timestamp >= args.start_year:
-                sns = {
-                    (x, y): sum(n for c, n in p.items())
-                    for x, y, p in eval(line[len("POPULATION: ") :])
-                }
-                for loc, nn in sns.items():
-                    try:
-                        actual_pops[loc].append(nn)
-                    except KeyError:
-                        print("Did not find {loc}.".format(loc=loc))
-
     if line.startswith("Ended"):
         params["end"] = "Ended"
     elif line.startswith("Died out"):
@@ -300,6 +331,22 @@ for logfile in args.logfile:
         params["end"] = "Timeout"
     else:
         params["end"] = "???"
+
+    if args.last_only:
+        m -= len(recent_contents)
+        for line in recent_contents:
+            m += 1
+            content = [
+                (x, y, n, c) for x, y, p in literal_eval(line) for c, n in p.items()
+            ]
+            plot_content(content, ts, pop, subpops, cultures_by_location, True)
+    elif not args.all_steps:
+        plot_content(content, ts, pop, subpops, cultures_by_location, True)
+    shutil.copyfile(
+        (args.output_dir / "disp{m:08d}-{stem:}.png".format(m=m, stem=stem)),
+        (args.output_dir / "disp-last-{stem:}.png".format(stem=stem)),
+    )
+    print(args.output_dir / "disp-last-{stem:}.png".format(stem=stem))
 
     caps, _ = compute_contained_population(
         [((x, y), (p, 1)) for (x, y), p in popcaps.items()]
@@ -322,33 +369,6 @@ for logfile in args.logfile:
     with Path("../runs_overview").open("a") as paramfile:
         print(Path(logfile.name).absolute(), *params.values(), sep="\t", file=paramfile)
         print(Path(logfile.name).absolute(), *params.values(), sep="\t")
-
-    plt.text(
-        0.08,
-        0.99,
-        "{:7d}".format(int(timestamp)),
-        fontsize="large",
-        ha="right",
-        va="top",
-        transform=plt.gca().transAxes,
-    )
-    plt.scatter(
-        xs,
-        ys,
-        ns / 4,
-        c=[bitvec_to_color(c) for c in cs],
-        alpha=0.5,
-        linewidths=0.0,
-    )
-    plt.xlim(*args.xlim)
-    plt.ylim(*args.ylim)
-    plt.gcf().set_size_inches((12, 16))
-    plt.savefig(
-        str(args.output_dir / "disp-last-{stem:}.png".format(stem=stem)),
-        bbox_inches="tight",
-    )
-    print(args.output_dir / "disp-last-{stem:}.png".format(stem=stem))
-    plt.close()
 
     print("Population development in the first 2000 years…")
     l = 0
@@ -408,8 +428,9 @@ for logfile in args.logfile:
     print("Culture counts over the whole run…")
     l = 0
     plt.gcf().set_size_inches((22, 12))
+    filter_width = min(19, len(cultures_by_location) // 5 * 2 + 1)
     for subpop, c, r in zip(zip(*cultures_by_location), caps, regions):
-        plt.plot(ts, scipy.signal.medfilt(subpop, 19), label=r, c=cm.Set3(l))
+        plt.plot(ts, scipy.signal.medfilt(subpop, filter_width), label=r, c=cm.Set3(l))
         l += 1
     plt.legend()
     plt.savefig(
@@ -421,8 +442,9 @@ for logfile in args.logfile:
     print("Culture counts over the last 2000 years…")
     l = 0
     plt.gcf().set_size_inches((22, 12))
+    filter_width = min(11, len(cultures_by_location) // 5 * 2 + 1)
     for subpop, c, r in zip(zip(*cultures_by_location), caps, regions):
-        plt.plot(ts, scipy.signal.medfilt(subpop, 11), label=r, c=cm.Set3(l))
+        plt.plot(ts, scipy.signal.medfilt(subpop, filter_width), label=r, c=cm.Set3(l))
         l += 1
     plt.legend()
     plt.xlim(max(ts) - 2000, max(ts))
