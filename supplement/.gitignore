@@ -1,0 +1,17 @@
+# LaTeX
+auto/
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.log
+*.out
+*.pdf
+*.synctex.gz
+
+# World Climate Data – Huge!
+supplement/worldclim/*.tif
+supplement/worldclim/readme.txt
+
+# Output images
+supplement/gavin2017processbased/output*.png
