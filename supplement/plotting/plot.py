@@ -59,19 +59,25 @@ except OSError:
 
 
 def bitvec_to_color(i, top=[0, 0, 0]):
-    rgb = bin(i)[-1:0:-3].count('1'), bin(i)[-2:0:-3].count('1'), bin(i)[-3:0:-3].count('1')
+    rgb = (
+        bin(i)[-1:0:-3].count("1"),
+        bin(i)[-2:0:-3].count("1"),
+        bin(i)[-3:0:-3].count("1"),
+    )
     top[0] = max(rgb[0] + 1, top[0])
     top[1] = max(rgb[1] + 1, top[1])
     top[2] = max(rgb[2], top[2])
     return [rgb[i] / top[i] for i in range(3)]
 
+
 def cultural_distance(c1, c2):
     return bin(c1 ^ c2).count("1")
+
 
 season_length_in_years = 1 / 6.0
 
 regions = list(osm.areas)
-tdf = regions.index('Tierra del Fuego (Isla Grande)')
+tdf = regions.index("Tierra del Fuego (Isla Grande)")
 
 
 def ccontains(polygon):
@@ -89,6 +95,7 @@ def ccontains(polygon):
 
 cf = [ccontains(osm.shapes[a]) for a in regions]
 
+
 def count_cultures(culture_set, _cache={}):
     culture_set = frozenset(culture_set)
     try:
@@ -97,7 +104,14 @@ def count_cultures(culture_set, _cache={}):
         pass
     culture_groups = []
     for c1 in culture_set:
-        groups = [(g, group) for g, group in enumerate(culture_groups) if any(cultural_distance(c1, c2) < params["cooperation_threshold"] for c2 in group)]
+        groups = [
+            (g, group)
+            for g, group in enumerate(culture_groups)
+            if any(
+                cultural_distance(c1, c2) < params["cooperation_threshold"]
+                for c2 in group
+            )
+        ]
         if len(groups) == 0:
             culture_groups.append({c1})
         else:
@@ -107,6 +121,7 @@ def count_cultures(culture_set, _cache={}):
                 del culture_groups[g]
     _cache[culture_set] = len(culture_groups)
     return _cache[culture_set]
+
 
 def compute_contained_population(population, containment_functions=cf):
     pop = [0 for _ in containment_functions]
@@ -189,7 +204,8 @@ for logfile in args.logfile:
             edges = eval(re.findall(r"edges: ([(), 0-9]*),", line[igraph:end_graph])[0])
             nodes = eval(
                 re.findall(
-                    r"node weights: *(\{([0-9]+: *\(.*\{[^}]*\} *\)[, ]*)+\})", line[igraph:end_graph]
+                    r"node weights: *(\{([0-9]+: *\(.*\{[^}]*\} *\)[, ]*)+\})",
+                    line[igraph:end_graph],
                 )[0][0]
             )
             nodes_from_coords = {(x, y): n for n, (h, x, y, p) in nodes.items()}
@@ -223,7 +239,15 @@ for logfile in args.logfile:
             content.sort(key=lambda xync: xync[2], reverse=True)
             xs, ys, ns, cs = zip(*content)
             ns = numpy.array(ns)  # Scale population to pixels
-            plt.text(0.08, 0.99, "{:7d}".format(int(timestamp)), fontsize="large", ha='right', va='top', transform=plt.gca().transAxes)
+            plt.text(
+                0.08,
+                0.99,
+                "{:7d}".format(int(timestamp)),
+                fontsize="large",
+                ha="right",
+                va="top",
+                transform=plt.gca().transAxes,
+            )
             plt.scatter(
                 xs,
                 ys,
@@ -235,13 +259,25 @@ for logfile in args.logfile:
             plt.xlim(*args.xlim)
             plt.ylim(*args.ylim)
             plt.gcf().set_size_inches((12, 16))
-            plt.savefig(str(args.output_dir / "disp{m:08d}-{stem:}.png".format(m=m, stem=stem)), bbox_inches="tight")
-            print(str((args.output_dir / "disp{m:08d}-{stem:}.png".format(m=m, stem=stem)).absolute()))
+            plt.savefig(
+                str(args.output_dir / "disp{m:08d}-{stem:}.png".format(m=m, stem=stem)),
+                bbox_inches="tight",
+            )
+            print(
+                str(
+                    (
+                        args.output_dir
+                        / "disp{m:08d}-{stem:}.png".format(m=m, stem=stem)
+                    ).absolute()
+                )
+            )
             plt.close()
 
             ts.append(timestamp)
             pop.append(ns.sum())
-            populations, cultures = compute_contained_population(((x, y), (p, c)) for x, y, p, c in content)
+            populations, cultures = compute_contained_population(
+                ((x, y), (p, c)) for x, y, p, c in content
+            )
             subpops.append(populations)
             cultures_by_location.append(cultures)
 
@@ -265,13 +301,19 @@ for logfile in args.logfile:
     else:
         params["end"] = "???"
 
-    caps, _ = compute_contained_population([((x, y), (p, 1)) for (x, y), p in popcaps.items()])
+    caps, _ = compute_contained_population(
+        [((x, y), (p, 1)) for (x, y), p in popcaps.items()]
+    )
 
     params["mean_pop"] = sum(pop) / len(pop)
     params["last"] = timestamp
-    for subpop, culturecount, c, r in zip(zip(*subpops), zip(*cultures_by_location), caps, regions):
+    for subpop, culturecount, c, r in zip(
+        zip(*subpops), zip(*cultures_by_location), caps, regions
+    ):
         params[f"{r}_relative"] = numpy.mean(subpop) / c
-        params[f"{r}_cultures"] = numpy.median(culturecount)
+        params[f"{r}_cultures"] = numpy.median(
+            [c for c, n in zip(culturecount, subpop) if n > 0]
+        )
         try:
             params[f"{r}_arrival"] = [x > 0 for x in subpop].index(True)
         except ValueError:
@@ -281,7 +323,15 @@ for logfile in args.logfile:
         print(Path(logfile.name).absolute(), *params.values(), sep="\t", file=paramfile)
         print(Path(logfile.name).absolute(), *params.values(), sep="\t")
 
-    plt.text(0.08, 0.99, "{:7d}".format(int(timestamp)), fontsize="large", ha='right', va='top', transform=plt.gca().transAxes)
+    plt.text(
+        0.08,
+        0.99,
+        "{:7d}".format(int(timestamp)),
+        fontsize="large",
+        ha="right",
+        va="top",
+        transform=plt.gca().transAxes,
+    )
     plt.scatter(
         xs,
         ys,
@@ -293,92 +343,118 @@ for logfile in args.logfile:
     plt.xlim(*args.xlim)
     plt.ylim(*args.ylim)
     plt.gcf().set_size_inches((12, 16))
-    plt.savefig(str(args.output_dir / "disp-last-{stem:}.png".format(stem=stem)), bbox_inches="tight")
+    plt.savefig(
+        str(args.output_dir / "disp-last-{stem:}.png".format(stem=stem)),
+        bbox_inches="tight",
+    )
     print(args.output_dir / "disp-last-{stem:}.png".format(stem=stem))
     plt.close()
 
     print("Population development in the first 2000 years…")
     l = 0
-    plt.gcf().set_size_inches((16, 9))
+    plt.gcf().set_size_inches((22, 12))
     plt.gca().set_yscale("log")
     for subpop, c, r in zip(zip(*subpops), caps, regions):
         plt.plot(ts, subpop, label=r, c=cm.Set3(l))
         plt.plot([0, 2000], [c, c], c=cm.Set3(l), alpha=0.5, linestyle="dotted")
         l += 1
-    plt.plot(ts, pop, label="Total population", c='k')
+    plt.plot(ts, pop, label="Total population", c="k")
     plt.legend()
     plt.xlim(0, 2000)
-    plt.savefig(str(args.output_dir / "pop2k-{stem:}.png".format(stem=stem)), bbox_inches="tight")
+    plt.savefig(
+        str(args.output_dir / "pop2k-{stem:}.png".format(stem=stem)),
+        bbox_inches="tight",
+    )
     plt.close()
 
     print("Population development in the last 2000 years…")
     l = 0
-    plt.gcf().set_size_inches((16, 9))
+    plt.gcf().set_size_inches((22, 12))
     plt.gca().set_yscale("log")
     for subpop, c, r in zip(zip(*subpops), caps, regions):
         plt.plot(ts, subpop, label=r, c=cm.Set3(l))
-        plt.plot([max(ts) - 2000, max(ts)], [c, c], c=cm.Set3(l), alpha=0.5, linestyle="dotted")
+        plt.plot(
+            [max(ts) - 2000, max(ts)],
+            [c, c],
+            c=cm.Set3(l),
+            alpha=0.5,
+            linestyle="dotted",
+        )
         l += 1
-    plt.plot(ts, pop, label="Total population", c='k')
+    plt.plot(ts, pop, label="Total population", c="k")
     plt.legend()
     plt.xlim(max(ts) - 2000, max(ts))
-    plt.savefig(str(args.output_dir / "popl2k-{stem:}.png".format(stem=stem)), bbox_inches="tight")
+    plt.savefig(
+        str(args.output_dir / "popl2k-{stem:}.png".format(stem=stem)),
+        bbox_inches="tight",
+    )
     plt.close()
 
     print("Population development over the whole run…")
     l = 0
-    plt.gcf().set_size_inches((16, 9))
+    plt.gcf().set_size_inches((22, 12))
     plt.gca().set_yscale("log")
     for subpop, c, r in zip(zip(*subpops), caps, regions):
         plt.plot(ts, subpop, label=r, c=cm.Set3(l))
         plt.plot([0, max(ts)], [c, c], c=cm.Set3(l), linestyle="dotted")
         l += 1
-    plt.plot(ts, pop, label="Total population", c='k')
+    plt.plot(ts, pop, label="Total population", c="k")
     plt.legend()
-    plt.savefig(str(args.output_dir / "pop-{stem:}.png".format(stem=stem)), bbox_inches="tight")
+    plt.savefig(
+        str(args.output_dir / "pop-{stem:}.png".format(stem=stem)), bbox_inches="tight"
+    )
     plt.close()
 
     print("Culture counts over the whole run…")
     l = 0
     plt.gcf().set_size_inches((22, 12))
     for subpop, c, r in zip(zip(*cultures_by_location), caps, regions):
-        plt.plot(ts, scipy.signal.medfilt(subpop, 9), label=r, c=cm.Set3(l))
+        plt.plot(ts, scipy.signal.medfilt(subpop, 19), label=r, c=cm.Set3(l))
         l += 1
     plt.legend()
-    plt.ylim(0, 12)
-    plt.savefig(str(args.output_dir / "cultcount-{stem:}.png".format(stem=stem)), bbox_inches="tight")
+    plt.savefig(
+        str(args.output_dir / "cultcount-{stem:}.png".format(stem=stem)),
+        bbox_inches="tight",
+    )
     plt.close()
 
     print("Culture counts over the last 2000 years…")
     l = 0
     plt.gcf().set_size_inches((22, 12))
     for subpop, c, r in zip(zip(*cultures_by_location), caps, regions):
-        plt.plot(ts, scipy.signal.medfilt(subpop, 7), label=r, c=cm.Set3(l))
+        plt.plot(ts, scipy.signal.medfilt(subpop, 11), label=r, c=cm.Set3(l))
         l += 1
     plt.legend()
     plt.xlim(max(ts) - 2000, max(ts))
-    plt.ylim(0, 12)
-    plt.savefig(str(args.output_dir / "cultcountl2k-{stem:}.png".format(stem=stem)), bbox_inches="tight")
+    plt.savefig(
+        str(args.output_dir / "cultcountl2k-{stem:}.png".format(stem=stem)),
+        bbox_inches="tight",
+    )
     plt.close()
 
     print("Population caps and actual populations in each spot…")
-    mean_actual_pops = {loc: (sum(pop)/len(pop) if pop else 0) for loc, pop in actual_pops.items()}
+    mean_actual_pops = {
+        loc: (sum(pop) / len(pop) if pop else 0) for loc, pop in actual_pops.items()
+    }
     plt.gcf().set_size_inches((16, 9))
-    plt.scatter(popcaps.values(), mean_actual_pops.values(), s=4, alpha=0.03, c='k')
+    plt.scatter(popcaps.values(), mean_actual_pops.values(), s=4, alpha=0.03, c="k")
     # plt.plot(range(int(max(popcaps.values())+0.5)), mean_aggregated_popsize_bands, c="0.5")
     plt.xlim(0, 600)
     plt.ylim(0, 600)
     plt.plot((0, 600), (0, 600))
-    plt.savefig(str(args.output_dir / "popcap-{stem:}.png".format(stem=stem)), bbox_inches="tight")
+    plt.savefig(
+        str(args.output_dir / "popcap-{stem:}.png".format(stem=stem)),
+        bbox_inches="tight",
+    )
     plt.close()
 
-    print("Population caps and actual populations in each spot and its immediate neigbors…")
+    print(
+        "Population caps and actual populations in each spot and its immediate neigbors…"
+    )
     mean_actual_pops_n0 = {
         nodes_from_coords[loc]: mean_pop for loc, mean_pop in mean_actual_pops.items()
     }
-    popcaps_n0 = {
-        nodes_from_coords[loc]: mean_pop for loc, mean_pop in popcaps.items()
-    }
+    popcaps_n0 = {nodes_from_coords[loc]: mean_pop for loc, mean_pop in popcaps.items()}
     mean_actual_pops_n1 = mean_actual_pops_n0.copy()
     popcaps_n1 = popcaps_n0.copy()
     mean_actual_pops_n2 = mean_actual_pops_n0.copy()
@@ -388,16 +464,24 @@ for logfile in args.logfile:
         try:
             n2 = {node}
             for neighbor in G[node]:
-                mean_actual_pops_n1[node] = mean_actual_pops_n1[node] + mean_actual_pops_n0.get(neighbor, 0)
+                mean_actual_pops_n1[node] = mean_actual_pops_n1[
+                    node
+                ] + mean_actual_pops_n0.get(neighbor, 0)
                 popcaps_n1[node] = popcaps_n1[node] + popcaps_n0.get(neighbor, 0)
                 n2.add(neighbor)
-                mean_actual_pops_n2[node] = mean_actual_pops_n2[node] + mean_actual_pops_n0.get(neighbor, 0)
+                mean_actual_pops_n2[node] = mean_actual_pops_n2[
+                    node
+                ] + mean_actual_pops_n0.get(neighbor, 0)
                 popcaps_n2[node] = popcaps_n2[node] + popcaps_n0.get(neighbor, 0)
                 for neighbor2 in G[neighbor]:
                     if neighbor2 not in n2:
                         n2.add(neighbor2)
-                        mean_actual_pops_n2[node] = mean_actual_pops_n2[node] + mean_actual_pops_n0.get(neighbor2, 0)
-                        popcaps_n2[node] = popcaps_n2[node] + popcaps_n0.get(neighbor2, 0)
+                        mean_actual_pops_n2[node] = mean_actual_pops_n2[
+                            node
+                        ] + mean_actual_pops_n0.get(neighbor2, 0)
+                        popcaps_n2[node] = popcaps_n2[node] + popcaps_n0.get(
+                            neighbor2, 0
+                        )
             mean_actual_pops_n2[node] /= len(n2)
             popcaps_n2[node] /= len(n2)
         except KeyError:
@@ -405,9 +489,7 @@ for logfile in args.logfile:
 
     print("Computing color representation of points…")
     lab = cspace_converter("CIELab", "sRGB1")
-    colors = numpy.clip([
-        lab((40, n[1]-10, n[0]+79)) for n in popcaps.keys()
-    ], 0, 1)
+    colors = numpy.clip([lab((40, n[1] - 10, n[0] + 79)) for n in popcaps.keys()], 0, 1)
 
     print("Plotting Color Scheme…")
     plt.gcf().set_size_inches((12, 16))
@@ -415,42 +497,76 @@ for logfile in args.logfile:
     plt.scatter(x, y, s=10, c=colors, alpha=0.6, linewidths=0.0)
     plt.xlim(*args.xlim)
     plt.ylim(*args.ylim)
-    plt.savefig(str(args.output_dir / "colorschema-{stem}.png".format(stem=stem)), bbox_inches="tight")
+    plt.savefig(
+        str(args.output_dir / "colorschema-{stem}.png".format(stem=stem)),
+        bbox_inches="tight",
+    )
     plt.close()
 
     print("Plotting intended vs. opserved population…")
     plt.gcf().set_size_inches((16, 9))
-    plt.scatter(popcaps.values(), mean_actual_pops.values(), s=2, alpha=0.4, linewidths=0.0, c=colors)
+    plt.scatter(
+        popcaps.values(),
+        mean_actual_pops.values(),
+        s=2,
+        alpha=0.4,
+        linewidths=0.0,
+        c=colors,
+    )
     plt.xlim(0, 400)
     plt.ylim(0, 400)
     plt.plot((0, 400), (0, 400))
-    plt.savefig(str(args.output_dir / "popcap-{stem:}.png".format(stem=stem)), bbox_inches="tight")
+    plt.savefig(
+        str(args.output_dir / "popcap-{stem:}.png".format(stem=stem)),
+        bbox_inches="tight",
+    )
     plt.close()
 
     plt.gcf().set_size_inches((16, 9))
-    plt.scatter(popcaps_n1.values(), mean_actual_pops_n1.values(), s=2, alpha=0.4, linewidths=0.0, c=colors)
+    plt.scatter(
+        popcaps_n1.values(),
+        mean_actual_pops_n1.values(),
+        s=2,
+        alpha=0.4,
+        linewidths=0.0,
+        c=colors,
+    )
     plt.xlim(0, 2000)
     plt.ylim(0, 2000)
     plt.plot((0, 2000), (0, 2000))
-    plt.savefig(str(args.output_dir / "popcap_n1-{stem:}.png".format(stem=stem)), bbox_inches="tight")
+    plt.savefig(
+        str(args.output_dir / "popcap_n1-{stem:}.png".format(stem=stem)),
+        bbox_inches="tight",
+    )
     plt.close()
 
     plt.gcf().set_size_inches((16, 9))
-    plt.scatter(popcaps_n2.values(), mean_actual_pops_n2.values(), s=1, alpha=0.8, linewidths=0.0, c=colors)
+    plt.scatter(
+        popcaps_n2.values(),
+        mean_actual_pops_n2.values(),
+        s=1,
+        alpha=0.8,
+        linewidths=0.0,
+        c=colors,
+    )
     plt.xlim(0, 250)
     plt.ylim(0, 250)
     plt.plot((0, 500), (0, 500))
-    plt.savefig(str(args.output_dir / "popcap_n2-{stem:}.png".format(stem=stem)), bbox_inches="tight")
+    plt.savefig(
+        str(args.output_dir / "popcap_n2-{stem:}.png".format(stem=stem)),
+        bbox_inches="tight",
+    )
     plt.close()
 
     print("Computing geographic distance vs. cultural distance…")
     start = None
     scatter = {}
     scattere = {}
-    for i, ((x1, y1, p1, c1), (x2, y2, p2, c2)) in tqdm(enumerate(
-        itertools.combinations(content, 2)), total=len(content) * (len(content) - 1) // 2
+    for i, ((x1, y1, p1, c1), (x2, y2, p2, c2)) in tqdm(
+        enumerate(itertools.combinations(content, 2)),
+        total=len(content) * (len(content) - 1) // 2,
     ):
-        if i%23 != 0:
+        if i % 23 != 0:
             continue
         if start != nodes_from_coords[x1, y1]:
             start = nodes_from_coords[x1, y1]
@@ -474,14 +590,20 @@ for logfile in args.logfile:
         continue
     plt.scatter(x, y, s=count)
     plt.gcf().set_size_inches((12, 9))
-    plt.savefig(str(args.output_dir / "corr{m:08d}-{stem:}.png".format(m=m, stem=stem)), bbox_inches="tight")
+    plt.savefig(
+        str(args.output_dir / "corr{m:08d}-{stem:}.png".format(m=m, stem=stem)),
+        bbox_inches="tight",
+    )
     plt.close()
 
     print("Distribution of neighbor families")
     y, count = zip(*[(c, n) for (f, c), n in scattere.items() if f == 1])
     plt.bar(y, count)
     plt.gcf().set_size_inches((12, 9))
-    plt.savefig(str(args.output_dir / "neighb{m:08d}-{stem:}.png".format(m=m, stem=stem)), bbox_inches="tight")
+    plt.savefig(
+        str(args.output_dir / "neighb{m:08d}-{stem:}.png".format(m=m, stem=stem)),
+        bbox_inches="tight",
+    )
     plt.close()
 
     print("Edge count vs. cultural distance…")
@@ -495,5 +617,8 @@ for logfile in args.logfile:
         continue
     plt.scatter(x, y, s=count)
     plt.gcf().set_size_inches((12, 9))
-    plt.savefig(str(args.output_dir / "corre{m:08d}-{stem:}.png".format(m=m, stem=stem)), bbox_inches="tight")
+    plt.savefig(
+        str(args.output_dir / "corre{m:08d}-{stem:}.png".format(m=m, stem=stem)),
+        bbox_inches="tight",
+    )
     plt.close()

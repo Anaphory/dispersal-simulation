@@ -21,23 +21,27 @@ areas = {
     "Baja California Sur": 2589611,
     "Cuba": 307833,
     "Amazonas": 332476,
-    "Tierra del Fuego (Isla Grande)": 163703,
     "Paraguay": 287077,
     "Rio Negro (ARG)": 153547,
+    "Tierra del Fuego (Isla Grande)": 163703,
 }
 shapes = {}
 
 for area, id in areas.items():
     # Load and cache all prerequested areas
     try:
-        shapes[area] = load((Path(__file__).parent / "{:s}.wkb".format(area)).open("rb"))
+        shapes[area] = load(
+            (Path(__file__).parent / "{:s}.wkb".format(area)).open("rb")
+        )
     except FileNotFoundError:
         print(u"Area {:s} not found in cache.".format(area))
         query = """[out:json][timeout:25];
         rel({:d});
         out body;
         >;
-        out skel qt; """.format(id)
+        out skel qt; """.format(
+            id
+        )
         result = api.query(query)
 
         # Convert ways to linstrings
@@ -53,7 +57,7 @@ for area, id in areas.items():
             # create a LineString from coords
             lss.append(geometry.LineString(ls_coords))
 
-        merged = linemerge(lss)     # merge LineStrings
+        merged = linemerge(lss)  # merge LineStrings
         borders = unary_union(merged)  # linestrings to a MultiLineString
         polygons = list(polygonize(borders))
         shapes[area] = geometry.MultiPolygon(polygons)
@@ -68,12 +72,16 @@ def contains(shape, coordinates):
 
 
 land_shp_fname = shpreader.natural_earth(
-    resolution='50m', category='physical', name='land')
+    resolution="50m", category="physical", name="land"
+)
 
 land_geom = unary_union(
-    [record.geometry
-     for record in shpreader.Reader(land_shp_fname).records()
-     if record.attributes.get('featurecla') != "Null island"])
+    [
+        record.geometry
+        for record in shpreader.Reader(land_shp_fname).records()
+        if record.attributes.get("featurecla") != "Null island"
+    ]
+)
 
 LAND = prep(land_geom)
 
