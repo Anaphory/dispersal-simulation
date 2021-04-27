@@ -1,5 +1,39 @@
 use crate::observation::ObservationSettings;
 use crate::{Parameters, Seasons};
+use std::str::FromStr;
+use argparse::action::TypedAction;
+use std::rc::Rc;
+use std::cell::RefCell;
+use argparse::action::{Action,IArgAction};
+use argparse::action::ParseResult;
+use argparse::action::ParseResult::{Parsed, Error};
+use argparse::action::Action::Single;
+
+pub struct StorePAsU32Action<'a> {
+    pub cell: Rc<RefCell<&'a mut u32>>,
+}
+
+impl<'a> IArgAction for StorePAsU32Action<'a> {
+    fn parse_arg(&self, arg: &str) -> ParseResult {
+        match FromStr::from_str(arg) {
+            Ok::<f64, _>(x) => {
+                **self.cell.borrow_mut() = (x * ((1<<32) as f64)) as u32;
+                return Parsed;
+            }
+            Err(_) => {
+                return Error(format!("Bad value {}", arg));
+            }
+        }
+    }
+}
+
+struct StorePAsU32;
+
+impl TypedAction<u32> for StorePAsU32 {
+    fn bind<'x>(&self, cell: Rc<RefCell<&'x mut u32>>) -> Action<'x> {
+        return Single(Box::new(StorePAsU32Action { cell: cell }));
+    }
+}
 
 pub fn parse_args<'a>(
     p: &'a mut Parameters,
@@ -35,6 +69,13 @@ pub fn parse_args<'a>(
         argparse::Store,
         "Length of a season/time step, in years",
     );
+    parser
+        .refer(&mut p.maximum_resources_one_adult_can_harvest)
+        .add_option(
+            &["--harvest-per-person-per-year"],
+            argparse::Store,
+            "Maximum resources one adult can harvest, per *year*",
+        );
     parser.refer(&mut p.enemy_discount).add_option(
         &["--enemy-discount"],
         argparse::Store,
@@ -42,8 +83,8 @@ pub fn parse_args<'a>(
     );
     parser.refer(&mut p.fight_deadliness).add_option(
         &["--fight-deadliness"],
-        argparse::Store,
-        "Probability to die, in per 2**31",
+        StorePAsU32,
+        "Probability to die",
     );
     parser.refer(resource_recovery_per_year).add_option(
         &["--resource-recovery"],

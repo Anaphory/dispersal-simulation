@@ -409,10 +409,6 @@ fn step_part_2(
         observation::print_population_by_location(&cultures_by_location, p);
         println!("F: {:?}", families.get(0));
     }
-    if (o.log_gdcd > 0) && (t % o.log_gdcd == 0) {
-        println!("t: {:}", t);
-        observation::print_gd_cd(&cultures_by_location, p);
-    }
     stored_resources
 }
 
@@ -531,49 +527,6 @@ mod emergence {
         variance. The critical geographical distance is likely to depend on the region,
         being larger in more marginal environments where migration is more frequent.
 
-     */
-    pub fn cultural_distance_by_geographical_distance(
-        cultures_by_location: &FxHashMap<NodeId, FxHashMap<Culture, usize>>,
-        max_geo_distance: i32,
-        p: &Parameters,
-    ) -> FxHashMap<i32, FxHashMap<u32, usize>> {
-        let mut gd_cd: FxHashMap<i32, FxHashMap<u32, usize>> = FxHashMap::default();
-        for (l1, cs1) in cultures_by_location {
-            let l1h3 = p.dispersal_graph.node_weight(*l1).unwrap().0;
-            for (l2, cs2) in cultures_by_location {
-                let l2h3 = p.dispersal_graph[*l2].0;
-                let gd = 13; // Calculate network distance??
-                if gd > max_geo_distance {
-                    continue;
-                }
-                for (c1, count1) in cs1 {
-                    for (c2, count2) in cs2 {
-                        if l1 == l2 && c1 == c2 {
-                            *gd_cd
-                                .entry(gd)
-                                .or_insert_with(FxHashMap::default)
-                                .entry(0)
-                                .or_insert(0) += count1 * (count2 - 1) / 2;
-                            break;
-                        }
-                        let cd = submodels::culture::distance(*c1, *c2);
-                        *gd_cd
-                            .entry(gd)
-                            .or_insert_with(FxHashMap::default)
-                            .entry(cd)
-                            .or_insert(0) += count1 * count2;
-                    }
-                }
-                if l1 == l2 {
-                    break;
-                }
-            }
-        }
-        gd_cd
-    }
-
-    /**
-
     Underlying the model is a fission-fusiom model of group dynamics
         (crema2014simulation), so we expect a similar analysis to apply to our
         model. Crema observes actual fission-fusion cycles only for a small part of
@@ -648,59 +601,53 @@ mod adaptation {
     ) -> (NodeId, OneYearResources) {
         let evidence = OneYearResources::from(p.season_length_in_years) * p.evidence_needed;
 
-        let destination_expectation = known_destinations
-            .iter()
-            .filter_map(|(i, d_)| {
-                let d = *d_;
-                if family.location == *i && avoid_stay {
-                    return None;
-                }
-                let movement_cost = d * family.effective_size as f64;
-                let pop = match population.get(&i) {
-                    None => 0,
-                    Some(k) => *k,
-                } + (if family.location == *i {
-                    0
-                } else {
-                    family.effective_size
-                });
-
-                let (friends, mut stored_by_friendlies) = match storage.get(i) {
-                    None => (0, OneYearResources::from(0.0)),
-                    Some(h) => {
-                        match h.iter().find(|c| {
-                            emergence::similar_culture(
-                                family.culture,
-                                *c.0,
-                                p.cooperation_threshold,
-                            )
-                        }) {
-                            None => (0, OneYearResources::from(0.0)),
-                            Some((_, v)) => *v,
-                        }
-                    }
-                };
-                if *i == family.location {
-                    stored_by_friendlies -= family.stored_resources
-                };
-
-                let mut now = expected_quality(
-                    p,
-                    &family.adaptation,
-                    patches.get(i).unwrap(),
-                    stored_by_friendlies,
-                    pop,
-                );
-                if pop > 2 * friends {
-                    now = now * (p.enemy_discount).powi((pop - 2 * friends) as i32 + 1);
-                    // A family would usually have a size around 5, I guess, and
-                    // each family encountered has probability 1/2 to mess with
-                    // this family. So each individual has a chance of 0.5^0.2 –
-                    // and that's the default of the parameter.
-                }
-
-                Some((i, (now, movement_cost)))
+        let destination_expectation = known_destinations.iter().filter_map(|(i, d_)| {
+            let d = *d_;
+            if family.location == *i && avoid_stay {
+                return None;
+            }
+            let movement_cost = d * family.effective_size as f64;
+            let pop = match population.get(&i) {
+                None => 0,
+                Some(k) => *k,
+            } + (if family.location == *i {
+                0
+            } else {
+                family.effective_size
             });
+
+            let (friends, mut stored_by_friendlies) = match storage.get(i) {
+                None => (0, OneYearResources::from(0.0)),
+                Some(h) => {
+                    match h.iter().find(|c| {
+                        emergence::similar_culture(family.culture, *c.0, p.cooperation_threshold)
+                    }) {
+                        None => (0, OneYearResources::from(0.0)),
+                        Some((_, v)) => *v,
+                    }
+                }
+            };
+            if *i == family.location {
+                stored_by_friendlies -= family.stored_resources
+            };
+
+            let mut now = expected_quality(
+                p,
+                &family.adaptation,
+                patches.get(i).unwrap(),
+                stored_by_friendlies,
+                pop,
+            );
+            if pop > 2 * friends {
+                now = now * (p.enemy_discount).powi((pop - 2 * friends) as i32 + 1);
+                // A family would usually have a size around 5, I guess, and
+                // each family encountered has probability 1/2 to mess with
+                // this family. So each individual has a chance of 0.5^0.2 –
+                // and that's the default of the parameter.
+            }
+
+            Some((i, (now, movement_cost)))
+        });
         objectives::best_location(destination_expectation, family.location, evidence)
     }
 
@@ -1084,26 +1031,6 @@ pub mod observation {
         pub store_every: Seasons,
         pub log_patch_resources: Seasons,
         pub statefile: String,
-    }
-
-    /**
-    The major focus of the model, however, is on the cultural areas and
-    networks. To asses the main outcome of the model, we collect the geographic
-    vs. cultural distances for every pair of individuals within 5 years of each other. Due to the
-    computational effort and high autocorrelation of the outcomes, we collect
-    this data only about once per generation, i.e. every 60 time steps.
-    */
-    pub fn print_gd_cd(
-        cultures_by_location: &FxHashMap<NodeId, FxHashMap<Culture, usize>>,
-        p: &Parameters,
-    ) {
-        let gd_cd: FxHashMap<i32, FxHashMap<u32, usize>> =
-            emergence::cultural_distance_by_geographical_distance(
-                cultures_by_location,
-                5 * 5 * 2,
-                p,
-            );
-        println!("GD_CD: {:?}", gd_cd)
     }
 }
 
@@ -1563,8 +1490,12 @@ pub mod submodels {
                     .for_each(|(group_effort, mut contributions)| {
                         assert!(group_effort > 0.);
                         // println!("group effort: {:?}", group_effort);
-                        let group_harvest =
-                            *res * group_effort.powi(2) / total_squared_groups_effort;
+                        let group_harvest = std::cmp::min(
+                            *res * group_effort.powi(2) / total_squared_groups_effort,
+                            p.maximum_resources_one_adult_can_harvest
+                                * p.season_length_in_years
+                                * group_effort,
+                        );
                         assert!(group_harvest > OneYearResources::from(0.));
                         // println!("group harvest: {:?}", group_harvest);
                         let coefficient = std::cmp::min(
@@ -1621,7 +1552,10 @@ pub mod submodels {
                 let mut rng = rand::thread_rng();
                 *patch_resources = std::cmp::min(
                     patch_max_resources,
-                    patch_max_resources * resource_recovery_per_season * 2. * rng.gen_range(0.0..1.0)
+                    patch_max_resources
+                        * resource_recovery_per_season
+                        * 2.
+                        * rng.gen_range(0.0..1.0)
                         + *patch_resources,
                 )
             }
@@ -1657,11 +1591,15 @@ pub mod submodels {
                     culture_mutation_rate: 6e-3,
                     culture_dimensionality: 20,
                     cooperation_threshold: 6,
-                    maximum_resources_one_adult_can_harvest: OneYearResources::from(0.25),
+                    // In a previous iteration, there was no maximum of
+                    // resources accessible to one adult in a year. To be
+                    // consistent with that, we set the default of this new
+                    // parameter to a ludicrously high amount.
+                    maximum_resources_one_adult_can_harvest: OneYearResources::from(1e50),
                     evidence_needed: 0.1,
                     payoff_std: 0.1,
                     minimum_adaptation: 0.5,
-                    fight_deadliness: (1<<31),
+                    fight_deadliness: (1 << 31),
                     enemy_discount: (0.5_f64).powf(0.2),
 
                     // I found that Kelly (2013), the guy who collected data

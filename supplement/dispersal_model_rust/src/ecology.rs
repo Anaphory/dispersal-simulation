@@ -3,14 +3,27 @@ use std::ops::{Div, Index, Mul};
 /**
 OneYearResources is a number with units.
 */
-#[derive(PartialEq, PartialOrd, Default, Clone, Copy, Serialize, Deserialize)]
+#[derive(Default, Clone, Copy, Serialize, Deserialize)]
 pub struct OneYearResources {
     c: f64,
 }
 /**
 We need comparability, so we cheat this implementation.
  */
+impl PartialEq for OneYearResources {
+    fn eq(&self, other: &Self) -> bool {
+        self.c == other.c
+    }
+}
 impl Eq for OneYearResources {}
+impl PartialOrd for OneYearResources {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match self.c.partial_cmp(&other.c) {
+            None => Some(std::cmp::Ordering::Equal),
+            Some(c) => Some(c),
+        }
+    }
+}
 impl Ord for OneYearResources {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         match self.c.partial_cmp(&other.c) {

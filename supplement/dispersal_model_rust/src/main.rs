@@ -1,6 +1,5 @@
 use model::argparse::parse_args;
 use model::movementgraph::MovementGraph;
-use model::submodels::parameters::Parameters;
 use model::*;
 use std::fs;
 
@@ -15,8 +14,10 @@ fn main() -> Result<(), String> {
         Err(e) => return Err(e.to_string()),
     };
 
-    let mut p = Parameters::default();
-    p.dispersal_graph = dispersal_graph;
+    let mut p = model::submodels::parameters::Parameters {
+        dispersal_graph,
+        ..Default::default()
+    };
     let mut max_t: Seasons = 20000;
     let mut scale = 1.0;
     let mut recovery = p.resource_recovery_per_season / p.season_length_in_years;
