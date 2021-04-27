@@ -1027,7 +1027,6 @@ pub mod observation {
     #[derive(Debug, Serialize, Deserialize, Clone)]
     pub struct ObservationSettings {
         pub log_every: Seasons,
-        pub log_gdcd: Seasons,
         pub store_every: Seasons,
         pub log_patch_resources: Seasons,
         pub statefile: String,
@@ -1626,7 +1625,7 @@ pub fn store_state(state: State, statefile: String) -> Result<(), String> {
         Ok(f) => f,
         Err(_) => return Err("Could not create state file".to_string()),
     };
-    match serde_json::to_writer_pretty(file, &state) {
+    match bincode::serialize_into(file, &state) {
         Ok(_) => Ok(()),
         Err(_) => Err("Failed to store state.".to_string()),
     }

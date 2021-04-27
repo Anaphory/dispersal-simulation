@@ -17,7 +17,7 @@ impl<'a> IArgAction for StorePAsU32Action<'a> {
     fn parse_arg(&self, arg: &str) -> ParseResult {
         match FromStr::from_str(arg) {
             Ok::<f64, _>(x) => {
-                **self.cell.borrow_mut() = (x * ((1<<32) as f64)) as u32;
+                **self.cell.borrow_mut() = (x * ((1_u64<<32) as f64)) as u32;
                 return Parsed;
             }
             Err(_) => {

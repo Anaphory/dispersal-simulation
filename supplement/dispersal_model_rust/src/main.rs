@@ -24,7 +24,6 @@ fn main() -> Result<(), String> {
 
     let mut o = observation::ObservationSettings {
         log_every: 30, // Every 5 years, by default parameters
-        log_gdcd: 0,
         log_patch_resources: 30,
         store_every: 600,
         statefile: "state.json".to_string(),
