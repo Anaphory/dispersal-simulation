@@ -48,7 +48,8 @@ data["bad"] = (
     + (data["Tierra del Fuego (Isla Grande)_cultures"] > 20) * 1
     + (data["Haida Nation islands_cultures"] > 2) * 1
     + (data["Haida Nation islands_cultures"] > 10) * 1
-    + (data["Amazonas_arrival"] < 500) * 1
+    + (data["Amazonas_arrival"] < 400) * 1
+    + (data["Amazonas_arrival"] < 600) * 1
     + (data["Haida Nation islands_pop"] < 0.25) * 1
     + (data["Alaska_pop"] < 0.1) * 1
     + (data["Baja California Sur_pop"] < 0.3) * 1
@@ -128,7 +129,8 @@ for param in tqdm(all_param):
                 (characteristics["Tierra del Fuego (Isla Grande)_cultures"] > 20),
                 (characteristics["Haida Nation islands_cultures"] > 2),
                 (characteristics["Haida Nation islands_cultures"] > 10),
-                (characteristics["Amazonas_arrival"] < 500),
+                (characteristics["Amazonas_arrival"] < 400),
+                (characteristics["Amazonas_arrival"] < 600),
                 (characteristics["Haida Nation islands_pop"] < 0.4),
                 (characteristics["Haida Nation islands_pop"] < 0.3),
                 (characteristics["Alaska_pop"] < 0.4),
