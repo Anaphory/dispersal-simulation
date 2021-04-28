@@ -1,3 +1,4 @@
+import numpy
 import pandas
 from osm import areas
 
@@ -34,9 +35,11 @@ data["until_resource_recovery"] = (
 data["fight_deadliness"] = data["fight_deadliness"] / 2 ** 32
 
 times = [t for t in data.columns if t.endswith("arrival")]
-populations = [t for t in data.columns if t.endswith("pop")]
+populations = [p for p in data.columns if p.endswith("pop")]
 for t in times:
-    data[t] = data[t] * 30 * data["season_length_in_years"]
+    p = t[:-7] + "pop"
+    data[t] = data[t] * 30 * data["season_length_in_years"] # The default logging is every 30 seasons
+    data[p][numpy.isnan(data[t])] = numpy.nan
 data["run"] = data["file"].str[-20:]
 
 data = data[data["season_length_in_years"] < 0.2]

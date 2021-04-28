@@ -355,7 +355,7 @@ for logfile in args.logfile:
     print(args.output_dir / "disp-last-{stem:}.png".format(stem=stem))
 
     caps, _ = compute_contained_population(
-        [((x, y), (p, 1)) for (x, y), p in popcaps.items()]
+        [((x, y), (p, 1)) for (x, y), p in (popcaps.items())]
     )
 
     params["mean_pop"] = sum(pop) / len(pop)

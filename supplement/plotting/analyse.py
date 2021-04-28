@@ -77,7 +77,9 @@ for i, indicator in enumerate(indicators):
             a.tick_params(labelleft=False)
         else:
             plt.ylabel(indicator)
-        plt.scatter(data[predictor], data[indicator], c=data["bad"], alpha=0.2, marker="+")
+        plt.scatter(
+            data[predictor], data[indicator], c=data["bad"], alpha=0.2, marker="+"
+        )
 plt.subplots_adjust(hspace=0, wspace=0, left=0.035, right=1, top=1, bottom=0.05)
 plt.show()
 
@@ -107,72 +109,154 @@ for key in predictors:
         choices.add(value)
     print(key)
     print(choices)
-    parameter_choices[key] = list(choices)
+    parameter_choices[key] = sorted(choices)
 
 data.to_csv("summary.csv")
+
+central_points = [
+    {
+        "culture_mutation_rate": 0.004,
+        "culture_dimensionality": 36,
+        "cooperation_threshold": 7,
+        "minimum_adaptation": 0.5,
+        "fight_deadliness": 0.1,
+        "enemy_discount": 0.7578582832549999,
+        "season_length_in_years": 0.16666666666666666,
+        "until_resource_recovery": 6.0,
+        "maximum_resources_one_adult_can_harvest": 10000000000.0,
+    }
+]
+
+x = []
+for i, indicator in enumerate(indicators):
+    for p, predictor in enumerate(all_predictors):
+        a = plt.subplot(
+            len(indicators),
+            len(all_predictors),
+            len(all_predictors) * i + p + 1,
+            sharex=x[p] if i else None,
+            sharey=plt.gca() if p else None,
+        )
+        if i != len(indicators) - 1:
+            a.tick_params(labelbottom=False)
+        else:
+            plt.xlabel(predictor)
+        if i == 0:
+            x.append(plt.gca())
+        if p != 0:
+            a.tick_params(labelleft=False)
+        else:
+            plt.ylabel(indicator)
+        for central_point in central_points:
+            vary_parameter = [
+                [central_point[q] if q != predictor else choice for q in predictors]
+                for choice in parameter_choices[predictor]
+            ]
+            predictions = models[indicator].predict(vary_parameter)
+            plt.plot(parameter_choices[predictor], predictions, alpha=0.5, c='k')
+plt.subplots_adjust(hspace=0, wspace=0, left=0.035, right=1, top=1, bottom=0.05)
+plt.show()
+
 
 min = numpy.infty
 all_param = [x for x in tqdm(itertools.product(*parameter_choices.values()))]
 numpy.random.shuffle(all_param)
-for param in tqdm(all_param):
-    parameter_values = dict(zip(parameter_choices, param))
-    characteristics = {k: models[k].predict([param])[0] for k in indicators}
+try:
+    for param in tqdm(all_param):
+        parameter_values = dict(zip(parameter_choices, param))
+        characteristics = {k: models[k].predict([param])[0] for k in indicators}
 
-    badness = (
-        numpy.hstack(
-            (
-                (characteristics["Florida_cultures"] < 2),
-                (characteristics["Florida_cultures"] > 20),
-                (characteristics["Florida_cultures"] > 50),
-                (characteristics["Florida_cultures"] > 100),
-                (characteristics["Tierra del Fuego (Isla Grande)_cultures"] < 2),
-                (characteristics["Tierra del Fuego (Isla Grande)_cultures"] > 20),
-                (characteristics["Haida Nation islands_cultures"] > 2),
-                (characteristics["Haida Nation islands_cultures"] > 10),
-                (characteristics["Amazonas_arrival"] < 400),
-                (characteristics["Amazonas_arrival"] < 600),
-                (characteristics["Haida Nation islands_pop"] < 0.4),
-                (characteristics["Haida Nation islands_pop"] < 0.3),
-                (characteristics["Alaska_pop"] < 0.4),
-                (characteristics["Alaska_pop"] < 0.3),
-                (characteristics["Baja California Sur_pop"] < 0.4),
-                (characteristics["Baja California Sur_pop"] < 0.3),
-                (characteristics["California_pop"] < 0.4),
-                (characteristics["California_pop"] < 0.3),
-                (characteristics["Amazonas_pop"] < 0.4),
-                (characteristics["Amazonas_pop"] < 0.3),
+        badness = (
+            numpy.hstack(
+                (
+                    (characteristics["Florida_cultures"] < 2),
+                    (characteristics["Florida_cultures"] > 20),
+                    (characteristics["Florida_cultures"] > 50),
+                    (characteristics["Florida_cultures"] > 100),
+                    (characteristics["Tierra del Fuego (Isla Grande)_cultures"] < 2),
+                    (characteristics["Tierra del Fuego (Isla Grande)_cultures"] > 20),
+                    (characteristics["Haida Nation islands_cultures"] > 2),
+                    (characteristics["Haida Nation islands_cultures"] > 10),
+                    (characteristics["Amazonas_arrival"] < 400),
+                    (characteristics["Amazonas_arrival"] < 600),
+                    (characteristics["Haida Nation islands_pop"] < 0.4),
+                    (characteristics["Haida Nation islands_pop"] < 0.3),
+                    (characteristics["Alaska_pop"] < 0.4),
+                    (characteristics["Alaska_pop"] < 0.3),
+                    (characteristics["Baja California Sur_pop"] < 0.4),
+                    (characteristics["Baja California Sur_pop"] < 0.3),
+                    (characteristics["California_pop"] < 0.4),
+                    (characteristics["California_pop"] < 0.3),
+                    (characteristics["Amazonas_pop"] < 0.4),
+                    (characteristics["Amazonas_pop"] < 0.3),
+                )
             )
+            * 1
         )
-        * 1
-    )
 
-    if badness.sum() <= min:
-        print(
-            " ".join(
-                [
-                    "cargo run",
-                    "--bin=simulation",
-                    "--",
-                    "--culture-mutation-rate {culture_mutation_rate}",
-                    "--culture-dimensionality {culture_dimensionality}",
-                    "--cooperation-threshold {cooperation_threshold}",
-                    "--minimum-adaptation {minimum_adaptation}",
-                    "--fight-deadliness {fight_deadliness}",
-                    "--enemy-discount {enemy_discount}",
-                    "--season-length {season_length_in_years}",
-                    "--resource-recovery {resource_recovery}",
-                    "--harvest-per-person-per-year {maximum_resources_one_adult_can_harvest}",
-                ]
-            ).format(
-                resource_recovery=1 / parameter_values["until_resource_recovery"],
-                **parameter_values
+        if badness.sum() <= min:
+            if badness.sum() < min:
+                central_points = []
+            print(
+                " ".join(
+                    [
+                        "cargo run",
+                        "--bin=simulation",
+                        "--",
+                        "--culture-mutation-rate {culture_mutation_rate}",
+                        "--culture-dimensionality {culture_dimensionality}",
+                        "--cooperation-threshold {cooperation_threshold}",
+                        "--minimum-adaptation {minimum_adaptation}",
+                        "--fight-deadliness {fight_deadliness}",
+                        "--enemy-discount {enemy_discount}",
+                        "--season-length {season_length_in_years}",
+                        "--resource-recovery {resource_recovery}",
+                        "--harvest-per-person-per-year {maximum_resources_one_adult_can_harvest}",
+                    ]
+                ).format(
+                    resource_recovery=1 / parameter_values["until_resource_recovery"],
+                    **parameter_values
+                )
             )
+            filter = True
+            central_points.append(parameter_values)
+            for parameter, value in parameter_values.items():
+                filter = filter & (data[parameter] == value)
+            if filter.any():
+                print(data[filter])
+            print(characteristics)
+            print(badness)
+            min = badness.sum()
+except KeyboardInterrupt:
+    pass
+
+x = []
+for i, indicator in enumerate(indicators):
+    for p, predictor in enumerate(all_predictors):
+        a = plt.subplot(
+            len(indicators),
+            len(all_predictors),
+            len(all_predictors) * i + p + 1,
+            sharex=x[p] if i else None,
+            sharey=plt.gca() if p else None,
         )
-        filter = True
-        for parameter, value in parameter_values.items():
-            filter = filter & (data[parameter] == value)
-        if len(data[filter]):
-            print(data[filter])
-        print(characteristics)
-        print(badness)
-        min = badness.sum()
+        if i != len(indicators) - 1:
+            a.tick_params(labelbottom=False)
+        else:
+            plt.xlabel(predictor)
+        if i == 0:
+            x.append(plt.gca())
+        if p != 0:
+            a.tick_params(labelleft=False)
+        else:
+            plt.ylabel(indicator)
+        for central_point in central_points:
+            vary_parameter = [
+                [central_point[q] if q != predictor else choice for q in predictors]
+                for choice in parameter_choices[predictor]
+            ]
+            predictions = models[indicator].predict(vary_parameter)
+            plt.plot(parameter_choices[predictor], predictions, alpha=1/len(central_points), c='k')
+plt.subplots_adjust(hspace=0, wspace=0, left=0.035, right=1, top=1, bottom=0.05)
+plt.show()
+
