@@ -67,6 +67,8 @@ for i, indicator in enumerate(indicators):
             sharex=x[p] if i else None,
             sharey=plt.gca() if p else None,
         )
+        if "_pop" not in indicator:
+            plt.yscale("log")
         if i != len(indicators) - 1:
             a.tick_params(labelbottom=False)
         else:
@@ -90,7 +92,7 @@ for indicator in indicators:
     model.fit(
         data[predictors][numpy.isfinite(data[indicator])],
         data[indicator][numpy.isfinite(data[indicator])],
-        numpy.log(data["end_time"][numpy.isfinite(data[indicator])] + 1),
+        data["end_time"][numpy.isfinite(data[indicator])],
     )
     data["est_" + indicator] = model.predict(data[predictors])
     print(indicator)
@@ -116,15 +118,180 @@ data.to_csv("summary.csv")
 central_points = [
     {
         "culture_mutation_rate": 0.004,
-        "culture_dimensionality": 36,
+        "culture_dimensionality": 63,
         "cooperation_threshold": 7,
         "minimum_adaptation": 0.5,
-        "fight_deadliness": 0.1,
+        "fight_deadliness": 0.09999999986030161,
+        "maximum_resources_one_adult_can_harvest": 10000000000.0,
+        "enemy_discount": 0.4,
+        "season_length_in_years": 0.16666666666666666,
+        "until_resource_recovery": 10.0,
+    },
+    {
+        "culture_mutation_rate": 0.004,
+        "culture_dimensionality": 62,
+        "cooperation_threshold": 7,
+        "minimum_adaptation": 0.5,
+        "fight_deadliness": 0.09999999986030161,
+        "maximum_resources_one_adult_can_harvest": 10000000000.0,
+        "enemy_discount": 0.4,
+        "season_length_in_years": 0.166666666667,
+        "until_resource_recovery": 3.0000000000029994,
+    },
+    {
+        "culture_mutation_rate": 0.004,
+        "culture_dimensionality": 64,
+        "cooperation_threshold": 8,
+        "minimum_adaptation": 0.5,
+        "fight_deadliness": 0.09999999986030161,
+        "maximum_resources_one_adult_can_harvest": 10000000000.0,
+        "enemy_discount": 0.5,
+        "season_length_in_years": 0.166666666667,
+        "until_resource_recovery": 59.999999999879996,
+    },
+    {
+        "culture_mutation_rate": 0.004,
+        "culture_dimensionality": 64,
+        "cooperation_threshold": 13,
+        "minimum_adaptation": 0.8,
+        "fight_deadliness": 0.049999999813735485,
+        "maximum_resources_one_adult_can_harvest": 10000000000.0,
+        "enemy_discount": 0.5,
+        "season_length_in_years": 0.166666666667,
+        "until_resource_recovery": 3.0000000000029994,
+    },
+    {
+        "culture_mutation_rate": 0.004,
+        "culture_dimensionality": 64,
+        "cooperation_threshold": 6,
+        "minimum_adaptation": 0.8,
+        "fight_deadliness": 0.09999999986030161,
+        "maximum_resources_one_adult_can_harvest": 7.0,
         "enemy_discount": 0.7578582832549999,
         "season_length_in_years": 0.16666666666666666,
-        "until_resource_recovery": 6.0,
+        "until_resource_recovery": 5.999999999988001,
+    },
+    {
+        "culture_mutation_rate": 0.006,
+        "culture_dimensionality": 48,
+        "cooperation_threshold": 10,
+        "minimum_adaptation": 0.5,
+        "fight_deadliness": 0.049999999813735485,
+        "maximum_resources_one_adult_can_harvest": 8.0,
+        "enemy_discount": 0.3,
+        "season_length_in_years": 0.166666666667,
+        "until_resource_recovery": 59.999999999879996,
+    },
+    {
+        "culture_mutation_rate": 0.004,
+        "culture_dimensionality": 36,
+        "cooperation_threshold": 11,
+        "minimum_adaptation": 0.8,
+        "fight_deadliness": 0.049999999813735485,
         "maximum_resources_one_adult_can_harvest": 10000000000.0,
-    }
+        "enemy_discount": 0.5,
+        "season_length_in_years": 0.16666666666666666,
+        "until_resource_recovery": 5.0,
+    },
+    {
+        "culture_mutation_rate": 0.004,
+        "culture_dimensionality": 64,
+        "cooperation_threshold": 8,
+        "minimum_adaptation": 0.5,
+        "fight_deadliness": 0.5,
+        "maximum_resources_one_adult_can_harvest": 10000000000.0,
+        "enemy_discount": 0.5,
+        "season_length_in_years": 0.16666666666666666,
+        "until_resource_recovery": 5.0,
+    },
+    {
+        "culture_mutation_rate": 0.004,
+        "culture_dimensionality": 62,
+        "cooperation_threshold": 5,
+        "minimum_adaptation": 0.5,
+        "fight_deadliness": 0.6666666665114462,
+        "maximum_resources_one_adult_can_harvest": 7.0,
+        "enemy_discount": 0.7578582832549999,
+        "season_length_in_years": 0.166666666667,
+        "until_resource_recovery": 10.0,
+    },
+    {
+        "culture_mutation_rate": 0.0045,
+        "culture_dimensionality": 64,
+        "cooperation_threshold": 11,
+        "minimum_adaptation": 0.5,
+        "fight_deadliness": 0.049999999813735485,
+        "maximum_resources_one_adult_can_harvest": 10000000000.0,
+        "enemy_discount": 0.3,
+        "season_length_in_years": 0.16666666666666666,
+        "until_resource_recovery": 20.0,
+    },
+    {
+        "culture_mutation_rate": 0.006,
+        "culture_dimensionality": 62,
+        "cooperation_threshold": 5,
+        "minimum_adaptation": 0.5,
+        "fight_deadliness": 0.049999999813735485,
+        "maximum_resources_one_adult_can_harvest": 6.0,
+        "enemy_discount": 0.4,
+        "season_length_in_years": 0.166666666667,
+        "until_resource_recovery": 10.0,
+    },
+    {
+        "culture_mutation_rate": 0.002,
+        "culture_dimensionality": 62,
+        "cooperation_threshold": 3,
+        "minimum_adaptation": 0.9,
+        "fight_deadliness": 0.6666666665114462,
+        "maximum_resources_one_adult_can_harvest": 10000000000.0,
+        "enemy_discount": 0.5,
+        "season_length_in_years": 0.166666666667,
+        "until_resource_recovery": 3.0,
+    },
+    {
+        "culture_mutation_rate": 0.008,
+        "culture_dimensionality": 64,
+        "cooperation_threshold": 6,
+        "minimum_adaptation": 0.5,
+        "fight_deadliness": 0.049999999813735485,
+        "maximum_resources_one_adult_can_harvest": 7.0,
+        "enemy_discount": 0.5,
+        "season_length_in_years": 0.16666666666666666,
+        "until_resource_recovery": 10.0,
+    },
+    {
+        "culture_mutation_rate": 0.006,
+        "culture_dimensionality": 63,
+        "cooperation_threshold": 5,
+        "minimum_adaptation": 0.5,
+        "fight_deadliness": 0.049999999813735485,
+        "maximum_resources_one_adult_can_harvest": 8.0,
+        "enemy_discount": 0.3,
+        "season_length_in_years": 0.166666666667,
+        "until_resource_recovery": 5.999999999987999,
+    },
+    {
+        "culture_mutation_rate": 0.001,
+        "culture_dimensionality": 63,
+        "cooperation_threshold": 13,
+        "minimum_adaptation": 0.5,
+        "fight_deadliness": 0.049999999813735485,
+        "maximum_resources_one_adult_can_harvest": 8.0,
+        "enemy_discount": 0.3,
+        "season_length_in_years": 0.166666666667,
+        "until_resource_recovery": 3.333333333333333,
+    },
+    {
+        "culture_mutation_rate": 0.0043,
+        "culture_dimensionality": 63,
+        "cooperation_threshold": 13,
+        "minimum_adaptation": 1.0,
+        "fight_deadliness": 0.09999999986030161,
+        "maximum_resources_one_adult_can_harvest": 10000000000.0,
+        "enemy_discount": 0.5,
+        "season_length_in_years": 0.166666666667,
+        "until_resource_recovery": 10.0,
+    },
 ]
 
 x = []
@@ -137,6 +304,8 @@ for i, indicator in enumerate(indicators):
             sharex=x[p] if i else None,
             sharey=plt.gca() if p else None,
         )
+        if "pop" not in indicator:
+            plt.yscale("log")
         if i != len(indicators) - 1:
             a.tick_params(labelbottom=False)
         else:
@@ -151,9 +320,15 @@ for i, indicator in enumerate(indicators):
             vary_parameter = [
                 [central_point[q] if q != predictor else choice for q in predictors]
                 for choice in parameter_choices[predictor]
-            ]
+            ] + [[central_point[q] for q in predictors]]
             predictions = models[indicator].predict(vary_parameter)
-            plt.plot(parameter_choices[predictor], predictions, alpha=0.5, c='k')
+            plt.plot(
+                parameter_choices[predictor],
+                predictions[:-1],
+                alpha=1 / len(central_points),
+                c="k",
+            )
+            plt.scatter(central_point[predictor], predictions[-1], c="k", marker="+")
 plt.subplots_adjust(hspace=0, wspace=0, left=0.035, right=1, top=1, bottom=0.05)
 plt.show()
 
@@ -250,13 +425,20 @@ for i, indicator in enumerate(indicators):
             a.tick_params(labelleft=False)
         else:
             plt.ylabel(indicator)
+        if "pop" not in indicator:
+            plt.yscale("log")
         for central_point in central_points:
             vary_parameter = [
                 [central_point[q] if q != predictor else choice for q in predictors]
                 for choice in parameter_choices[predictor]
-            ]
+            ] + [[central_point[q] for q in predictors]]
             predictions = models[indicator].predict(vary_parameter)
-            plt.plot(parameter_choices[predictor], predictions, alpha=1/len(central_points), c='k')
+            plt.plot(
+                parameter_choices[predictor],
+                predictions[:-1],
+                alpha=1 / len(central_points),
+                c="k",
+            )
+            plt.scatter(central_point[predictor], predictions[-1], c="k", marker="+")
 plt.subplots_adjust(hspace=0, wspace=0, left=0.035, right=1, top=1, bottom=0.05)
 plt.show()
-
