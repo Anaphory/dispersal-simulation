@@ -531,7 +531,7 @@ for logfile in args.logfile:
     )
     plt.close()
 
-    print("Plotting intended vs. opserved population…")
+    print("Plotting intended vs. observed population…")
     plt.gcf().set_size_inches((16, 9))
     plt.scatter(
         popcaps.values(),
