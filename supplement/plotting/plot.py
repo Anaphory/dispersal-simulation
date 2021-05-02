@@ -216,6 +216,7 @@ def plot_content(content, ts, pop, subpops, cultures_by_location, plot=True):
 CUTOFF = 30
 
 for logfile in args.logfile:
+    print("Starting {:} at {:}…".format(logfile, datetime.datetime.now()), file=sys.stderr)
     params = {
         "resource_recovery_per_season": 0.10,
         "culture_mutation_rate": 6e-3,
@@ -355,7 +356,7 @@ for logfile in args.logfile:
     print(args.output_dir / "disp-last-{stem:}.png".format(stem=stem))
 
     caps, _ = compute_contained_population(
-        [((x, y), (p, 1)) for (x, y), p in (popcaps.items())]
+        [((x, y), (p, 1)) for (x, y), p in popcaps.items()]
     )
 
     params["mean_pop"] = sum(pop) / len(pop)
@@ -653,3 +654,4 @@ for logfile in args.logfile:
         bbox_inches="tight",
     )
     plt.close()
+    print("Finished {:} at {:}.".format(logfile, datetime.datetime.now()), file=sys.stderr)
