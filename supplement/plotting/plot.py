@@ -155,6 +155,15 @@ def compute_contained_population(population, containment_functions=cf):
     return pop, [count_cultures(cs) for cs in culture]
 
 
+correction = {}
+def find_nearby(everywhere, loc):
+    s = numpy.inf
+    for x, y in everywhere:
+        if abs(x-loc[0]) + abs(y-loc[1]) < s:
+            nearby = x, y
+            s = abs(x-loc[0]) + abs(y-loc[1]) 
+    return nearby
+
 def plot_content(content, ts, pop, subpops, cultures_by_location, plot=True):
     # smallest to be plotted last:
     content.sort(key=lambda xync: xync[2], reverse=True)
@@ -208,8 +217,9 @@ def plot_content(content, ts, pop, subpops, cultures_by_location, plot=True):
     }
     for loc, nn in sns.items():
         try:
-            actual_pops[loc].append(nn)
+            actual_pops[correction.get(loc, loc)].append(nn)
         except KeyError:
+            correction[loc] = find_nearby(actual_pops, loc)
             print("Did not find {loc}.".format(loc=loc))
 
 
