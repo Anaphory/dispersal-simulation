@@ -11,6 +11,7 @@ from pathlib import Path
 from tqdm import tqdm
 import re
 import scipy.signal
+import collections
 
 import numpy
 from numpy import pi, cos
@@ -143,7 +144,7 @@ def count_cultures(culture_set, _cache={}):
     return _cache[culture_set]
 
 
-def compute_contained_population(population, containment_functions=cf):
+def compute_contained_population(population, last_reference, containment_functions=cf):
     pop = [0 for _ in containment_functions]
     culture = [set() for _ in containment_functions]
 
@@ -152,7 +153,22 @@ def compute_contained_population(population, containment_functions=cf):
             if inside((x, y)):
                 pop[i] += p
                 culture[i].add(c)
-    return pop, [count_cultures(cs) for cs in culture]
+
+    n_cultures_now = []
+    times = []
+    for i, ((time, cs_then), cs_now) in enumerate(zip(last_reference, culture)):
+        n_now = count_cultures(cs_now)
+        n_cultures_now.append(n_now)
+        n_then = count_cultures(cs_then)
+        n_both = count_cultures(cs_then | cs_now)
+        if n_both == n_now + n_then:
+            # There is no continuous culture from then to now
+            last_reference[i] = [0, frozenset(cs_now)]
+        else:
+            last_reference[i][0] += 1
+        times.append(last_reference[i][0])
+
+    return pop, n_cultures_now, times
 
 
 correction = {}
@@ -164,7 +180,7 @@ def find_nearby(everywhere, loc):
             s = abs(x-loc[0]) + abs(y-loc[1]) 
     return nearby
 
-def plot_content(content, ts, pop, subpops, cultures_by_location, plot=True):
+def plot_content(content, ts, pop, subpops, cultures_by_location, persistence_by_location, last_references, plot=True):
     # smallest to be plotted last:
     content.sort(key=lambda xync: xync[2], reverse=True)
     xs, ys, ns, cs = zip(*content)
@@ -205,11 +221,12 @@ def plot_content(content, ts, pop, subpops, cultures_by_location, plot=True):
 
     ts.append(timestamp)
     pop.append(ns.sum())
-    populations, cultures = compute_contained_population(
-        ((x, y), (p, c)) for x, y, p, c in content
+    populations, cultures, times = compute_contained_population((
+        ((x, y), (p, c)) for x, y, p, c in content), last_references
     )
     subpops.append(populations)
     cultures_by_location.append(cultures)
+    persistence_by_location.append(times)
 
     sns = {
         (x, y): sum(n for x, y, n, c in p)
@@ -260,6 +277,9 @@ for logfile in args.logfile:
     pop = []
     subpops = []
     cultures_by_location = []
+    persistence_by_location = []
+    last_reference = [[0, frozenset()] for _ in regions]
+    family_path = collections.defaultdict(list)
     for l, line in enumerate(logfile):
         if line.startswith(" Parameters"):
             igraph = line.index("dispersal_graph:")
@@ -338,8 +358,16 @@ for logfile in args.logfile:
             if timestamp < args.start:
                 continue
             plot_content(
-                content, ts, pop, subpops, cultures_by_location, plot=args.all_steps
+                content, ts, pop, subpops, cultures_by_location, persistence_by_location, last_reference, plot=args.all_steps
             )
+        elif line.startswith("F:"):
+            match = re.search(r'escendence: "([^"]*)".*ocation: NodeIndex\(([0-9]*)\),.*culture: ([01]*)', line)
+            if match:
+                name, node, culture = match.group(1), match.group(2), match.group(3)
+                _, x, y, _ = nodes[int(node)]
+                family_path[name].append((x, y))
+            else:
+                print(line)
     if line.startswith("Ended"):
         params["end"] = "Ended"
     elif line.startswith("Died out"):
@@ -365,16 +393,18 @@ for logfile in args.logfile:
     )
     print(args.output_dir / "disp-last-{stem:}.png".format(stem=stem))
 
-    caps, _ = compute_contained_population(
-        [((x, y), (p, 1)) for (x, y), p in popcaps.items()]
+    caps, _, _ = compute_contained_population(
+        [((x, y), (p, 1)) for (x, y), p in popcaps.items()], [[0, frozenset()] for _ in last_reference]
     )
+
 
     params["mean_pop"] = sum(pop) / len(pop)
     params["last"] = timestamp
-    for subpop, culturecount, c, r in zip(
-        zip(*subpops), zip(*cultures_by_location), caps, regions
+    for subpop, culturecount, persistence, c, r in zip(
+            zip(*subpops), zip(*cultures_by_location), zip(*persistence_by_location), caps, regions
     ):
         params[f"{r}_relative"] = numpy.mean(subpop) / c
+        params[f"{r}_persistence"] = numpy.mean(numpy.diff(scipy.signal.find_peaks(persistence, width=1)[0]))
         params[f"{r}_cultures"] = numpy.median(
             [c for c, n in zip(culturecount, subpop) if n > 0]
         )
@@ -383,9 +413,27 @@ for logfile in args.logfile:
         except ValueError:
             params[f"{r}_arrival"] = numpy.nan
 
-    with Path("../runs_overview").open("a") as paramfile:
+    summaries = Path("runs_overview.tsv")
+    if not summaries.exists():
+        with summaries.open("w") as paramfile:
+            print("Path", *params.keys(), sep="\t", file=paramfile)
+    with summaries.open("a") as paramfile:
         print(Path(logfile.name).absolute(), *params.values(), sep="\t", file=paramfile)
         print(Path(logfile.name).absolute(), *params.values(), sep="\t")
+
+    print("Migration of some families…")
+    for family in family_path.values():
+        jittered = (numpy.random.random(size=(len(family), 2))-0.5) * [0.01, 0.02] + family
+        plt.plot(*zip(*jittered),  linewidth=1)
+        plt.scatter(*zip(*jittered),  alpha=0.2)
+    plt.xlim(*args.xlim)
+    plt.ylim(*args.ylim)
+    plt.gcf().set_size_inches((12, 16))
+    plt.savefig(
+        str(args.output_dir / "migration-{stem:}.png".format(m=m, stem=stem)),
+        bbox_inches="tight",
+    )
+    plt.close()
 
     print("Population development in the first 2000 years…")
     l = 0
@@ -470,6 +518,36 @@ for logfile in args.logfile:
         bbox_inches="tight",
     )
     plt.close()
+
+    print("Culture persistence over the whole run…")
+    l = 0
+    plt.gcf().set_size_inches((22, 12))
+    filter_width = min(19, len(cultures_by_location) // 5 * 2 + 1)
+    for subpop, c, r in zip(zip(*persistence_by_location), caps, regions):
+        plt.plot(ts, subpop, label=r, c=cm.Set3(l))
+        l += 1
+    plt.legend()
+    plt.savefig(
+        str(args.output_dir / "cultper-{stem:}.png".format(stem=stem)),
+        bbox_inches="tight",
+    )
+    plt.close()
+
+    print("Culture persistence over the last 2000 years…")
+    l = 0
+    plt.gcf().set_size_inches((22, 12))
+    filter_width = min(11, len(cultures_by_location) // 5 * 2 + 1)
+    for subpop, c, r in zip(zip(*persistence_by_location), caps, regions):
+        plt.plot(ts, subpop, label=r, c=cm.Set3(l))
+        l += 1
+    plt.legend()
+    plt.xlim(max(ts) - 2000, max(ts))
+    plt.savefig(
+        str(args.output_dir / "cultper2k-{stem:}.png".format(stem=stem)),
+        bbox_inches="tight",
+    )
+    plt.close()
+
 
     print("Population caps and actual populations in each spot…")
     mean_actual_pops = {
