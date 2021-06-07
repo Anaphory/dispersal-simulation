@@ -397,7 +397,6 @@ for logfile in args.logfile:
         [((x, y), (p, 1)) for (x, y), p in popcaps.items()], [[0, frozenset()] for _ in last_reference]
     )
 
-
     params["mean_pop"] = sum(pop) / len(pop)
     params["last"] = timestamp
     for subpop, culturecount, persistence, c, r in zip(
