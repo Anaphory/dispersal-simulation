@@ -3,29 +3,9 @@ import pandas
 from osm import areas
 
 data = pandas.read_csv(
-    "runs_overview.tsv",
+    "../simulation-results/runs_overview.tsv",
     sep="\t",
-    names=[
-        "file",
-        "resource_recovery_per_season",
-        "culture_mutation_rate",
-        "culture_dimensionality",
-        "cooperation_threshold",
-        "maximum_resources_one_adult_can_harvest",
-        "evidence_needed",
-        "payoff_std",
-        "minimum_adaptation",
-        "fight_deadliness",
-        "enemy_discount",
-        "season_length_in_years",
-        "warfare",
-        "end",
-        "end_time",
-        "mean_pop",
-    ]
-    + [
-        region + "_" + bit for region in areas for bit in ["pop", "cultures", "arrival"]
-    ],
+    # names=["file", "resource_recovery_per_season", "culture_mutation_rate", "culture_dimensionality", "cooperation_threshold", "maximum_resources_one_adult_can_harvest", "evidence_needed", "payoff_std", "minimum_adaptation", "fight_deadliness", "enemy_discount", "season_length_in_years", "warfare", "end", "end_time", "mean_pop",] + [region + "_" + bit for region in areas for bit in ["pop", "cultures", "arrival"]],
 )
 
 data["warfare"] = (data["enemy_discount"] != 1.0) | (data["fight_deadliness"] != 0)
@@ -34,18 +14,21 @@ data["until_resource_recovery"] = (
 )
 data["fight_deadliness"] = data["fight_deadliness"] / 2 ** 32
 
-data.loc[data["end"] == "Died out", "end_time"] = 100000
+data.loc[data["end"] == "Died out", "last"] = 100000
 
 times = [t for t in data.columns if t.endswith("arrival")]
 populations = [p for p in data.columns if p.endswith("pop")]
 for t in times:
-    p = t[:-7] + "pop"
-    data[t] = data[t] * 30 * data["season_length_in_years"] # The default logging is every 30 seasons
-    data.loc[numpy.isnan(data[t]), p] = numpy.nan
-    data.loc[data["end"] == "Died out", p] = 0.0
+    r = t[:-7] + "relative"
+    p = t[:-7] + "persistence"
+    # The default logging is every 30 seasons, so rescale some times:
+    data[p] = data[p] * 30 * data["season_length_in_years"]
+    data[t] = data[t] * 30 * data["season_length_in_years"]
+    data.loc[numpy.isnan(data[t]), r] = numpy.nan
+    data.loc[data["end"] == "Died out", r] = 0.0
     c = t[:-7] + "cultures"
     data.loc[data["end"] == "Died out", c] = 0
-data["run"] = data["file"].str[-20:]
+data["run"] = data["Path"].str[-20:]
 
 
 data = data[data["season_length_in_years"] < 0.2]

@@ -38,3 +38,4 @@ serde_json = ">=0.0.0"
 bincode = ">=0.0.0"
 rusqlite = ">=0.0.0"
 dashmap = { version = ">=3.0.0", features = ["serde"] }
+bitvec = { version = ">=0.20.0", features = ["serde"] }

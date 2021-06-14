@@ -380,13 +380,15 @@ for logfile in args.logfile:
     if args.last_only:
         m -= len(recent_contents)
         for line in recent_contents:
+            if not line:
+                continue
             m += 1
             content = [
                 (x, y, n, c) for x, y, p in literal_eval(line) for c, n in p.items()
             ]
-            plot_content(content, ts, pop, subpops, cultures_by_location, True)
+            plot_content(content, ts, pop, subpops, cultures_by_location, persistence_by_location, last_reference, True)
     elif not args.all_steps:
-        plot_content(content, ts, pop, subpops, cultures_by_location, True)
+        plot_content(content, ts, pop, subpops, cultures_by_location,  persistence_by_location, last_reference, True)
     shutil.copyfile(
         (args.output_dir / "disp{m:08d}-{stem:}.png".format(m=m, stem=stem)),
         (args.output_dir / "disp-last-{stem:}.png".format(stem=stem)),

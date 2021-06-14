@@ -150,6 +150,10 @@ pub fn load_precipitation_tif() -> Option<(Vec<u16>, u32)> {
         tiff::decoder::DecodingResult::U64(v) => v.iter().map(|g| *g as u16).collect(),
         tiff::decoder::DecodingResult::F32(v) => v.iter().map(|g| *g as u16).collect(),
         tiff::decoder::DecodingResult::F64(v) => v.iter().map(|g| *g as u16).collect(),
+        tiff::decoder::DecodingResult::I8(v) => v.iter().map(|g| *g as u16).collect(),
+        tiff::decoder::DecodingResult::I16(v) => v.iter().map(|g| *g as u16).collect(),
+        tiff::decoder::DecodingResult::I32(v) => v.iter().map(|g| *g as u16).collect(),
+        tiff::decoder::DecodingResult::I64(v) => v.iter().map(|g| *g as u16).collect(),
     };
     Some((vec, width))
 }
@@ -169,6 +173,10 @@ pub fn load_density_tif() -> Option<(Vec<u16>, u32)> {
         tiff::decoder::DecodingResult::U64(v) => v.iter().map(|g| *g as u16).collect(),
         tiff::decoder::DecodingResult::F32(v) => v.iter().map(|g| *g as u16).collect(),
         tiff::decoder::DecodingResult::F64(v) => v.iter().map(|g| *g as u16).collect(),
+        tiff::decoder::DecodingResult::I8(v) => v.iter().map(|g| *g as u16).collect(),
+        tiff::decoder::DecodingResult::I16(v) => v.iter().map(|g| *g as u16).collect(),
+        tiff::decoder::DecodingResult::I32(v) => v.iter().map(|g| *g as u16).collect(),
+        tiff::decoder::DecodingResult::I64(v) => v.iter().map(|g| *g as u16).collect(),
     };
     Some((vec, width))
 }

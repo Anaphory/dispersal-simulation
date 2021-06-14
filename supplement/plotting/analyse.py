@@ -41,11 +41,13 @@ indicators = {
     "Haida Nation islands_cultures",
     "Haida Nation islands_cultures",
     "Amazonas_arrival",
-    "Haida Nation islands_pop",
-    "Alaska_pop",
-    "Baja California Sur_pop",
-    "California_pop",
-    "Amazonas_pop",
+    "Haida Nation islands_relative",
+    "Alaska_relative",
+    "Baja California Sur_relative",
+    "California_relative",
+    "Amazonas_relative",
+    "Louisiana_persistence",
+    "Cuba_persistence",
 }
 
 data["bad"] = (
@@ -59,11 +61,13 @@ data["bad"] = (
     + (data["Haida Nation islands_cultures"] > 10) * 1
     + (data["Amazonas_arrival"] < 400) * 1
     + (data["Amazonas_arrival"] < 600) * 1
-    + (data["Haida Nation islands_pop"] < 0.25) * 1
-    + (data["Alaska_pop"] < 0.1) * 1
-    + (data["Baja California Sur_pop"] < 0.3) * 1
-    + (data["California_pop"] < 0.6) * 1
-    + (data["Amazonas_pop"] < 0.6) * 1
+    + (data["Haida Nation islands_relative"] < 0.25) * 1
+    + (data["Alaska_relative"] < 0.1) * 1
+    + (data["Baja California Sur_relative"] < 0.3) * 1
+    + (data["California_relative"] < 0.6) * 1
+    + (data["Amazonas_relative"] < 0.6) * 1
+    + (data["Louisiana_persistence"] < 120) * 1
+    + (data["Cuba_persistence"] < 120) * 1
 )
 
 
@@ -88,35 +92,6 @@ def program_call(parameter_values, binary="cargo run --release --bin=simulation 
     )
 
 
-if not args.quick:
-    x = []
-    for i, indicator in enumerate(indicators):
-        for p, predictor in enumerate(all_predictors):
-            a = plt.subplot(
-                len(indicators),
-                len(all_predictors),
-                len(all_predictors) * i + p + 1,
-                sharex=x[p] if i else None,
-                sharey=plt.gca() if p else None,
-            )
-            if "_pop" not in indicator:
-                plt.yscale("log")
-            if i != len(indicators) - 1:
-                a.tick_params(labelbottom=False)
-            else:
-                plt.xlabel(predictor)
-            if i == 0:
-                x.append(plt.gca())
-            if p != 0:
-                a.tick_params(labelleft=False)
-            else:
-                plt.ylabel(indicator)
-            plt.scatter(
-                data[predictor], data[indicator], c=data["bad"], alpha=0.2, marker="+"
-            )
-    plt.subplots_adjust(hspace=0, wspace=0, left=0.035, right=1, top=1, bottom=0.05)
-    plt.show()
-
 predictors = all_predictors[:]
 models = {}
 for indicator in indicators:
@@ -124,7 +99,7 @@ for indicator in indicators:
     model.fit(
         data[predictors][numpy.isfinite(data[indicator])],
         data[indicator][numpy.isfinite(data[indicator])],
-        data["end_time"][numpy.isfinite(data[indicator])],
+        data["last"][numpy.isfinite(data[indicator])],
     )
     data["est_" + indicator] = model.predict(data[predictors])
     print(indicator)
@@ -146,1292 +121,104 @@ for key in predictors:
     print(choices)
     parameter_choices[key] = sorted(choices)
 
+data.sort_values(
+    ["bad", "Baja California Sur_relative"],
+    ascending=[True, False],
+    na_position="last",
+    inplace=True,
+)
+
 data.to_csv("summary.csv")
 
-central_points = [
-    {
-        "culture_mutation_rate": 0.001,
-        "culture_dimensionality": 36,
-        "cooperation_threshold": 65,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.001,
-        "culture_dimensionality": 36,
-        "cooperation_threshold": 6,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.002,
-        "culture_dimensionality": 20,
-        "cooperation_threshold": 7,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.004,
-        "culture_dimensionality": 36,
-        "cooperation_threshold": 65,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.1,
-        "until_resource_recovery": 3.333,
-    },
-    {
-        "culture_mutation_rate": 0.004,
-        "culture_dimensionality": 31,
-        "cooperation_threshold": 65,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.1,
-        "until_resource_recovery": 3.333,
-    },
-    {
-        "culture_mutation_rate": 0.002,
-        "culture_dimensionality": 20,
-        "cooperation_threshold": 10,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.002,
-        "culture_dimensionality": 36,
-        "cooperation_threshold": 10,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.004,
-        "culture_dimensionality": 36,
-        "cooperation_threshold": 10,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.004,
-        "culture_dimensionality": 48,
-        "cooperation_threshold": 5,
-        "minimum_adaptation": 0.9,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.004,
-        "culture_dimensionality": 48,
-        "cooperation_threshold": 65,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.1,
-        "until_resource_recovery": 30.0,
-    },
-    {
-        "culture_mutation_rate": 0.004,
-        "culture_dimensionality": 48,
-        "cooperation_threshold": 65,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.1,
-        "until_resource_recovery": 12.0,
-    },
-    {
-        "culture_mutation_rate": 0.002,
-        "culture_dimensionality": 48,
-        "cooperation_threshold": 65,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.1,
-        "until_resource_recovery": 10.0,
-    },
-    {
-        "culture_mutation_rate": 0.001,
-        "culture_dimensionality": 36,
-        "cooperation_threshold": 11,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.1,
-        "until_resource_recovery": 3.333,
-    },
-    {
-        "culture_mutation_rate": 0.001,
-        "culture_dimensionality": 36,
-        "cooperation_threshold": 13,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.1,
-        "until_resource_recovery": 12.0,
-    },
-    {
-        "culture_mutation_rate": 0.001,
-        "culture_dimensionality": 31,
-        "cooperation_threshold": 13,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.1,
-        "until_resource_recovery": 30.0,
-    },
-    {
-        "culture_mutation_rate": 0.002,
-        "culture_dimensionality": 31,
-        "cooperation_threshold": 10,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.1,
-        "until_resource_recovery": 5.0,
-    },
-    {
-        "culture_mutation_rate": 0.004,
-        "culture_dimensionality": 31,
-        "cooperation_threshold": 10,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.1,
-        "until_resource_recovery": 5.0,
-    },
-    {
-        "culture_mutation_rate": 0.001,
-        "culture_dimensionality": 20,
-        "cooperation_threshold": 7,
-        "minimum_adaptation": 0.9,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.001,
-        "culture_dimensionality": 20,
-        "cooperation_threshold": 6,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.001,
-        "culture_dimensionality": 48,
-        "cooperation_threshold": 7,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.001,
-        "culture_dimensionality": 48,
-        "cooperation_threshold": 6,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.002,
-        "culture_dimensionality": 48,
-        "cooperation_threshold": 10,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.1,
-        "until_resource_recovery": 5.0,
-    },
-    {
-        "culture_mutation_rate": 0.004,
-        "culture_dimensionality": 20,
-        "cooperation_threshold": 11,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.001,
-        "culture_dimensionality": 20,
-        "cooperation_threshold": 11,
-        "minimum_adaptation": 0.9,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.002,
-        "culture_dimensionality": 31,
-        "cooperation_threshold": 8,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.004,
-        "culture_dimensionality": 36,
-        "cooperation_threshold": 8,
-        "minimum_adaptation": 0.9,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.004,
-        "culture_dimensionality": 31,
-        "cooperation_threshold": 3,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.002,
-        "culture_dimensionality": 62,
-        "cooperation_threshold": 65,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.001,
-        "culture_dimensionality": 62,
-        "cooperation_threshold": 65,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.004,
-        "culture_dimensionality": 63,
-        "cooperation_threshold": 6,
-        "minimum_adaptation": 0.9,
-        "fight_deadliness": 0.25,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.002,
-        "culture_dimensionality": 62,
-        "cooperation_threshold": 11,
-        "minimum_adaptation": 0.9,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.001,
-        "culture_dimensionality": 63,
-        "cooperation_threshold": 11,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.25,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.004,
-        "culture_dimensionality": 63,
-        "cooperation_threshold": 8,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.25,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.0042,
-        "culture_dimensionality": 63,
-        "cooperation_threshold": 65,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.1,
-        "until_resource_recovery": 10.0,
-    },
-    {
-        "culture_mutation_rate": 0.0041,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 65,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.1,
-        "until_resource_recovery": 3.333,
-    },
-    {
-        "culture_mutation_rate": 0.0042,
-        "culture_dimensionality": 63,
-        "cooperation_threshold": 65,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.1,
-        "until_resource_recovery": 3.333,
-    },
-    {
-        "culture_mutation_rate": 0.002,
-        "culture_dimensionality": 63,
-        "cooperation_threshold": 11,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.002,
-        "culture_dimensionality": 63,
-        "cooperation_threshold": 13,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.001,
-        "culture_dimensionality": 63,
-        "cooperation_threshold": 65,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.1,
-        "until_resource_recovery": 5.0,
-    },
-    {
-        "culture_mutation_rate": 0.001,
-        "culture_dimensionality": 63,
-        "cooperation_threshold": 65,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.1,
-        "until_resource_recovery": 30.0,
-    },
-    {
-        "culture_mutation_rate": 0.004,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 65,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.1,
-        "until_resource_recovery": 5.0,
-    },
-    {
-        "culture_mutation_rate": 0.004,
-        "culture_dimensionality": 63,
-        "cooperation_threshold": 65,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.1,
-        "until_resource_recovery": 6.0,
-    },
-    {
-        "culture_mutation_rate": 0.001,
-        "culture_dimensionality": 62,
-        "cooperation_threshold": 7,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.004,
-        "culture_dimensionality": 62,
-        "cooperation_threshold": 3,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.0043,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 65,
-        "minimum_adaptation": 0.9,
-        "fight_deadliness": 0.25,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 2.0,
-    },
-    {
-        "culture_mutation_rate": 0.0045,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 3,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.25,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 2.0,
-    },
-    {
-        "culture_mutation_rate": 0.004,
-        "culture_dimensionality": 63,
-        "cooperation_threshold": 6,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.0043,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 65,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.25,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 2.0,
-    },
-    {
-        "culture_mutation_rate": 0.0041,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 13,
-        "minimum_adaptation": 0.9,
-        "fight_deadliness": 0.25,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 2.0,
-    },
-    {
-        "culture_mutation_rate": 0.006,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 8,
-        "minimum_adaptation": 0.9,
-        "fight_deadliness": 0.25,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 2.0,
-    },
-    {
-        "culture_mutation_rate": 0.005,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 7,
-        "minimum_adaptation": 0.9,
-        "fight_deadliness": 0.25,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 2.0,
-    },
-    {
-        "culture_mutation_rate": 0.0042,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 65,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.25,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 2.0,
-    },
-    {
-        "culture_mutation_rate": 0.0042,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 6,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.25,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 2.0,
-    },
-    {
-        "culture_mutation_rate": 0.006,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 65,
-        "minimum_adaptation": 0.9,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 2.0,
-    },
-    {
-        "culture_mutation_rate": 0.006,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 65,
-        "minimum_adaptation": 0.9,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 2.0,
-    },
-    {
-        "culture_mutation_rate": 0.004,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 4,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.25,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 2.0,
-    },
-    {
-        "culture_mutation_rate": 0.0042,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 3,
-        "minimum_adaptation": 0.9,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 2.0,
-    },
-    {
-        "culture_mutation_rate": 0.005,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 65,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 2.0,
-    },
-    {
-        "culture_mutation_rate": 0.002,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 6,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.25,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 2.0,
-    },
-    {
-        "culture_mutation_rate": 0.006,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 8,
-        "minimum_adaptation": 0.9,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 2.0,
-    },
-    {
-        "culture_mutation_rate": 0.008,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 7,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 2.0,
-    },
-    {
-        "culture_mutation_rate": 0.0041,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 8,
-        "minimum_adaptation": 0.9,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 2.0,
-    },
-    {
-        "culture_mutation_rate": 0.006,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 6,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 2.0,
-    },
-    {
-        "culture_mutation_rate": 0.002,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 4,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 2.0,
-    },
-    {
-        "culture_mutation_rate": 0.006,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 8,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 2.0,
-    },
-    {
-        "culture_mutation_rate": 0.004,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 10,
-        "minimum_adaptation": 0.9,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 2.0,
-    },
-    {
-        "culture_mutation_rate": 0.008,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 65,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 2.0,
-    },
-    {
-        "culture_mutation_rate": 0.002,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 7,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 2.0,
-    },
-    {
-        "culture_mutation_rate": 0.0041,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 65,
-        "minimum_adaptation": 0.9,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 2.0,
-    },
-    {
-        "culture_mutation_rate": 0.0043,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 65,
-        "minimum_adaptation": 0.9,
-        "fight_deadliness": 0.25,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.006,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 65,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.25,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.008,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 4,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.25,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.0041,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 65,
-        "minimum_adaptation": 0.9,
-        "fight_deadliness": 0.25,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.0042,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 65,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.25,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.008,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 7,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 2.0,
-    },
-    {
-        "culture_mutation_rate": 0.006,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 10,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 2.0,
-    },
-    {
-        "culture_mutation_rate": 0.006,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 11,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 2.0,
-    },
-    {
-        "culture_mutation_rate": 0.005,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 7,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.25,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.005,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 7,
-        "minimum_adaptation": 0.9,
-        "fight_deadliness": 0.25,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.005,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 6,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.25,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.006,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 8,
-        "minimum_adaptation": 0.9,
-        "fight_deadliness": 0.25,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.008,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 13,
-        "minimum_adaptation": 0.9,
-        "fight_deadliness": 0.25,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.008,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 65,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.25,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.002,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 65,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 2.0,
-    },
-    {
-        "culture_mutation_rate": 0.004,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 65,
-        "minimum_adaptation": 0.9,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 2.0,
-    },
-    {
-        "culture_mutation_rate": 0.001,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 4,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.25,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.0045,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 65,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.0041,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 4,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.001,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 65,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.25,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.004,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 5,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.25,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.001,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 5,
-        "minimum_adaptation": 0.9,
-        "fight_deadliness": 0.25,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.005,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 11,
-        "minimum_adaptation": 0.9,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.0045,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 11,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.002,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 5,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 2.0,
-    },
-    {
-        "culture_mutation_rate": 0.005,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 6,
-        "minimum_adaptation": 0.9,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.005,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 7,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.0041,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 11,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.002,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 13,
-        "minimum_adaptation": 0.9,
-        "fight_deadliness": 0.25,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.001,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 6,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 2.0,
-    },
-    {
-        "culture_mutation_rate": 0.004,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 6,
-        "minimum_adaptation": 0.9,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 2.0,
-    },
-    {
-        "culture_mutation_rate": 0.002,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 3,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 2.0,
-    },
-    {
-        "culture_mutation_rate": 0.001,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 4,
-        "minimum_adaptation": 0.9,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.0042,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 8,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.002,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 3,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.008,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 8,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.008,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 8,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.002,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 65,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.002,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 65,
-        "minimum_adaptation": 0.9,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.001,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 6,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.004,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 11,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.001,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 11,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.004,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 11,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.1,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.005,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 65,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.006,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 13,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.0043,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 10,
-        "minimum_adaptation": 0.9,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.005,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 13,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.0043,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 7,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.006,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 6,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.006,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 7,
-        "minimum_adaptation": 0.9,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.005,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 7,
-        "minimum_adaptation": 0.9,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.0043,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 8,
-        "minimum_adaptation": 1.0,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.0042,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 5,
-        "minimum_adaptation": 0.9,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.008,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 8,
-        "minimum_adaptation": 0.9,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-    {
-        "culture_mutation_rate": 0.0042,
-        "culture_dimensionality": 64,
-        "cooperation_threshold": 3,
-        "minimum_adaptation": 0.8,
-        "fight_deadliness": 0.05,
-        "maximum_resources_one_adult_can_harvest": 10000000000.0,
-        "enemy_discount": 0.0,
-        "until_resource_recovery": 1.667,
-    },
-]
+neighbor_points = {}
+for r, row in data.iterrows():
+    values = tuple(row[k] for k in predictors)
+    neighbor_points.setdefault(values, [[], [], []])
+for r, row in data.iterrows():
+    values = tuple(row[k] for k in predictors)
+    for comparison in neighbor_points:
+        s = (numpy.array(comparison) != numpy.array(values)).sum()
+        if s < len(neighbor_points[comparison]):
+            neighbor_points[comparison][s].append(r)
+
+
+for central_point in sorted(
+    neighbor_points,
+    key=lambda t: len(neighbor_points[t][0])
+    + 2 * len(neighbor_points[t][1])
+    + len(neighbor_points[t][2]),
+    reverse=True,
+):
+    print(central_point, len(neighbor_points[central_point][0]) + 2 * len(neighbor_points[central_point][1]) + len(neighbor_points[central_point][2]), neighbor_points[central_point])
+
+    copies = data.loc[neighbor_points[central_point][0]]
+    deviations = data.loc[neighbor_points[central_point][1]]
+    supplement = data.loc[neighbor_points[central_point][2]]
+
+    if not args.quick:
+        x = []
+        for i, indicator in enumerate(indicators):
+            for p, predictor in enumerate(all_predictors):
+                a = plt.subplot(
+                    len(indicators),
+                    len(all_predictors),
+                    len(all_predictors) * i + p + 1,
+                    sharex=x[p] if i else None,
+                    sharey=plt.gca() if p else None,
+                )
+                if "_relative" not in indicator:
+                    plt.yscale("log")
+                    miny, maxy = data[indicator].min(), data[indicator].max()
+                    if miny < 1:
+                        miny = 1
+                    scale = (maxy / miny) ** 0.05
+                    plt.ylim(miny / scale, maxy * scale)
+                else:
+                    plt.ylim(0, 1)
+                minx, maxx = data[predictor].min(), data[predictor].max()
+                margin = (maxx - minx) / 20
+                plt.xlim(minx - margin, maxx + margin)
+                if i != len(indicators) - 1:
+                    a.tick_params(labelbottom=False)
+                else:
+                    plt.xlabel(predictor)
+                if i == 0:
+                    x.append(plt.gca())
+                if p != 0:
+                    a.tick_params(labelleft=False)
+                else:
+                    plt.ylabel(indicator.replace("_", "\n"))
+                this_line = deviations[deviations[predictor] != central_point[p]]
+                plt.scatter(
+                    this_line[predictor],
+                    this_line[indicator],
+                    c="b",
+                    marker="+",
+                    alpha=0.3,
+                )
+                off_center = deviations[deviations[predictor] == central_point[p]]
+                plt.scatter(
+                    off_center[predictor],
+                    off_center[indicator],
+                    c="k",
+                    marker="+",
+                    alpha=0.03,
+                )
+                off_side = supplement[supplement[predictor] != central_point[p]]
+                plt.scatter(
+                    off_side[predictor],
+                    off_side[indicator],
+                    c="k",
+                    marker="+",
+                    alpha=0.03,
+                )
+                plt.scatter(copies[predictor], copies[indicator], c="r", marker="+")
+
+        plt.subplots_adjust(hspace=0, wspace=0, left=0.035, right=1, top=1, bottom=0.05)
+        plt.show()
+
 
 if not args.quick:
-    x = []
-    for i, indicator in enumerate(indicators):
-        for p, predictor in enumerate(all_predictors):
-            a = plt.subplot(
-                len(indicators),
-                len(all_predictors),
-                len(all_predictors) * i + p + 1,
-                sharex=x[p] if i else None,
-                sharey=plt.gca() if p else None,
-            )
-            if "pop" not in indicator:
-                plt.yscale("log")
-            if i != len(indicators) - 1:
-                a.tick_params(labelbottom=False)
-            else:
-                plt.xlabel(predictor)
-            if i == 0:
-                x.append(plt.gca())
-            if p != 0:
-                a.tick_params(labelleft=False)
-            else:
-                plt.ylabel(indicator)
-            for central_point in central_points:
-                vary_parameter = [
-                    [central_point[q] if q != predictor else choice for q in predictors]
-                    for choice in parameter_choices[predictor]
-                ] + [[central_point[q] for q in predictors]]
-                predictions = models[indicator].predict(vary_parameter)
-                plt.plot(
-                    parameter_choices[predictor],
-                    predictions[:-1],
-                    alpha=1 / len(central_points),
-                    c="k",
-                )
-                plt.scatter(
-                    central_point[predictor], predictions[-1], c="k", marker="+"
-                )
-    plt.subplots_adjust(hspace=0, wspace=0, left=0.035, right=1, top=1, bottom=0.05)
-    plt.show()
-
     min = numpy.infty
     all_param = [x for x in tqdm(itertools.product(*parameter_choices.values()))]
     numpy.random.shuffle(all_param)
@@ -1459,16 +246,18 @@ if not args.quick:
                         (characteristics["Haida Nation islands_cultures"] > 10),
                         (characteristics["Amazonas_arrival"] < 400),
                         (characteristics["Amazonas_arrival"] < 600),
-                        (characteristics["Haida Nation islands_pop"] < 0.4),
-                        (characteristics["Haida Nation islands_pop"] < 0.3),
-                        (characteristics["Alaska_pop"] < 0.4),
-                        (characteristics["Alaska_pop"] < 0.3),
-                        (characteristics["Baja California Sur_pop"] < 0.4),
-                        (characteristics["Baja California Sur_pop"] < 0.3),
-                        (characteristics["California_pop"] < 0.4),
-                        (characteristics["California_pop"] < 0.3),
-                        (characteristics["Amazonas_pop"] < 0.4),
-                        (characteristics["Amazonas_pop"] < 0.3),
+                        (characteristics["Haida Nation islands_relative"] < 0.4),
+                        (characteristics["Haida Nation islands_relative"] < 0.3),
+                        (characteristics["Alaska_relative"] < 0.4),
+                        (characteristics["Alaska_relative"] < 0.3),
+                        (characteristics["Baja California Sur_relative"] < 0.4),
+                        (characteristics["Baja California Sur_relative"] < 0.3),
+                        (characteristics["California_relative"] < 0.4),
+                        (characteristics["California_relative"] < 0.3),
+                        (characteristics["Amazonas_relative"] < 0.4),
+                        (characteristics["Amazonas_relative"] < 0.3),
+                        (characteristics["Louisiana_persistence"] < 120),
+                        (characteristics["Cuba_persistence"] < 120),
                     )
                 )
                 * 1
@@ -1510,7 +299,7 @@ if not args.quick:
                 a.tick_params(labelleft=False)
             else:
                 plt.ylabel(indicator)
-            if "pop" not in indicator:
+            if "relative" not in indicator:
                 plt.yscale("log")
             for central_point in central_points:
                 vary_parameter = [
@@ -1535,7 +324,7 @@ central_points = sorted(
     key=lambda c: (
         c["culture_dimensionality"] >= 60,
         c["minimum_adaptation"] <= 0.6,
-        models["Baja California Sur_pop"].predict([[c[k] for k in predictors]]),
+        models["Baja California Sur_relative"].predict([[c[k] for k in predictors]]),
     ),
 )
 central_point = central_points[-1]
@@ -1545,6 +334,31 @@ k = chr(ord("A") + numpy.random.randint(26)) + chr(ord("A") + numpy.random.randi
 run_this = open(f"run-P{k}.sh", "w")
 resume_this = open(f"resume-P{k}.sh", "w")
 run = program_call(central_point, binary="~/data/simulation/simulation")
+print(
+    f"sbatch --time=8:00:00 --ntasks=1 --cpus-per-task=8 --output=P{k}{i:03d}.log --partition=generic --wrap '{run} --statefile P{k}{i:03d}.state' --parsable > P{k}{i:03d}.jobid",
+    file=run_this,
+)
+print(
+    f"sbatch --dependency afterok:`tail -n1 P{k}{i:03d}.jobid` --time=8:00:00 --ntasks=1 --cpus-per-task=8 --output=P{k}r{i:03d}.log --partition=generic --wrap '~/data/simulation/resume --resume-from P{k}{i:03d}.state --statefile P{k}{i:03d}.state >> P{k}{i:03d}.log' --parsable >> P{k}{i:03d}.jobid",
+    file=resume_this,
+)
+
+i += 1
+print(
+    f"sbatch --time=8:00:00 --ntasks=1 --cpus-per-task=8 --output=P{k}{i:03d}.log --partition=generic --wrap '{run} --statefile P{k}{i:03d}.state' --parsable > P{k}{i:03d}.jobid",
+    file=run_this,
+)
+print(
+    f"sbatch --dependency afterok:`tail -n1 P{k}{i:03d}.jobid` --time=8:00:00 --ntasks=1 --cpus-per-task=8 --output=P{k}r{i:03d}.log --partition=generic --wrap '~/data/simulation/resume --resume-from P{k}{i:03d}.state --statefile P{k}{i:03d}.state >> P{k}{i:03d}.log' --parsable >> P{k}{i:03d}.jobid",
+    file=resume_this,
+)
+
+
+i += 1
+nowar = central_point.copy()
+nowar["enemy_discount"] = 1.0
+nowar["fight_deadliness"] = 1.0
+run = program_call(nowar, binary="~/data/simulation/simulation")
 print(
     f"sbatch --time=8:00:00 --ntasks=1 --cpus-per-task=8 --output=P{k}{i:03d}.log --partition=generic --wrap '{run} --statefile P{k}{i:03d}.state' --parsable > P{k}{i:03d}.jobid",
     file=run_this,

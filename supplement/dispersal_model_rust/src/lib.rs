@@ -1,28 +1,33 @@
-#![allow(clippy::redundant_field_names, clippy::implicit_hasher)]
 /*!
+
 Model Description
 =================
 
 This model description follows the ODD (Overview, Design concept, Details)
-protocol (Grimm et al., 2006; Grimm et al., 2010). The model description follows
-the idea of literate programming (Knuth 1992) to the extent useful in Rust
-source code – the actual model is generated from this file that documents the
-model, but the source code is largely commented using natural-language
-descriptions, not generated from them (as would be the case in a literal
-program).
+protocol (Grimm et al., 2006; Grimm et al., 2010). Where appropriate, we quote
+the guiding questions of the ODD protocol at the beginning of a section. The
+model description follows the idea of literate programming (Knuth 1992) to the
+extent useful in Rust source code – the actual model is generated from this file
+that documents the model, but the source code is largely commented using
+natural-language descriptions, not generated from them (as would be the case in
+a literal program).
 
 # 1. Purpose
 
 The dispersal model generates a deep phylogeny of hunter-gatherer cultures based
 on culture-mediated cooperation and resource-driven migration. It is a
 demographic migration model in which the areal distribution of languages is an
-emergent property, not an imposed structure. The model is designed with
-extension to more concrete research questions in mind. In the current, first
-stage, the purpose of the model is to investigate how languages disperse and
-split, driven only by the necessary interactions between humans. The particular
-research question is whether distinct cultural areas, with reasonably sharp
-borders, can emerge from only a simple feedback loop between conditional
-cooperation, cultural assimilation, and genetic drift.
+emergent property, not an imposed structure. As such, there is a feedback loop
+between resource availability, linguistic proximity, and cooperation, which
+drives the population dynamics of hunter-gatherers in the model.
+
+The model is designed with extension to more concrete research questions in
+mind. In the current, first stage, the purpose of the model is to investigate
+how languages disperse and split, driven only by the necessary interactions
+between humans. The particular research question is whether distinct cultural
+areas, with reasonably sharp borders, can emerge from only a simple feedback
+loop between conditional cooperation, linguistic assimilation, and genetic
+drift.
 
 If that is the case, the summary statistics of a phylogeny (in particular
 diversification rates) can later be compared to values known from language
@@ -39,6 +44,9 @@ compared to that history.
 
 // Load useful modules
 
+#![allow(clippy::redundant_field_names, clippy::implicit_hasher)]
+
+use bitvec::prelude::*;
 use dashmap::DashMap;
 use serde_derive::{Deserialize, Serialize};
 
@@ -59,9 +67,9 @@ use submodels::parameters::Parameters;
 # 2. Entities, state variables, and scales
 
 The model consists of agents interacting on a network of habitable patches in
-discrete time. One time step is supposed to model a season with a duration of
-half a year. Some of the underlying data is using seconds as base unit and needs
-to be translated.
+discrete time. One time step is supposed to model a season during which a group
+of hunter-gatherers remains within the same area. Some of the underlying data is
+using seconds as base unit and needs to be translated.
 
  */
 pub type Seasons = u32;
@@ -69,99 +77,142 @@ const SECONDS_PER_YEAR: f64 = 365.24219 * 24. * 60. * 60.;
 
 /**
 Whereever possible, resources are measured in terms of the resources one adult
-consumes in a year, abbreviated OYR.
+consumes in a year, abbreviated OYR. For comparison, in terms of food energy,
+one OYR corresponds to about 650'000 kcal/3'000'000 kJ, but it also includes
+other limited resources necessary for human survival.
  */
 use ecology::OneYearResources;
 
 /**
-## 2.1 Grid and Patches
+## 2.1 Geography: Nodes and Patches
 
-The geography of the simulation is described by a directed weighted graph. Each
-node is a hexagon from a hexagonal equal-area discrete global grid, each edge
-has a weight representing the travel time (by foot, or by simple boat along
-rivers and coasts) in seconds. Each node has an arbitrary unique numerical
-identifier. This movement graph is constructed before the initialization from
-pre-processed real geographical data.
+The geography of the simulation is described by a directed weighted graph, where
+each edge has a weight representing the travel time (by foot, or by simple boat
+along rivers and coasts) in seconds. This movement graph is constructed before
+the initialization from pre-processed real geographical data. The construction
+of our movement graph on the basis of the Uber H3 discrete equal-area hexagonal
+grid [@h3] is described in [XXX movementgraph]. Each node has a unique numerical
+identifier.
 
  */
 pub mod movementgraph;
 pub type NodeId = petgraph::graph::NodeIndex<usize>;
-
 /**
-Each node contains one or more ecoregions, according to the geographical
-distribution of ecoregions in the real world. For each ecoregion, the patch has
-a maximum and current availability of resources, measured in OYR available over
-the course of one season. These numbers are estimated from population densities,
-adapting the estimation of population density per biome from [@tallavaara] to
-obtain a raster of population densities, which together with the shapes of the
-hexagons gives population counts per ecoregion area in km².
 
-In the current state of the model, the resource maximum is constant throughout
-the simulation, but future work might add seasonality (with every other time
-step corresponding to the more plentiful half of the year and the others to the
-scarcer half) or random variation. By nature, the simulation invites the
-extension to include paleoclimate data, such as recently published in
-[@beyer2020highresolution] but that only becomes relevant once it shows
-fundamentally reasonable dynamics.
+It also contains the data on the patch of land it corresponds to. A patch
+contains one or more terrestrial ecoregions. For each ecoregion, the node tracks
+maximum and current availability of resources, measured in OYR available over
+the course of one season. We estimate these numbers from population densities,
+adapting the estimation from [@tallavaara] to derive per-ecoregion population
+counts, and therefore the resource amounts necessary to sustain them, in the
+area surrounding each hexagon center point.
+
+Our areas have an average area of about 400 km² each, but because we inlude all
+locations best accessibility from each hexagon center (in a generalization of
+Voronoy polygons, see [XXX movementgraph]) instead of the hexagons as defined in
+the H3 grid, the actual area represented by a patch can vary: On the boundary
+between a steep, inaccessible canyon and a flat grassland the patches inside the
+canyon may be much smaller than the patches on the grassland.
+
+In the current state of the model, the patch at a node is constant throughout
+the simulation, but future work might add seasonality or random variation. By
+nature, the simulation invites the extension to include paleoclimate data, such
+as recently published in [@beyer2020highresolution], but that only becomes
+relevant once it shows fundamentally reasonable dynamics.
 
 https://www.nature.com/articles/s41597-020-0552-1
 
  */
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Patch {
-    /// For every local ecoregion, the tuple of resources currently accessible
-    /// in this patch, and the maximum possible resources available in a time
-    /// step, both in OYR.
+    /// For every relevant terrestrial ecoregion area accessible from the node
+    /// location, the tuple of resources available for the next season, and the
+    /// maximum possible resources available in a season, both in OYR.
     resources: FxHashMap<usize, (OneYearResources, OneYearResources)>,
 }
 
 /**
 ## 2.2 Families
 
-The main decision-making agents of the simulation are families. Families can
-migrate between nodes and form links to other families in the context of
-cooperation to extract resources.
+The main decision-making agents of the simulation are families, following the
+argumentation in [crema2014simulation] [XXX: Check the reference]. Families can
+migrate between nodes, grow, or shrink. New families can split off from existing
+families and become independent agents, and families that shrink below 2
+individuals die out and are remove from the simulation. Each family has the
+following properties.
 
  */
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Family {
-    /// The agent's history of decendence, also serving as unique ID.
+/**
+ - A history of decendence.
+
+     */
     pub descendence: String,
-    /// The effective size of the family in number of adults. One adult is
-    /// assumed to consume the same amount of food/energy and to contribute the
-    /// same labor to foraging as any other adult.
+/**
+ - The effective size of the family in number of adults. One adult is assumed to
+   consume the same amount of food/energy and to contribute the same labor to
+   foraging as any other adult. For simplicity, children are not modelled, even
+   though their needs are known to have an influence on human cultural patterns
+   [@surovell2000early][@volk2013infant].
+
+     */
     pub effective_size: usize,
-    /// The family's shared culture.
+/**
+ - A culture shared among all members of the family, to be detailed below
+
+    */
     pub culture: Culture,
-    /// The current location of the agent.
+/**
+ - Its current location, the numerical ID of a node in the movement graph.
+
+    */
     pub location: NodeId,
-    /// The amount of stored resources, in OYR, the family has access to
-    /// without going foraging.
+/**
+ - The amount of stored resources, in OYR, the family has access to without going foraging.
+
+    */
     pub stored_resources: OneYearResources,
-    /// Adaptation to local ecoregions is represented as a vector with values
-    /// between 0.5 (completely unknown) and 1.0 (perfectly familiar) for any
-    /// ecoregion the family might encounter.
+/**
+ - Its adaptation to local ecoregions is represented as a vector with values
+   between 0.0 (completely unknown) and 1.0 (perfectly familiar) for any
+   ecoregion the family might encounter.
+
+    */
     pub adaptation: ecology::Ecovector,
-    /// The number of seasons to wait until the next child (reset to 2 when
-    /// starvation happens)
+/**
+ - The number of seasons to wait until the next (unsimulated) child becomes an adult.
+
+    */
     pub seasons_till_next_adult: Seasons,
+/**
+ - For bookkeeping purposes (eg. generating descendant's ‘descendence’ values),
+   keep track of the number of families that have split off from this family so
+   far.
 
-    /// For bookkeeping purposes (eg. generating descendant's ‘descendence’
-    /// values), keep track of the number of offspring families this family has
-    /// spawned so far.
+     */
     pub number_offspring: u16,
-    /// The previous locations of the agent. This is useful for some bits of
-    /// analysis.
-    pub history: Vec<NodeId>,
-    /// A bookkeeping quantity. Instead of mutation happening in each time step
-    /// with a tiny probability, the same distribution of times between
-    /// mutations is generated by drawing a number of season from a geometric
-    /// distribution and counting it down by one each time step, which is useful
-    /// because random number generation is computationally expensive.
-    pub seasons_till_next_mutation: Option<Seasons>,
-}
+/**
+ - The previous locations of the agent. This is useful for some bits of analysis.
 
+     */
+    pub history: Vec<NodeId>,
+/**
+ - A bookkeeping quantity. Instead of mutation happening in each time step with
+   a tiny probability, the same distribution of times between mutations is
+   generated by drawing a number of season from a geometric distribution and
+   counting it down by one each time step, which is useful because random number
+   generation is computationally expensive.
+
+     */
+    pub seasons_till_next_mutation: Option<Seasons>,
+    }
+/**
+
+The descendence of a family also serves as its unique identifier.
+
+ */
 impl PartialEq for Family {
     fn eq(&self, other: &Self) -> bool {
         self.descendence == other.descendence
@@ -170,15 +221,15 @@ impl PartialEq for Family {
 
 /**
 
-Families in the same location with compatible cultures can band together to
-share resources between different families, and to compete against other bands.
-The cooperative bands formed by cooperating families are higher-level agents
-created ad-hoc in each time step. They do not persist or have effect beyond a
-single time step. Resource exploitation happens at the level of the cooperative
-group and is distributed to the individual families after the fact.
+Families that have compatible cultures and are in the same location can band
+together to share resources between different families, and to compete against
+other bands. The cooperative bands formed by cooperating families are
+higher-level agents created ad-hoc in each time step. They do not persist or
+have effect beyond a single time step. Resource exploitation happens at the
+level of the band and is distributed to the individual families after the fact.
 
  */
-pub struct Cooperative<'a> {
+pub struct Band<'a> {
     pub families: Vec<&'a mut Family>,
     pub culture: Culture,
     pub total_stored: OneYearResources,
@@ -196,9 +247,9 @@ so a binary vector is equivalent to an unsigned integer of sufficient size,
 which is faster to use in computations and more efficient to store.
 
  */
-#[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Clone, Copy, Serialize, Deserialize)]
+#[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Clone, Serialize, Deserialize)]
 pub struct Culture {
-    binary_representation: u64,
+    binary_representation: BitVec,
 }
 
 impl std::fmt::Binary for Culture {
@@ -207,34 +258,25 @@ impl std::fmt::Binary for Culture {
     }
 }
 
-impl From<u64> for Culture {
-    fn from(v: u64) -> Culture {
-        Culture {
-            binary_representation: v,
-        }
-    }
-}
-
 /**
 ## 2.4 State
 
-The associations between nodes and patches and between nodes and the families
-located there (stored in the Family's `location`) are the core of the model
-state. The state also tracks the time, measured in time steps corresponding to
-one season each, since the start of the simulation, and stores a copy of
-the model parameters.
+The status of all families, including their locations, is the core of the model
+state. The state also tracks time, measured in time steps corresponding to one
+season each, since the start of the simulation, and stores the mapping between
+nodes and patches as well as a copy of the model parameters.
 
  */
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct State {
-    /// The patches of the model, indexed by node ID in a graph. This set is
-    /// fixed, although the properties of the patches may change with time.
-    patches: DashMap<NodeId, Patch>,
     /// The agents (families) currently active in the simulation. This vector
     /// changes over time as new families are added and old families die out.
     families: Vec<Family>,
     /// The current time step, in half years since start of the simulation.
     pub t: Seasons,
+    /// The patches of the model, indexed by node ID in a graph. This set is
+    /// fixed, although the properties of the patches may change with time.
+    patches: DashMap<NodeId, Patch>,
     /// The parameters of the model
     p: Parameters,
 }
@@ -242,18 +284,15 @@ pub struct State {
 /**
 # 3. Process overview and scheduling
 
->>> Who (i.e., what entity) does what, and in what order? When are state
->>> variables updated? How is time modeled, as discrete steps or as a continuum
->>> over which both continuous processes and discrete events can occur? Except
->>> for very simple schedules, one should use pseudo-code to describe the
->>> schedule in every detail, so that the model can be re-implemented from this
->>> code. Ideally, the pseudo-code corresponds fully to the actual code used in
->>> the program implementing the ABM.
+> Who (i.e., what entity) does what, and in what order? When are state
+> variables updated? How is time modeled, as discrete steps or as a continuum
+> over which both continuous processes and discrete events can occur? Except
+> for very simple schedules, one should use pseudo-code to describe the
+> schedule in every detail, so that the model can be re-implemented from this
+> code. Ideally, the pseudo-code corresponds fully to the actual code used in
+> the program implementing the ABM. [@grimm2010odd]
 
-The model progresses in discrete time steps, each corresponding to half a year
-of simulated time. The entire simulation consists of repeating the step to
-simulate 15000 years.
-
+The model progresses in discrete time steps, each corresponding to a fixed fraction of a year.
 The structure of a single time step consist of two parts, as follows.
 
  */
@@ -278,18 +317,18 @@ fn step(
     FxHashMap<Culture, (usize, OneYearResources)>,
     std::hash::BuildHasherDefault<FxHasher>,
 > {
-    step_part_1(families, patches, storage, nearby_cache, p);
-    step_part_2(families, patches, p, o, t)
+    update_each_family_step(families, patches, storage, nearby_cache, p);
+    distribute_each_patch_resources_step(families, patches, p, o, t)
 }
 /**
 The first part focuses on the individual families, which shrink, grow, die,
 split, and move. It constructs the mapping of families at the end of the season,
-grouped by their location after potential moves. Because the movement of a
+grouped by their location at the end of the movement. Because the movement of a
 family depends on the distribution of the families at he start of the season and
 not at the time of movement, it can happen entirely in parallel.
 
  */
-fn step_part_1(
+fn update_each_family_step(
     families: &mut Vec<Family>,
     patches: &mut DashMap<NodeId, Patch>,
     storage: &DashMap<
@@ -345,7 +384,7 @@ patches recover advance to the next season according to Submodule 7.6. This
 concludes a time step.
 
  */
-fn step_part_2(
+fn distribute_each_patch_resources_step(
     families: &mut Vec<Family>,
     patches: &mut DashMap<NodeId, Patch>,
     p: &Parameters,
@@ -370,7 +409,7 @@ fn step_part_2(
 
     let stored_resources = DashMap::default();
     let cultures_by_location: FxHashMap<NodeId, FxHashMap<Culture, usize>> = families_by_location
-        // TODO: Change when DashMap directly supports par_iter
+        // TODO: Change – remove bridge – when DashMap directly supports parallel iteration
         .into_iter()
         .par_bridge()
         .map(|(patch_id, mut families)| {
@@ -384,10 +423,10 @@ fn step_part_2(
                 .entry(patch_id)
                 .or_insert_with(FxHashMap::default);
             for group in groups.iter_mut() {
-                let group_culture = submodels::ecology::adjust_culture(group, p);
+                submodels::ecology::adjust_culture(group, p);
                 let group_size = group.families.iter().map(|f| f.effective_size).sum();
-                cs.insert(group_culture, (group_size, group.total_stored));
-                cc.insert(group_culture, group_size);
+                cc.insert(group.culture.clone(), group_size);
+                cs.insert(group.culture.clone(), (group_size, group.total_stored));
             }
 
             match patches.get_mut(&patch_id) {
@@ -429,29 +468,29 @@ mod concepts {}
 > underlying the model’s design?
 
 According to its purpose of providing a model for language dispersal and split,
-our model draws on existing publications looking at for cultures changing in
-time and space, focussing on taking a bottom-up approach on languages splitting.
-A major useful reference is the PSMED model (delcastillo2013modeling,
-barcelo2013psmed, barcelo2015simulating), which includes two drivers of cultural
-change in the agents: Drift and assimilation. In isolation, agents' cultures
-undergo drift. Where social interactions happen, drift is counterbalanced by
-cultural assimilation for agents that cooperate with each other. In the case of
-that model, agents interact with other agents in a limited range and based on
-need. We posit a similar basic relationship between *cooperation driving
-cultural assimilation, and cultural similarity conditioning cooperation*. Due to
-the larger scope of our model, however, we avoid tracking networks of pairwise
-interactions and instead assume that cooperation happens in patches,
-unconditionally between all individuals of compatible culture in that patch.
+our model draws on existing publications looking at cultures changing in time
+and space, focussing on taking a bottom-up approach on languages splitting. A
+major useful reference is the PSMED model
+[@castillo2013modeling; @barcelo2013psmed; @barcelo2015simulating], which
+includes two drivers of cultural change in the agents: Drift and assimilation.
+In isolation, agents' cultures undergo drift. Where social interactions happen,
+drift is counterbalanced by cultural assimilation for agents that cooperate with
+each other. In the case of that model, agents interact with other agents in a
+limited range and based on need. We posit a similar basic relationship between
+*cooperation driving cultural assimilation, and cultural similarity conditioning
+cooperation*. Due to the larger scope of the model presented here, however, we
+avoid tracking networks of pairwise interactions and instead assume that
+cooperation happens in patches, unconditionally between all individuals of
+compatible culture in that patch. Our maximum range of interactions is about
+20km due to the size of our patches.
 
 This interaction between cooperation and culture is the main addition to an
-otherwise *demographic dispersal model*. The migratory pattern we will see are
-not imposed by any geographical structure, buy by the carrying capacities of the
-individual patches. Difficult terrain (mountains, seas) is, to the model, just
-terrain with a low carrying capacity, but does not a priori prevent agents from
-crossing it if they can reach a patch on the other side that is habitable. Due
-to a limited interaction range, however, larger uninhabitable areas do provide
-an impediment to movement, because agents naturally avoid moving into them if
-better options exist.
+otherwise *demographic dispersal model*. Population dynamics and migratory
+patterns are to a large extent driven by the local geographical conditions.
+Difficult terrain impedes movement according to the imposed graph structure,
+which has edges with a higher cost where cross-terrain movement is more
+difficult, and marginal environments are less attractive to migrating agents and
+depleted quicker.
 
 A major necessary feature of the dispersal component for the culture component
 is to allow *group fission and fusion*, to allow culture splits to emerge from
@@ -469,18 +508,20 @@ is different, what else?
 
 /**
 One of the deviations from Crema's model, and also from PSMED, is the geography
-underlying the simulation. Crema and Barceló use a quadratic grid with arbitrary
-fixed or randomly generated resources. A long-term goal for our model it
-applicability to real-world language dispersal processes. A hexagonal grid has
-some advantages over a quadratic grid on the plane, in that all hexagons within
-a fixed number of steps from a focus are a much better approximation of a circle
-than all squares within a fixed number of steps from a central square. Hexagons
-also have nicer properties for delineating boundaries, which need some
-approximation for square grids (cf. kuijper2004detecting, which is not directly
-on finding boundaries, but solving that problem nonetheless). On a sphere such
-as Earth, using a hexagonal grid has the additional advantage of reducing
-distortions. Using hexagonal grids in continental or global dispersal
-simulations is well-established (gavin2017processbased, callegari2013agentbased).
+underlying the simulation. Crema and Barceló use a regular quadratic grid with
+arbitrary fixed or randomly generated resources. A long-term goal for our model
+it applicability to real-world language dispersal processes. As such, we derive
+the resources from real-world data and use a hexagonal grid to inform the
+topology. Such a grid has some advantages over a quadratic grid on the plane, in
+that all hexagons within a fixed number of steps from a focus are a much better
+approximation of a circle than all squares within a fixed number of steps from a
+central square. Hexagons also have nicer properties for delineating boundaries,
+which need some approximation for square grids (cf. [@kuijper2004detecting],
+which is not directly on finding boundaries, but solving that problem
+nonetheless). On a sphere such as Earth, using a hexagonal grid has the
+additional advantage of reducing distortions. Using hexagonal grids in
+continental or global dispersal simulations is well-established
+[@gavin2017processbased; @callegari2013agentbased].
 
 Our model is thus an agent-based model of the emergence of cultural areas from
 fission-fusion dynamics, where local cooperation is the main driver to prevent
@@ -513,49 +554,43 @@ mod basic_principles {}
 mod emergence {
     use crate::*;
 
-    /**
+/**
 
-    The main emergent property will be culturally somewhat uniform territories. We
-        expect that the interplay of migration, cooperation and cultural similarity
-        leads to regions sharing similar cultures, with noticeable boundaries. This
-        means that the plot of cultural distances vs. geographical distances should
-        therefore show small cultural distances for small geographical distances. There
-        should be a critical geographical distance of cohesion where the distribution of
-        cultural distances becomes bimodal, with one mode being lower than the
-        cooperation threshold and one mode above the cooperation threshold. For large
-        geographical distances, the cultural distances should be high, but with a big
-        variance. The critical geographical distance is likely to depend on the region,
-        being larger in more marginal environments where migration is more frequent.
+The main emergent property will be culturally somewhat uniform territories. We
+expect that the interplay of migration, cooperation and cultural similarity
+leads to regions sharing similar cultures, with noticeable boundaries. This
+means that the plot of cultural distances vs. geographical distances should
+therefore show small cultural distances for small geographical distances. There
+should be a critical geographical distance of cohesion where the distribution of
+cultural distances becomes bimodal, with one mode being lower than the
+cooperation threshold and one mode above the cooperation threshold. For large
+geographical distances, the cultural distances should be high, but with a big
+variance. The critical geographical distance is likely to depend on the region,
+being larger in more marginal environments where migration is more frequent.
 
-    Underlying the model is a fission-fusiom model of group dynamics
-        (crema2014simulation), so we expect a similar analysis to apply to our
-        model. Crema observes actual fission-fusion cycles only for a small part of
-        the parameter space (“Primate systems emerge only temporarily, either as
-        part of a limit-cycle equilibrium, or as a short-term transition from a
-        convex equilibrium. In either case, they require some level of system
-        connectivity, defined here by the spatial range of interaction (h), the
-        frequency of decision-making (z), and the sample proportion of observed
-        neighbour agents (k)”), so it is not clear whether we should expect them for
-        our model.
+Underlying the model is a fission-fusiom model of group dynamics
+[@crema2014simulation], so we expect a similar analysis to apply to our model.
+Crema observes actual fission-fusion cycles only for a small part of the
+parameter space, so it is not clear whether we should expect them for our model.
 
-    > Are there other results that are more tightly imposed by model rules and
-    > hence less dependent on what individuals do, and hence ‘built in’ rather
-    > than emergent results?
+> Are there other results that are more tightly imposed by model rules and
+> hence less dependent on what individuals do, and hence ‘built in’ rather
+> than emergent results?
 
-    Cooperation in this model is an entirely imposed feature. It is an important
-        question in theoretical biology and related fields under what circumstances
-        cooperation can prevail over defectors and other free-riders, and it may
-        even affect the dispersal of languages (though more likely on the level of
-        collectives, where the interactions between groups of different cultures
-        range from assimilation and language shift all the way to war and lethal
-        violence). But overall, human societies seem to be quite good at maintaining
-        large-scale cooperation, so we consider the question irrelevant for the
-        purpsoses of the present model. Cooperation is thus not a decision of the
-        agents, but entirely determined by their cultures.
+Cooperation in this model is an entirely imposed feature. It is an important
+question in theoretical biology and related fields under what circumstances
+cooperation can prevail over defectors and other free-riders, and it may even
+affect the dispersal of languages (though more likely on the level of
+collectives, where the interactions between groups of different cultures range
+from assimilation and language shift all the way to war and lethal violence).
+But overall, human societies seem to be quite good at maintaining large-scale
+cooperation, so we consider the question irrelevant for the purpsoses of the
+present model. Cooperation is thus not a decision of the agents, but entirely
+determined by the linguistic distance between them.
 
-     */
+*/
 
-    pub fn similar_culture(c1: Culture, c2: Culture, cooperation_threshold: u32) -> bool {
+    pub fn will_cooperate(c1: &Culture, c2: &Culture, cooperation_threshold: usize) -> bool {
         submodels::culture::distance(c1, c2) < cooperation_threshold
     }
 }
@@ -563,117 +598,100 @@ mod emergence {
 /**
 ## 4.3 Adaptation
 
-> What adaptive traits do the individuals have? What rules do they have for
-> making decisions or changing behavior in response to changes in themselves or
-> their environment? Do these traits explicitly seek to increase some measure of
-> individual success regarding its objectives? Or do they instead simply cause
-> individuals to reproduce observed behaviors that are implicitly assumed to
-> indirectly convey success or fitness?
-
-The only trait agents have control over is their location. Agents optimize
-(within the limits of their knowledge) their location to increase the amount of
-resources they gather. The resources gathered indirectly contribute to future
-success: A certain minimum of gathered resources is necessary to procreate, but
-extremely large amounts gathered soon do not increase the immediate rate of
-procreation and can in extreme cases (overexploitation of local resources) even
-be detrimental in the long run.
- */
-
-/**
-Agents also adapt to local environment: TODO
-
  */
 mod adaptation {
     use crate::*;
+/**
 
+> What adaptive traits do the individuals have? What rules do they have for
+> making decisions or changing behavior in response to changes in themselves or
+> their environment? Do these traits explicitly seek to increase some measure of
+> individual success regarding its objectives?
+
+The only trait agents have control over is their location. Agents optimize
+(within the limits of their knowledge) their location to increase the amount of
+resources available for them to gather. The resources gathered indirectly
+contribute to future success: A certain minimum of gathered resources is
+necessary to procreate, but extremely large amounts gathered soon do not
+increase the immediate rate of procreation and can in extreme cases
+(overexploitation of local resources) even be detrimental in the long run and
+through sharing instead benefit other families of the same culture.
+
+*/
     pub fn decide_on_moving<'a>(
-        family: &'a Family,
+        family: &Family,
         storage: &DashMap<
-            NodeId,
+                NodeId,
             FxHashMap<Culture, (usize, OneYearResources)>,
             std::hash::BuildHasherDefault<FxHasher>,
-        >,
-        known_destinations: &[(NodeId, OneYearResources)],
+            >,
+        known_destinations: &'a[(NodeId, OneYearResources)],
         patches: &'a DashMap<NodeId, Patch>,
-        avoid_stay: bool,
         p: &Parameters,
         population: &DashMap<NodeId, usize, std::hash::BuildHasherDefault<FxHasher>>,
     ) -> (NodeId, OneYearResources) {
-        let evidence = OneYearResources::from(p.season_length_in_years) * p.evidence_needed;
-
-        let destination_expectation = known_destinations.iter().filter_map(|(i, d_)| {
-            let d = *d_;
-            if family.location == *i && avoid_stay {
-                return None;
-            }
-            let movement_cost = d * family.effective_size as f64;
-            let pop = match population.get(&i) {
-                None => 0,
-                Some(k) => *k,
-            } + (if family.location == *i {
-                0
-            } else {
-                family.effective_size
-            });
-
-            let (friends, mut stored_by_friendlies) = match storage.get(i) {
-                None => (0, OneYearResources::from(0.0)),
-                Some(h) => {
-                    match h.iter().find(|c| {
-                        emergence::similar_culture(family.culture, *c.0, p.cooperation_threshold)
-                    }) {
-                        None => (0, OneYearResources::from(0.0)),
-                        Some((_, v)) => *v,
-                    }
-                }
-            };
-            if *i == family.location {
-                stored_by_friendlies -= family.stored_resources
-            };
-
-            let mut now = expected_quality(
-                p,
-                &family.adaptation,
-                patches.get(i).unwrap(),
-                stored_by_friendlies,
-                pop,
-            );
-            if pop > 2 * friends {
-                now = now * (p.enemy_discount).powi((pop - 2 * friends) as i32 + 1);
-                // A family would usually have a size around 5, I guess, and
-                // each family encountered has probability 1/2 to mess with
-                // this family. So each individual has a chance of 0.5^0.2 –
-                // and that's the default of the parameter.
-            }
-
-            Some((i, (now, movement_cost)))
-        });
-        objectives::best_location(destination_expectation, family.location, evidence)
-    }
-
-    fn expected_quality<P>(
-        p: &Parameters,
-        adaptation: &ecology::Ecovector,
-        patch: P,
-        stored_by_friendlies: OneYearResources,
-        population: usize,
-    ) -> OneYearResources
-    where
-        P: core::ops::Deref<Target = Patch>,
-    {
-        // Minimal knowledge about quality of a patch: Its current plus max resources.
-        let mut rng = rand::thread_rng();
-        let q: Vec<_> = patch.resources.values().collect();
-        let perhead = 1. / population as f64;
-        (stored_by_friendlies
-            + q.iter()
-                .zip(adaptation)
-                .map(|((res, max_res), e)| (*res + *max_res * p.resource_recovery_per_season) * *e)
-                .sum::<OneYearResources>())
-            * perhead
-            * rng.gen_range(0.0..1.0)
+        let destination_expectation = known_destinations.iter().map(
+            |(destination_id, travel_cost)|
+            (destination_id,
+             objectives::destination_quality(
+                 destination_id, family, storage, population.get(&destination_id).as_deref().unwrap_or(&0), patches.get(destination_id).as_deref().unwrap(), p), travel_cost)
+        );
+        best_location(destination_expectation, family.location)
     }
 }
+
+/**
+
+In order to account for limited knowledge in an economic fashion without
+tracking the kowledge of every single family, and to avoid the case where one
+location is the best choice of a large amount of agents by a very small margin,
+agents choose the ‘best’ location (according to expected resources with a
+discount for enemies, as explained below) subject to a random re-scaling of the
+expected quality by a factor uniformly distributed between 0 and 1.
+
+*/
+    pub fn best_location<'a, KD>(
+        kd: KD,
+        null: NodeId,
+    ) -> (NodeId, OneYearResources)
+    where
+    KD: IntoIterator<Item = (&'a NodeId, OneYearResources, &'a OneYearResources)>{
+
+        let (mut target, mut max_gain, mut t_cost) = (
+            &null,
+            OneYearResources::from(0.0),
+            OneYearResources::from(0.0),
+        );
+        let mut m = max_gain - t_cost;
+
+        let mut rng = rand::thread_rng();
+        for (location, gain, l_cost) in kd {
+            let g = gain * rng.gen_range(0.0..1.0) - *l_cost;
+            if g > m {
+                target = location;
+                max_gain = max_gain.max(gain);
+                t_cost = *l_cost;
+                m = max_gain - t_cost;
+            }
+        }
+        (*target, t_cost)
+    }
+
+/**
+
+> Or do they instead simply cause individuals to reproduce observed behaviors
+> that are implicitly assumed to indirectly convey success or fitness?
+
+It has been proposed [@XXX, has it?] that the need to adaptat to new
+environments slows migrations on a contental scale. As a consequence, each
+family has a vector listing their success at extracting resources from the
+various ecoregions. This is not modeled as an evolutionary adaptive process;
+instead, the environmental adaptation of a family goes up deterministically when
+they interact with an ecoregion, and goes down to a (parameterized) minimum
+otherwise. This submodel is described in [7.X: Environmental adaptation].
+
+*/
+
 
 /**
 ## 4.4 Objectives
@@ -685,56 +703,104 @@ mod adaptation {
 > When individuals make decisions by ranking alternatives, what criteria do they
 > use?
 
-*/
+ */
 mod objectives {
     use crate::*;
 
-    /**
-    Agents choose a best location to move to, where ‘best’ means a maximum
-    expected resource gain. If multiple locations are equally good, take one of those at random.
-    */
-    // That is, this function omputes the argmax of
-    // `expected_resources_from_patch`, drawing at random between equal options.
-    pub fn best_location<'a, KD>(
-        kd: KD,
-        null: NodeId,
-        precision: OneYearResources,
-    ) -> (NodeId, OneYearResources)
-    where
-        KD: IntoIterator<Item = (&'a NodeId, (OneYearResources, OneYearResources))>,
-    {
-        // The additional integer `i` is used to randomly draw between several
-        // equally-optimal options. It counts the number of best options
-        // encountered so far.
+/**
+Agents base their decision for one potential destination of migration over
+another based on a modification of the resources expected per individual at the
+destination.
 
-        let (mut target, mut max_gain, mut t_cost, mut i) = (
-            &null,
-            OneYearResources::from(0.0),
-            OneYearResources::from(0.0),
-            0_usize,
-        );
-        let mut rng = rand::thread_rng();
-        for (location, (gain, l_cost)) in kd {
-            let g = gain - l_cost;
-            let m = max_gain - t_cost;
-            if g > m + precision || i == 0 {
-                target = location;
-                max_gain = max_gain.max(gain);
-                t_cost = l_cost;
-                i += 1;
-            } else if g >= m - precision {
-                if rng.gen_range(0..(i + 1)) < i {
-                    i += 1
-                } else {
-                    target = location;
-                    max_gain = max_gain.max(gain);
-                    t_cost = l_cost;
-                    i += 1;
+The amount of resources expected per individual is the sum of
+
+ - the resouces stored by the ‘friendly’ families (i.e. families with compatible
+   language) currently in the region, divided by the number of ‘friends’ and
+
+*/
+    pub fn from_friends(
+        i: & NodeId,
+        family: &Family,
+        storage: &DashMap<
+                NodeId,
+            FxHashMap<Culture, (usize, OneYearResources)>,
+            std::hash::BuildHasherDefault<FxHasher>,
+            >,
+        p: &Parameters,
+    ) -> (usize, OneYearResources) {
+        let (friends, stored_by_friendlies) = match storage.get(i) {
+            None => (0, OneYearResources::from(0.0)),
+            Some(h) => {
+                match h.iter().find(|c| {
+                    emergence::will_cooperate(&family.culture, c.0, p.cooperation_threshold)
+                }) {
+                    None => (0, OneYearResources::from(0.0)),
+                    Some((_, v)) => *v,
                 }
-            } else {
             }
+        };
+
+        let stored_by_friendlies_except_me = if *i == family.location {
+            stored_by_friendlies - family.stored_resources
+        } else {
+            stored_by_friendlies
+        };
+        (friends, stored_by_friendlies_except_me)
+    }
+/**
+ - for each ecoregion in the patch, the resources accessible to the family this
+   and next season, divided by the total population of the patch at the
+   beginning of the time step. Note that here the family extrapolates its own
+   environmental adaptation to the other families in the patch.
+
+*/
+    pub fn expected_harvest(
+        family: &Family,
+        patch: &Patch,
+        p: &Parameters,
+    ) -> OneYearResources
+    {let harvestable_resources = patch.resources.values();
+        harvestable_resources.zip(&family.adaptation.entries)
+        .map(|((res, max_res), e)| (*res + *max_res * p.resource_recovery_per_season) * *e)
+        .sum::<OneYearResources>()
+    }
+/**
+This expected quality is modified to account for the risk of encountering
+enemies. If the cooperative families are not the majority in the destination,
+there is a significant danger from warfare to the migrating family. They adjusts
+the expected quality of the destination by a constant factor (a model parameter)
+for every enemy that is in excess of the family's language being the dominant
+one in the region.
+
+> A family would usually have a size around 5, I guess, and each family
+> encountered has probability 1/2 to mess with this family. So each individual
+> has a chance of 0.5^0.2 – and that's the default of the parameter.
+
+*/
+    pub fn destination_quality<'a>(
+        i: &'a NodeId,
+        family: &'a Family,
+        storage: &DashMap<
+            NodeId,
+            FxHashMap<Culture, (usize, OneYearResources)>,
+            std::hash::BuildHasherDefault<FxHasher>,
+        >,
+        population: &usize,
+        patch: &Patch,
+        p: &Parameters,
+    ) -> OneYearResources
+    {
+        let pop_at_destination = population + (if family.location != *i {family.effective_size} else {0});
+
+        let (friends, stored_by_friendlies_except_me) = from_friends(i, family, storage, p);
+
+        let mut quality =  stored_by_friendlies_except_me / friends as f64 +expected_harvest(family, patch, p) / pop_at_destination as f64;
+
+        if pop_at_destination > 2 * friends {
+            quality = quality * (p.enemy_discount).powi((pop_at_destination - 2 * friends) as i32 + 1);
         }
-        (*target, t_cost)
+
+        quality
     }
 }
 /**
@@ -743,12 +809,6 @@ mod objectives {
 > Many individuals or agents (but also organizations and institutions) change
 > their adaptive traits over time as a consequence of their experience? If so,
 > how?
-
-There is a minor effect of experience on location choice in that a family knows
-nearby locations only with a small random chance, but they always have knowledge
-about the locations they were at in the last 4 years (8 time steps).
-
-TODO: Put that 4 in a static variable and put a doctest here that confirms it.
 
  */
 
@@ -793,34 +853,18 @@ mod prediction {}
 > other sites it could move to). If agents sense each other through social
 > networks, is the structure of the network imposed or emergent? Are the
 > mechanisms by which agents obtain information modeled explicitly, or are
-> individuals simply assumed to know these variables?
-
-We take this a bit backwards: Kelly (2013), Table 4.1 (reproduced in the
-supplementary material) lists mobility data for 70 hunter-gatherer groups,
-including figueres for the yearly territory of a group where that number could
-be inferred. Three quarters of the listed territories are about 2000 km² or
-less. In our model, this corresponds to roughly 5 patches (each with an area of
-ca. 400 km²) being visited per year. To give some leeway, we permit our agents
-up to 6 moves per year, so a season corresponds to two months. Three quarters of
-the total yearly distance the groups move are reported to be 320 km or less, so
-in this simulation the maximum distance moved per season is about 53.3 km. The
-simulation is centered around distances measured in time units (seconds,
-seasons, years). In all but mangroves, the terrain speed factor is greater than
-one (see `supplement/distances/ecoreginos.py`). If humans generally prefer 2%
-downhill slopes, they have to encounter about the same amount in uphill slopes,
-which are navigated at about 0.7740708353271509 m/s. At that speed, 53.3 km
-correspond do about 68899 s or 19 hours. We therefore give individuals a maximum
-“sensing” range of 68899 seconds. Individuals will know about patches within
-this range from their current patch, but not about patches further away.
-
+> individuals simply assumed to know these variables? [@grimm2010odd]
  */
 
 mod sensing {
     use crate::*;
+/**
+Individuals know about nearby locations. The exploration of those locations is
+not explicitly modelled.
 
-    /// Individuals know about nearby locations. The exploration is not
-    /// explicitly modelled.
+> I should say a bit more about sensing, I think.
 
+*/
     pub fn nearby_locations(location: NodeId, p: &Parameters) -> Vec<(NodeId, OneYearResources)> {
         // Triple: opportunity cost from not foraging, and cost from doing likely
         // heavy labor instead.
@@ -830,19 +874,43 @@ mod sensing {
         movementgraph::bounded_dijkstra(
             &p.dispersal_graph,
             location,
-            68899., // NORM * 12., //4 complete days, or 12 days of travel
+            MAX_SEASON_RANGE,
             |e| *petgraph::graph::EdgeReference::weight(&e),
         )
-        .drain()
-        .filter_map(|(n, d)| {
-            if d.is_normal() {
-                Some((n, cost_per_walking_second * d))
-            } else {
-                None
-            }
-        })
-        .collect()
+            .drain()
+            .filter_map(|(n, d)| {
+                if d.is_normal() {
+                    Some((n, cost_per_walking_second * d))
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
+/**
+### Technical details on the maximum sensing distance
+
+There is a maximum range on sensing: [@kelly2013, Table 4.1] (reproduced in the
+supplementary material) lists mobility data for 70 hunter-gatherer groups,
+including figueres for the yearly territory of a group where that number could
+be inferred. Three quarters of the listed territories are about 2000 km² or
+less. In our model, this corresponds to roughly 5 patches (each with an area of
+ca. 400 km²) being visited per year. To give some leeway, we permit our agents
+up to 6 moves per year, so a season corresponds to two months. The third
+quartile, across all groups, of the yearly migratory distance is around 320 km,
+so in this simulation the maximum distance moved per season is about 53.3 km.
+The simulation is centered around distances measured in time units (seconds,
+seasons, years). In all but mangroves, the terrain speed factor is greater than
+one (see `supplement/distances/ecoreginos.py`). If humans generally prefer 2%
+downhill slopes, they have to encounter about the same amount in uphill slopes,
+which are navigated at about 0.7740708353271509 m/s. At that speed, 53.3 km
+correspond do about 68899 s or 19 hours. We therefore give individuals a maximum
+“sensing” range of 68899 seconds. Individuals will know about patches within
+this range from their current patch, but not about patches further away.
+
+ */
+    const MAX_SEASON_RANGE: f64 = 320. / 6. * 1000. / 0.7740708353271509;
+
 }
 
 /**
@@ -850,17 +918,22 @@ mod sensing {
 
 > What kinds of interactions among agents are assumed? Are there direct
 > interactions in which individuals encounter and affect others, or are
-> interactions indirect, e.g., via competition for a medi- ating resource? If
+> interactions indirect, e.g., via competition for a mediating resource? If
 > the interactions involve communication, how are such communications
-> represented?
+> represented? [@grimm2010odd]
 
-Agents compete for limited resources. There is a maximum of resources that can
+Agents interact in two different contexts.
+
+During the migration phase (part 1 of the step, see [above]), agents avoid locations that contain a large amount of 
+
+for limited resources. There is a maximum of resources that can
 be extracted from a patch, and the extracted resources are distributed among all
 agents in that patch. This distribution is not completely even: Members of a
 bigger group of cooperators competing with a smaller cooperative get an
 over-proportional part of the total extracted, measured by their effective size.
 
- */
+
+*/
 mod interaction {
     /**
 
@@ -919,18 +992,18 @@ pub mod collectives {
     pub fn cooperate_or_fight<'a>(
         mut families_in_this_location: Vec<&'a mut Family>,
         p: &Parameters,
-    ) -> Vec<Cooperative<'a>> {
+    ) -> Vec<Band<'a>> {
         let mut rng = rand::thread_rng();
-        let mut groups: Vec<Cooperative<'a>> = vec![];
+        let mut groups: Vec<Band<'a>> = vec![];
 
         for family in families_in_this_location.drain(..) {
-            let mut joined_group: Option<&mut Cooperative<'a>> = None;
+            let mut joined_group: Option<&mut Band<'a>> = None;
             for group in groups.iter_mut() {
                 let mut join = true;
                 for other_family in group.families.iter_mut() {
-                    if !emergence::similar_culture(
-                        family.culture,
-                        other_family.culture,
+                    if !emergence::will_cooperate(
+                        &family.culture,
+                        &other_family.culture,
                         p.cooperation_threshold,
                     ) {
                         join = false;
@@ -959,15 +1032,15 @@ pub mod collectives {
             }
             match joined_group {
                 None => {
-                    groups.push(Cooperative {
-                        culture: family.culture,
+                    groups.push(Band {
+                        culture: family.culture.clone(),
                         families: vec![family],
                         total_stored: OneYearResources::default(),
                     });
                 }
                 Some(group) => {
                     if rng.gen_range(0..group.families.len()) == 0 {
-                        group.culture = family.culture
+                        group.culture = family.culture.clone()
                     }
                     group.families.push(family);
                 }
@@ -1157,7 +1230,7 @@ pub fn initialization(p: Parameters, scale: f64) -> Option<State> {
                 history: vec![],
                 seasons_till_next_adult: 4,
                 culture: Culture {
-                    binary_representation: 0b000_000_000_000_000,
+                    binary_representation: bitvec![0; 16],
                 },
 
                 effective_size: 5,
@@ -1172,7 +1245,7 @@ pub fn initialization(p: Parameters, scale: f64) -> Option<State> {
                 history: vec![],
                 seasons_till_next_adult: 4,
                 culture: Culture {
-                    binary_representation: 0b111_111_111_111_111,
+                    binary_representation: bitvec![1; 16],
                 },
 
                 effective_size: 5,
@@ -1211,19 +1284,20 @@ pub mod submodels {
     pub mod culture {
         use crate::Culture;
         use rand::prelude::*;
+        use bitvec::prelude::bitvec;
 
-        pub fn distance(c1: Culture, c2: Culture) -> u32 {
-            (c1.binary_representation ^ c2.binary_representation).count_ones()
+        pub fn distance(c1: &Culture, c2: &Culture) -> usize {
+            (c1.binary_representation.clone() ^ c2.binary_representation.clone()).count_ones()
         }
 
         pub fn mutate_culture(
             family_seasons_till_next_mutation: &mut Option<u32>,
             family_culture: &mut Culture,
-            target_culture: Culture,
-            culture_dimensionality: u8,
+            target_culture: &Culture,
+            culture_dimensionality: usize,
             culture_mutation_rate: f64,
         ) {
-            *family_culture = target_culture;
+            *family_culture = target_culture.clone();
             match family_seasons_till_next_mutation {
                 None => {
                     *family_seasons_till_next_mutation =
@@ -1237,8 +1311,10 @@ pub mod submodels {
                     );
                 }
                 Some(0) => {
-                    let i: u8 = rand::thread_rng().gen_range(0..culture_dimensionality);
-                    family_culture.binary_representation ^= 1 << i;
+                    let i = rand::thread_rng().gen_range(0..culture_dimensionality);
+                    let mut flip = bitvec![1; 1];
+                    flip.shift_left(i);
+                    family_culture.binary_representation ^= flip;
                     *family_seasons_till_next_mutation =
                         Some(random::<f64>().log(1. - culture_mutation_rate) as u32);
                 }
@@ -1281,7 +1357,7 @@ pub mod submodels {
                     // println!("{:?}", nearby);
 
                     let (destination, cost) = adaptation::decide_on_moving(
-                        &family, storage, &nearby, patches, false, p, cc,
+                        &family, storage, &nearby, patches, p, cc,
                     );
                     // println!("Family {:} moved to {:}", family.descendence, destination);
                     family.history.push(family.location);
@@ -1301,9 +1377,9 @@ pub mod submodels {
                             let (destination, cost) = adaptation::decide_on_moving(
                                 &descendant,
                                 storage,
-                                &nearby,
+                                // TODO: Check that the center is at index 0
+                                &nearby[1..],
                                 patches,
-                                true,
                                 p,
                                 cc,
                             );
@@ -1335,7 +1411,7 @@ pub mod submodels {
                     location: family.location,
                     history: family.history.clone(),
                     seasons_till_next_adult: (15. / season_length_in_years) as u32 + 1,
-                    culture: family.culture,
+                    culture: family.culture.clone(),
 
                     effective_size: 2,
                     number_offspring: 0,
@@ -1426,22 +1502,20 @@ pub mod submodels {
             (&mut family.stored_resources, contribution)
         }
 
-        pub fn adjust_culture(group: &mut crate::Cooperative, p: &Parameters) -> crate::Culture {
-            let target_culture = group.culture;
+        pub fn adjust_culture(group: &mut crate::Band, p: &Parameters) {
             for family in group.families.iter_mut() {
                 crate::submodels::culture::mutate_culture(
                     &mut family.seasons_till_next_mutation,
                     &mut family.culture,
-                    target_culture,
+                    &group.culture,
                     p.culture_dimensionality,
                     p.culture_mutation_rate,
                 );
             }
-            target_culture
         }
 
         pub fn group_contribution<'a>(
-            group: &'a mut crate::Cooperative,
+            group: &'a mut crate::Band,
             ecoregion: usize,
             sum_effort: &mut f64,
         ) -> Vec<(&'a mut OneYearResources, f64)> {
@@ -1454,7 +1528,7 @@ pub mod submodels {
 
         /**
          */
-        pub fn exploit_patch<P>(mut groups: Vec<crate::Cooperative>, mut patch: P, p: &Parameters)
+        pub fn exploit_patch<P>(mut groups: Vec<crate::Band>, mut patch: P, p: &Parameters)
         where
             P: core::ops::DerefMut<Target = crate::Patch>,
         {
@@ -1570,8 +1644,8 @@ pub mod submodels {
         pub struct Parameters {
             pub resource_recovery_per_season: f64,
             pub culture_mutation_rate: f64,
-            pub culture_dimensionality: u8,
-            pub cooperation_threshold: u32,
+            pub culture_dimensionality: usize,
+            pub cooperation_threshold: usize,
             pub maximum_resources_one_adult_can_harvest: OneYearResources,
             pub evidence_needed: f64,
             pub payoff_std: f64,
