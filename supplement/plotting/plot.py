@@ -241,6 +241,7 @@ def plot_content(content, ts, pop, subpops, cultures_by_location, persistence_by
 
 
 CUTOFF = 30
+bitvec = re.compile("BitVec<bitvec::order::Lsb0, usize> { addr: 0x[0-9a-f]*, head: 000000, bits: [0-9]*, capacity: [0-9]* } \[([01]*)\]")
 
 for logfile in args.logfile:
     print("Starting {:} at {:}…".format(logfile, datetime.datetime.now()), file=sys.stderr)
@@ -348,6 +349,7 @@ for logfile in args.logfile:
                 recent_contents.insert(0, line[len("POPULATION: ") :])
                 continue
             try:
+                line = bitvec.sub("0b\\1", line)
                 content = [
                     (x, y, n, c)
                     for x, y, p in literal_eval(line[len("POPULATION: ") :])
