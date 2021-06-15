@@ -1,4 +1,4 @@
-use crate::observation::ObservationSettings;
+use crate::observation::Settings;
 use crate::{Parameters, Seasons};
 use std::str::FromStr;
 use argparse::action::TypedAction;
@@ -18,10 +18,10 @@ impl<'a> IArgAction for StorePAsU32Action<'a> {
         match FromStr::from_str(arg) {
             Ok::<f64, _>(x) => {
                 **self.cell.borrow_mut() = (x * ((1_u64<<32) as f64)) as u32;
-                return Parsed;
+                Parsed
             }
             Err(_) => {
-                return Error(format!("Bad value {}", arg));
+                Error(format!("Bad value {}", arg))
             }
         }
     }
@@ -31,7 +31,7 @@ struct StorePAsU32;
 
 impl TypedAction<u32> for StorePAsU32 {
     fn bind<'x>(&self, cell: Rc<RefCell<&'x mut u32>>) -> Action<'x> {
-        return Single(Box::new(StorePAsU32Action { cell: cell }));
+        Single(Box::new(StorePAsU32Action { cell: cell }))
     }
 }
 
@@ -40,7 +40,7 @@ pub fn parse_args<'a>(
     max_t: &'a mut Seasons,
     resource_scale: &'a mut f64,
     resource_recovery_per_year: &'a mut f64,
-    observation: &'a mut ObservationSettings,
+    observation: &'a mut Settings,
 ) -> argparse::ArgumentParser<'a> {
     let mut parser = argparse::ArgumentParser::new();
     parser.set_description("Run a dispersal simulation");

@@ -1,9 +1,9 @@
 use ::argparse;
-use model::*;
+use model::{State, observation, run};
 use std::fs;
 
 fn main() -> Result<(), String> {
-    let mut o = observation::ObservationSettings {
+    let mut o = observation::Settings {
         log_every: 30, // Every 5 years, by default parameters
         log_patch_resources: 30,
         store_every: 600,

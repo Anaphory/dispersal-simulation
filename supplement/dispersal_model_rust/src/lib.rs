@@ -12,7 +12,7 @@ that documents the model, but the source code is largely commented using
 natural-language descriptions, not generated from them (as would be the case in
 a literal program).
 
-# 1. Purpose
+## 1. Purpose
 
 The dispersal model generates a deep phylogeny of hunter-gatherer cultures based
 on culture-mediated cooperation and resource-driven migration. It is a
@@ -36,7 +36,21 @@ the settlement of the Americas at a later time. It would require paleoclimate
 data and interpretations of past ecoregions to produce results that can be
 compared to that history.
 
- */
+To construct a demographic migration model with culture, for the purpose of the
+project we set out here, we need the following ingedients.
+
+1. A representation of culture, which is at the least able to undergo neutral evolution
+   (showing heritability and random variation, not necessarily fitness) and which in
+   addition allows horizontal transfer of cultural traits other than from a parent to a
+   child population.
+2. Agents that carry cultural traits and are located in geographical space, which has
+   differing ecological features
+3. A system that drives the demographics of the agents in time and space
+4. A way for culture and population dynamics to interact in a way that can create create
+   distinct cultural areas instead of a vast cultural cline or dialect continuum.
+   In the following subsections, we will consider each of these elements separately.
+
+*/
 
 // TODO: Dear Rustacean, I know that my use of documentation comments is
 // hazardous, because they land in the generated documentation in a different
@@ -50,7 +64,6 @@ use bitvec::prelude::*;
 use dashmap::DashMap;
 use serde_derive::{Deserialize, Serialize};
 
-use rand::prelude::*;
 use rustc_hash::{FxHashMap, FxHasher};
 use std::fs::File;
 
@@ -64,7 +77,7 @@ use submodels::parameters::Parameters;
 
 /**
 
-# 2. Entities, state variables, and scales
+## 2. Entities, state variables, and scales
 
 The model consists of agents interacting on a network of habitable patches in
 discrete time. One time step is supposed to model a season during which a group
@@ -84,7 +97,7 @@ other limited resources necessary for human survival.
 use ecology::OneYearResources;
 
 /**
-## 2.1 Geography: Nodes and Patches
+### 2.1 Geography: Nodes and Patches
 
 The geography of the simulation is described by a directed weighted graph, where
 each edge has a weight representing the travel time (by foot, or by simple boat
@@ -132,7 +145,7 @@ pub struct Patch {
 }
 
 /**
-## 2.2 Families
+### 2.2 Families
 
 The main decision-making agents of the simulation are families, following the
 argumentation in [crema2014simulation] [XXX: Check the reference]. Families can
@@ -235,16 +248,15 @@ pub struct Band<'a> {
     pub total_stored: OneYearResources,
 }
 /**
-## 2.3 Cultures
+### 2.3 Cultures
 
 Every family has a culture. These are very abstract and vastly simplified, due
 to the lack of quantitative data on cultural evolution in a framework comparable
 to the one used for this study. Based on the need to have a data structure that
 supports random drift, a low but positive chance of back-mutation, and a large
 number of equally (dis-)similar cultures, we describe culture using a binary
-vector. Computers make natural use of the binary representation integer numbers,
-so a binary vector is equivalent to an unsigned integer of sufficient size,
-which is faster to use in computations and more efficient to store.
+vector. A more detailed discussion of the choices and interactions can be found
+in [Submodel: Culture].
 
  */
 #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Clone, Serialize, Deserialize)]
@@ -259,7 +271,7 @@ impl std::fmt::Binary for Culture {
 }
 
 /**
-## 2.4 State
+### 2.4 State
 
 The status of all families, including their locations, is the core of the model
 state. The state also tracks time, measured in time steps corresponding to one
@@ -282,7 +294,7 @@ pub struct State {
 }
 
 /**
-# 3. Process overview and scheduling
+## 3. Process overview and scheduling
 
 > Who (i.e., what entity) does what, and in what order? When are state
 > variables updated? How is time modeled, as discrete steps or as a continuum
@@ -311,7 +323,7 @@ fn step(
         Vec<(NodeId, OneYearResources)>,
         std::hash::BuildHasherDefault<FxHasher>,
     >,
-    o: &observation::ObservationSettings,
+    o: &observation::Settings,
 ) -> DashMap<
     NodeId,
     FxHashMap<Culture, (usize, OneYearResources)>,
@@ -388,7 +400,7 @@ fn distribute_each_patch_resources_step(
     families: &mut Vec<Family>,
     patches: &mut DashMap<NodeId, Patch>,
     p: &Parameters,
-    o: &observation::ObservationSettings,
+    o: &observation::Settings,
     t: Seasons,
 ) -> DashMap<
     NodeId,
@@ -413,8 +425,6 @@ fn distribute_each_patch_resources_step(
         .into_iter()
         .par_bridge()
         .map(|(patch_id, mut families)| {
-            families.shuffle(&mut rand::thread_rng());
-
             let mut cc = FxHashMap::default();
 
             let mut groups = crate::collectives::cooperate_or_fight(families, p);
@@ -452,7 +462,7 @@ fn distribute_each_patch_resources_step(
 }
 
 /**
-# 4. Design concepts
+## 4. Design concepts
 
 Under the ODD protocol, the design principles largely fall into questions. Where
 my answer indicates an invariant property of the simulation, I provide a test
@@ -462,10 +472,16 @@ function that checks that invariance if possible.
 mod concepts {}
 
 /**
-## 4.1 Basic priciples
+### 4.1 Basic priciples
 
 > Which general concepts, theories, hypotheses, or modeling approaches are
 > underlying the model’s design?
+
+To achieve realistic outcomes comparable, at least in part, to real human
+history, the model presented here is not the most simple abstract model
+including these components, but attempts to represent these submodels
+realistically in as far as existing data and boundaries on model complexity
+permit.
 
 According to its purpose of providing a model for language dispersal and split,
 our model draws on existing publications looking at cultures changing in time
@@ -484,25 +500,19 @@ cooperation happens in patches, unconditionally between all individuals of
 compatible culture in that patch. Our maximum range of interactions is about
 20km due to the size of our patches.
 
-This interaction between cooperation and culture is the main addition to an
-otherwise *demographic dispersal model*. Population dynamics and migratory
-patterns are to a large extent driven by the local geographical conditions.
-Difficult terrain impedes movement according to the imposed graph structure,
-which has edges with a higher cost where cross-terrain movement is more
-difficult, and marginal environments are less attractive to migrating agents and
-depleted quicker.
+This interaction between cooperation/competition and culture is the main
+addition to an otherwise *demographic dispersal model*. Population dynamics and
+migratory patterns are to a large extent driven by the local geographical
+conditions. Difficult terrain impedes movement according to the imposed graph
+structure, which has edges with a higher cost where cross-terrain movement is
+more difficult, and marginal environments are less attractive to migrating
+agents and depleted quicker.
 
 A major necessary feature of the dispersal component for the culture component
 is to allow *group fission and fusion*, to allow culture splits to emerge from
 low-level agent interactions, but to also drive incentives for agents to
 congregate, cooperate, and assimilate their cultures. As such, the model draws
-heavily on the agent-based model by crema2014simulation, crema2015modeling, with
-minor variants.
-
-FIXME: Given that statement, I should really construct an implementation of
-Crema's model compatible with my setup, where the differences are explicitly
-visible as model parameters that I use differently from them. My patch topology
-is different, what else?
+heavily on the agent-based model by [@crema2014simulation; @crema2015modeling].
 
  */
 
@@ -543,7 +553,7 @@ cultures from unconstrained evolutionary drift.
 mod basic_principles {}
 
 /**
-## 4.2 Emergence
+### 4.2 Emergence
 
 > What key results or outputs of the model are modeled as emerging from the
 > adaptive traits, or behaviors, of individuals? In other words, what model
@@ -596,7 +606,7 @@ determined by the linguistic distance between them.
 }
 
 /**
-## 4.3 Adaptation
+### 4.3 Adaptation
 
  */
 mod adaptation {
@@ -634,7 +644,7 @@ through sharing instead benefit other families of the same culture.
             |(destination_id, travel_cost)|
             (destination_id,
              objectives::destination_quality(
-                 destination_id, family, storage, population.get(&destination_id).as_deref().unwrap_or(&0), patches.get(destination_id).as_deref().unwrap(), p), travel_cost)
+                 destination_id, family, storage, *population.get(&destination_id).as_deref().unwrap_or(&0), patches.get(destination_id).as_deref().unwrap(), p), travel_cost)
         );
         best_location(destination_expectation, family.location)
     }
@@ -664,9 +674,8 @@ expected quality by a factor uniformly distributed between 0 and 1.
         );
         let mut m = max_gain - t_cost;
 
-        let mut rng = rand::thread_rng();
         for (location, gain, l_cost) in kd {
-            let g = gain * rng.gen_range(0.0..1.0) - *l_cost;
+            let g = gain * stochasticity::resource_uncertainty() - *l_cost;
             if g > m {
                 target = location;
                 max_gain = max_gain.max(gain);
@@ -694,7 +703,7 @@ otherwise. This submodel is described in [7.X: Environmental adaptation].
 
 
 /**
-## 4.4 Objectives
+### 4.4 Objectives
 
 > If adaptive traits explicitly act to increase some measure of the individual’s
 > success at meeting some objective, what exactly is that objective and how is
@@ -785,26 +794,26 @@ one in the region.
             FxHashMap<Culture, (usize, OneYearResources)>,
             std::hash::BuildHasherDefault<FxHasher>,
         >,
-        population: &usize,
+        population: usize,
         patch: &Patch,
         p: &Parameters,
     ) -> OneYearResources
     {
-        let pop_at_destination = population + (if family.location != *i {family.effective_size} else {0});
+        let pop_at_destination = population + (if family.location == *i {0} else {family.effective_size});
 
         let (friends, stored_by_friendlies_except_me) = from_friends(i, family, storage, p);
 
         let mut quality =  stored_by_friendlies_except_me / friends as f64 +expected_harvest(family, patch, p) / pop_at_destination as f64;
 
         if pop_at_destination > 2 * friends {
-            quality = quality * (p.enemy_discount).powi((pop_at_destination - 2 * friends) as i32 + 1);
+            quality = quality * (p.enemy_discount).powi((pop_at_destination - 2 * friends) as i32);
         }
 
         quality
     }
 }
 /**
-## 4.5 Learning
+### 4.5 Learning
 
 > Many individuals or agents (but also organizations and institutions) change
 > their adaptive traits over time as a consequence of their experience? If so,
@@ -815,7 +824,7 @@ one in the region.
 mod learning {}
 
 /**
-## 4.6 Prediction
+### 4.6 Prediction
 
 > Prediction is fundamental to successful decision-making; if an agent’s
 > adaptive traits or learning procedures are based on estimating future
@@ -842,7 +851,7 @@ split, or other effects to themselves or others in future time steps.
 mod prediction {}
 
 /**
-## 4.7 Sensing
+### 4.7 Sensing
 
 > What internal and environmental state variables are individuals assumed to
 > sense and consider in their decisions? What state variables of which other
@@ -857,7 +866,7 @@ mod prediction {}
  */
 
 mod sensing {
-    use crate::*;
+    use crate::{NodeId, OneYearResources, Parameters, SECONDS_PER_YEAR, movementgraph};
 /**
 Individuals know about nearby locations. The exploration of those locations is
 not explicitly modelled.
@@ -888,7 +897,7 @@ not explicitly modelled.
             .collect()
     }
 /**
-### Technical details on the maximum sensing distance
+#### Technical details on the maximum sensing distance
 
 There is a maximum range on sensing: [@kelly2013, Table 4.1] (reproduced in the
 supplementary material) lists mobility data for 70 hunter-gatherer groups,
@@ -909,12 +918,12 @@ correspond do about 68899 s or 19 hours. We therefore give individuals a maximum
 this range from their current patch, but not about patches further away.
 
  */
-    const MAX_SEASON_RANGE: f64 = 320. / 6. * 1000. / 0.7740708353271509;
+    const MAX_SEASON_RANGE: f64 = 320. / 6. * 1000. / 0.774_070_835_327_150_9;
 
 }
 
 /**
-## 4.8 Interaction
+### 4.8 Interaction
 
 > What kinds of interactions among agents are assumed? Are there direct
 > interactions in which individuals encounter and affect others, or are
@@ -922,60 +931,152 @@ this range from their current patch, but not about patches further away.
 > the interactions involve communication, how are such communications
 > represented? [@grimm2010odd]
 
+ */
+pub mod interaction {
+    use crate::{Band, Family, OneYearResources, Parameters, stochasticity, emergence};
+/**
 Agents interact in two different contexts.
 
-During the migration phase (part 1 of the step, see [above]), agents avoid locations that contain a large amount of 
-
-for limited resources. There is a maximum of resources that can
-be extracted from a patch, and the extracted resources are distributed among all
-agents in that patch. This distribution is not completely even: Members of a
-bigger group of cooperators competing with a smaller cooperative get an
-over-proportional part of the total extracted, measured by their effective size.
-
+During the migration phase (part 1 of the step, see [above]), agents avoid
+locations where speakers of their language are in the minority, and violently
+clash with speakers of other languages. They are attracted by locations where
+speakers of their language have large resource stockpiles. These interactions
+are described in more detail in [Optimization] and [Adaptation].
 
 */
-mod interaction {
-    /**
+    pub fn encounter_maybe_join<'a>(
+        family: &mut Family,
+        group: &mut Band,
+        p: &Parameters,
+    ) -> bool{
+        let mut join = true;
+        for other_family in &mut group.families {
+            if !emergence::will_cooperate(
+                &family.culture,
+                &other_family.culture,
+                p.cooperation_threshold
+            ) {
+                join = false;
+                let reduction =
+                    std::cmp::min(family.effective_size, other_family.effective_size);
+                if stochasticity::fight_is_deadly(p.fight_deadliness) {
+                    other_family.effective_size -= reduction;
+                    if other_family.effective_size == 0 {
+                        family.stored_resources += other_family.stored_resources;
+                        other_family.stored_resources = OneYearResources::default();
+                    }
+                }
+                if stochasticity::fight_is_deadly(p.fight_deadliness) {
+                    family.effective_size -= reduction;
+                    if family.effective_size == 0 {
+                        group.total_stored += family.stored_resources;
+                        family.stored_resources = OneYearResources::default();
+                    }
+                }
+            }
+        }
+        join
+    }
+/**
 
-    A single human can forage a certain amount, but by the assumptions of the model,
-        two cooperating foragers gain more resources together than they would
-        individually. The effective labor returned by this function is the factor by
-        which 2 cooperating foragers are better than 2 separate foragers.
+In the resource extraction phase (part 2 of the step, see [above]), agents
+compete for limited resources. There is a maximum of resources that can be
+extracted from a patch, and the extracted resources are distributed among all
+agents in that patch. This distribution is not proportional to the effective
+population size: Members of a bigger group of cooperators competing with a
+smaller band get an over-proportional part of the total extracted.
 
-    This formula follows Crema (2014), with the caveat that Crema computes payoffs,
-        whereas we compute a multiplicative factor (effective labor) which is multiplied
-        with the standard resource gain to give the acutal resource payoffs. Given that
-        Crema's payoffs have a mean of μ=10, we adjust our effective labor by the
-        opposite factor.
-
-    TODO: I actually dislike this weakly motivated k → k + m k ^ (α + 1) quite a
-        bit, so it would be nice to take a different formula, and to cross-check how
-        Crema's results change for that different formula.
-
-     */
-    #[allow(dead_code)]
-    pub fn x() {}
+*/
+    pub fn group_size_effect(raw_group_size: f64) -> f64 {
+        raw_group_size.powi(2)
+    }
 }
 /**
 
 */
 
 /**
-## 4.9 Stochasticity
+### 4.9 Stochasticity
 
 > What processes are modeled by assuming they are random or partly random? Is
 > stochasticity used, for example, to reproduce variability in processes for
 > which it is unimportant to model the actual causes of the variability? Is it
 > used to cause model events or behaviors to occur with a specified frequency?
 
-TODO: Is there a way to get rust to aggregate all functions that use it? Can I
-maybe somehow abuse the trait system to all those locations show up here, with
-comments?
+*/
+pub mod stochasticity{
+    use rand::prelude::*;
+    use bitvec::prelude::*;
+/**
 
- */
+A core random component is the evolution of languages. Our model abstracts away
+from the complexity of real-life language evolution and implements only a
+minimal evolutionary model capable of inheritance and drift. As such, mutations
+happen with a constant rate
+
+*/
+    pub fn time_till_next_mutation(culture_mutation_rate: f64) -> u32 {
+        random::<f64>().log(1. - culture_mutation_rate) as u32
+    }
+/**
+to random features in ‘linguistic genome’, which is just represented as a binary vector.
+
+*/
+    pub fn change_random_bitvec_component(bv: &mut BitVec) {
+        let i = rand::thread_rng().gen_range(0.. bv.len());
+        let mut flip = bitvec![1; 1];
+        flip.shift_left(i);
+        *bv ^= flip;
+    }
+/**
+The linguistic assimilation, where families adopt linguistic features of other
+families they have cooperated with, also relies on stochasticity to choose one
+pivotal family whose linguistic features serve as representative for the whole
+group.
+
+*/
+    pub fn select_pivot_family<'a, F>(families: &'a Vec<F>) -> &'a F {
+        let index = rand::thread_rng().gen_range(0..families.len());
+        return families.get(index).unwrap()
+    }
 
 /**
-## 4.10 Collectives
+The other applications of stochasticity serve in the migration process to
+introduce variability compatible with the real world, without having to model
+the underlying causes, of
+
+ - ecological variability, where the availability of resources each season is not deterministic,
+
+   */
+    pub fn recover_resources_proportion() -> f64 {
+        2. * rand::thread_rng().gen_range(0.0..1.0)
+    }
+/**
+ - uncertainty in perception when trying to discern whether a potential destination is valuable or not,
+
+*/
+    pub fn resource_uncertainty() -> f64 {
+        rand::thread_rng().gen_range(0.0..1.0)
+    }
+/**
+ - warfare strategies and the deadliness of ambushes, and
+
+*/
+    pub fn fight_is_deadly(fight_deadliness: u32) -> bool {
+        rand::thread_rng().next_u32() < fight_deadliness
+    }
+/**
+ - who arrives earlier or later at a given migration destination.
+
+*/
+    pub fn shuffle<P>(families: &mut Vec<P>) {
+        families.shuffle(&mut rand::thread_rng());
+    }
+}
+
+
+/**
+### 4.10 Collectives
 
 > Do the individuals form or belong to aggregations that affect, and are
 > affected by, the individuals? How are collectives represented? Is a particular
@@ -983,80 +1084,73 @@ comments?
 > that assembles as a result of individual behaviors, or is the collective
 > simply a definition by the modeler, such as the set of individuals with
 > certain properties, defined as a separate kind of entity with its own state
-> variables and traits?
+> variables and traits? [@grimm2010odd]
 
  */
 pub mod collectives {
-    use crate::*;
+    use crate::{Band, Family, OneYearResources, Parameters, stochasticity, interaction};
 
+/**
+Individual families with compatible languages form ‘bands’ when they are in the
+same patch of land. Families are assigned band membership in random order,
+joining the first band that they encounter which consists only of families with
+a compatible language. As such, membership in bands has a stochastic component:
+
+With a threshold of 1 and families with languages 00, 01, and 10, there are two
+equally-likely compositons of bands. 01 and 10 are not compatible, because thee
+languages differ in 2 features, and a family with language 00 will join
+whichever of these two groups they encounter first.
+
+All other properties of a band are derived from the properties of its members,
+but not always in a linear fashion (see eg. [Interaction]). Bands do not persist
+beyond a single time step, they are aggregated after each migration step before
+the resource extraction step to serve as a bookkeeping unit for resource
+extraction and cultural change.
+
+*/
     pub fn cooperate_or_fight<'a>(
         mut families_in_this_location: Vec<&'a mut Family>,
         p: &Parameters,
     ) -> Vec<Band<'a>> {
-        let mut rng = rand::thread_rng();
-        let mut groups: Vec<Band<'a>> = vec![];
+        stochasticity::shuffle(&mut families_in_this_location);
+
+        let mut bands: Vec<Band<'a>> = vec![];
 
         for family in families_in_this_location.drain(..) {
-            let mut joined_group: Option<&mut Band<'a>> = None;
-            for group in groups.iter_mut() {
-                let mut join = true;
-                for other_family in group.families.iter_mut() {
-                    if !emergence::will_cooperate(
-                        &family.culture,
-                        &other_family.culture,
-                        p.cooperation_threshold,
-                    ) {
-                        join = false;
-                        let reduction =
-                            std::cmp::min(family.effective_size, other_family.effective_size);
-                        if rng.next_u32() < p.fight_deadliness {
-                            other_family.effective_size -= reduction;
-                            if other_family.effective_size == 0 {
-                                family.stored_resources += other_family.stored_resources;
-                                other_family.stored_resources = OneYearResources::default();
-                            }
-                        }
-                        if rng.next_u32() < p.fight_deadliness {
-                            family.effective_size -= reduction;
-                            if family.effective_size == 0 {
-                                group.total_stored += family.stored_resources;
-                                family.stored_resources = OneYearResources::default();
-                            }
-                        }
-                    }
-                }
-                if join {
-                    joined_group = Some(group);
+            let mut joined_band: Option<&mut Band<'a>> = None;
+            for band in &mut bands {
+                if interaction::encounter_maybe_join(family, band, p) {
+                    joined_band = Some(band);
                     break;
                 }
             }
-            match joined_group {
+            match joined_band {
                 None => {
-                    groups.push(Band {
+                    bands.push(Band {
                         culture: family.culture.clone(),
                         families: vec![family],
                         total_stored: OneYearResources::default(),
                     });
                 }
-                Some(group) => {
-                    if rng.gen_range(0..group.families.len()) == 0 {
-                        group.culture = family.culture.clone()
-                    }
-                    group.families.push(family);
+                Some(band) => {
+                    band.families.push(family);
                 }
             }
         }
-        groups
+        bands
             .drain(..)
-            .filter_map(|mut group| {
-                let mut groupsize = 0;
-                for family in group.families.iter_mut() {
-                    group.total_stored += family.stored_resources;
+            .filter_map(|mut band| {
+                let pivot_family = stochasticity::select_pivot_family(&band.families);
+                band.culture = pivot_family.culture.clone();
+
+                let mut bandsize = 0;
+                for family in &mut band.families {
+                    band.total_stored += family.stored_resources;
                     family.stored_resources = OneYearResources::default();
-                    groupsize += family.effective_size;
+                    bandsize += family.effective_size;
                 }
-                if groupsize > 0 {
-                    Some(group)
+                if bandsize > 0 {
+                    Some(band)
                 } else {
                     None
                 }
@@ -1064,23 +1158,25 @@ pub mod collectives {
             .collect()
     }
 }
-
-/*
-# 4.11 Observation
+/**
+### 4.11 Observation
 
 > What data are collected from the ABM for testing, understanding, and analyzing
 > it, and how and when are they collected? Are all output data freely used, or
 > are only certain data sampled and used, to imitate what can be observed in an
-> empirical study (‘virtual ecologist’)?
+> empirical study (‘virtual ecologist’)? [@grimm2010odd]
 
- */
+*/
 pub mod observation {
-    use crate::*;
-    /**
-    Do get an overview over the flow of human migration captured by the model,
-    we collect the population count, i.e. the sum of all families' effective
-    sizes, for each spot in each time step.
-    */
+    use crate::{Culture, Deserialize, FxHashMap, IntoParallelRefIterator, NodeId, ParallelIterator, Parameters, Seasons, Serialize};
+
+/**
+In order to get an overview over the flow of human migration captured by the
+model and the shape of the language areas, we periodically collect the
+linguistic landscape, i.e. for each language its total population (the sum of
+all families' effective sizes), for each spot.
+
+*/
     pub fn print_population_by_location(
         cultures_by_location: &FxHashMap<NodeId, FxHashMap<Culture, usize>>,
         p: &Parameters,
@@ -1097,37 +1193,42 @@ pub mod observation {
         );
     }
 
+/**
+Observation parameters govern the logging (and state storing, for inspection and
+resuming) period, in time steps, of the model.
+
+*/
     #[derive(Debug, Serialize, Deserialize, Clone)]
-    pub struct ObservationSettings {
+    pub struct Settings {
         pub log_every: Seasons,
-        pub store_every: Seasons,
         pub log_patch_resources: Seasons,
+        pub store_every: Seasons,
         pub statefile: String,
     }
+
 }
 
 /**
-5. Initialization
+## 5. Initialization
 
 > What is the initial state of the model world, i.e., at time $t = 0$ of a
-> simulation run?
+> simulation run? [@grimm2010odd]
 
 > In detail, how many entities of what type are there initially, and what are
 > the exact values of their state variables (or how were they set
-> stochastically)?
+> stochastically)? [@grimm2010odd]
 
-> Is initialization always the same, or is it allowed to vary among simulations?
+> Is initialization always the same, or is it allowed to vary among simulations? [@grimm2010odd]
 
 > Are the initial values chosen arbitrarily or based on data? References to
-> those data should be provided.
+> those data should be provided. [@grimm2010odd]
 
 */
-
-fn very_coarse_dist(x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
+pub fn very_coarse_dist(x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
     (x1 - x2).abs() + (y1 - y2).abs()
 }
 
-pub fn initialization(p: Parameters, scale: f64) -> Option<State> {
+pub fn initialization(p: Parameters, scale: f64) -> State {
     let graph = &p.dispersal_graph;
 
     let mut m_start1: Option<NodeId> = None;
@@ -1215,13 +1316,9 @@ pub fn initialization(p: Parameters, scale: f64) -> Option<State> {
         }
     }
 
-    Some(State {
+    State {
         patches: patches
-            .drain()
-            .filter_map(|(i, p)| match p {
-                None => None,
-                Some(q) => Some((i, q)),
-            })
+            .drain().filter_map(|(i, p)| p.map(|q| (i, q)))
             .collect(),
         families: vec![
             Family {
@@ -1257,40 +1354,113 @@ pub fn initialization(p: Parameters, scale: f64) -> Option<State> {
         ],
         t: 0,
         p: p,
-    })
+    }
 }
 
 /**
-# 6. Input Data
+## 6. Input Data
 
 > Does the model use input from external sources such as data files or other
-> models to represent processes that change over time?
+> models to represent processes that change over time? [@grimm2010odd]
 
- */
-mod input {
-    // None at the moment. It might come, though, when we use paleoclimate data.
-}
+The model currently takes no external data sources into account. As such, it
+cannot represent the paleogeographical change in climate, ecology, and geography
+(eg. coast lines) that would be necessary to generate a realistic picture of
+human migration into the Americas.
+
+*/
+mod input {}
 
 /**
-# 7. Submodels
+## 7. Submodels
 
 > What, in detail, are the submodels that represent the processes listed in
 > ‘Process overview and scheduling’? What are the model parameters, their
 > dimensions, and reference values? How were submodels designed or chosen, and
-> how were they parameterized and then tested?
+> how were they parameterized and then tested? [@grimm2010odd]
 
 */
 pub mod submodels {
+/**
+### 7.1 Culture
+
+In order to display evolutionary dynamics, a complex system must at its minimum have
+properties that can be passed on from ancestors to descendants, which undergo variation
+throughout time. For evolution in the classical non-neutral sense, it is furthermore nec-
+essary for the properties to be adaptive, i. e. have an influence on survival and number
+of descendants. The discussion to what extent culture in general is adaptive vs. largely
+neutral is ongoing (). There certainly are cultural domains that show adaptation and have
+effects on survivability, such as climate-appropriate clothing and shelter () or methods of
+subsistence from gathering to agriculture ().
+
+Of these, agriculture is explicitly outside the scope of the current model, because it
+introduces a feedback loop between culture and carrying capacity which would mask other
+effects. A vast part of the history of humanity went about without agriculture (). But once
+it arose, around 5000 to 10000 years ago independently in different parts of the world (), it
+presumably became a major driver of cultural spreads (farming/language dispersal hypothesis)
+and as such it will be useful to add such effects to a later iteration of this model.
+Certain cultural traits are obviously important for migration processes. Due to lack
+of comparable data on such processes on the family level, we will take an ecology-driven
+probability density to govern knowledge of neighboring patches, and assume this captures
+the direct interactions between the cultural process and the demographic process. We
+describe the motivation of this approximation below in [].
+
+Beyond traits directly interacting with the ecological niche of a society, there
+is significant literature on the interaction of some very specific cultural
+traits (eg. Rusch (2014) on altruism and inter-group conflict, Watts et al.
+(2016) on stratified societies and human sacrifice), but very few models that
+consider specific meaniningful cultural traits in agent-based, broad, and
+geographically expansive models. The closest to our goals here may be Hofstede
+et al. (2012). They locate their agents on Hofstede (2001)’s cultural dimensions
+(which are themselves not beyond harsh criticism (McSweeney 2002, Baskerville
+2003)) in order to model negotiations between agents of different cultural
+backgrounds.
+
+Diverging hypotheses notwithstanding (tone-humidity, elevation-ejectives,
+etc), it seems that a vast number of cultural traits are not directly involved
+in niche adaptation. This does not mean individual traits do not exhibit
+non-neutral evolutionary dynamics, as shown eg. by Kandler & Shennan (2013). But
+a neutral model for cultural change appears appropriate nonetheless.
+
+> FIXME: Kandler and others have also argued that mixing a large amount of
+> non-neutral evolutionary processes is not well approximated by generally
+> neutral evolution, so this needs a slightly stronger case.
+
+Neutral abstract models for culture have in the past been considered for various
+purposes (Komarova et al. 2001). In such models, culture tends to be modeled as a binary
+vector (Fogarty et al. 2017, Pascual et al. 2020). The number of dimension M of this culture
+vector range between M = 6 (Pascual et al. 2020) and M = 10 (del Castillo et al. 2013),
+with empirical reasons cited for ??? [@?] and theoretical reasons for ??? [@?] or M > N for the (effec-
+tive) population size N (Fogarty et al. 2017). Vectors are compared using the Hamming
+distance (after, measuring the number of mismatches between the two vectors) in most
+cases (Fogarty et al. 2017, Pascual et al. 2020).
+
+Other options exist. For instance, [@Barceló et al. (2014); @Barceló et al.
+(2015)] use integer vectors with values between 1 and 6 reflecting importance,
+and ‘a multidimensional weighted Euclidean distance based on the extension of
+the cosine similarity measure for vectors’ (2014), with weights that ‘roughly
+imitate[] the results of a factorial analysis of individual beliefs’ (2014). It
+has not been shown that this approach to modeling culture improves realism or
+interpretability, so we take a neutral evolution model with binary vectors and
+an unweighted Hamming distance.
+
+*/
     pub mod culture {
         use crate::Culture;
-        use rand::prelude::*;
-        use bitvec::prelude::bitvec;
+        use crate::stochasticity;
 
+        /** Compute the Hamming distance between two culture vectors */
         pub fn distance(c1: &Culture, c2: &Culture) -> usize {
             (c1.binary_representation.clone() ^ c2.binary_representation.clone()).count_ones()
         }
 
-        pub fn mutate_culture(
+        /** At a given low rate, mutate a random feature of a language.
+
+        FIXME: Conceptually, it would make sense to store the
+        seasons_till_next_mutation inside the Culture struct, but then we need
+        to be careful to not copy it when we clone those objects.
+         */
+        pub fn mutate(
             family_seasons_till_next_mutation: &mut Option<u32>,
             family_culture: &mut Culture,
             target_culture: &Culture,
@@ -1300,9 +1470,8 @@ pub mod submodels {
             *family_culture = target_culture.clone();
             match family_seasons_till_next_mutation {
                 None => {
-                    *family_seasons_till_next_mutation =
-                        Some(random::<f64>().log(1. - culture_mutation_rate) as u32);
-                    mutate_culture(
+                    *family_seasons_till_next_mutation = Some(stochasticity::time_till_next_mutation(culture_mutation_rate));
+                    mutate(
                         family_seasons_till_next_mutation,
                         family_culture,
                         target_culture,
@@ -1311,12 +1480,8 @@ pub mod submodels {
                     );
                 }
                 Some(0) => {
-                    let i = rand::thread_rng().gen_range(0..culture_dimensionality);
-                    let mut flip = bitvec![1; 1];
-                    flip.shift_left(i);
-                    family_culture.binary_representation ^= flip;
-                    *family_seasons_till_next_mutation =
-                        Some(random::<f64>().log(1. - culture_mutation_rate) as u32);
+                    stochasticity::change_random_bitvec_component(&mut family_culture.binary_representation);
+                    *family_seasons_till_next_mutation = Some(stochasticity::time_till_next_mutation(culture_mutation_rate));
                 }
                 Some(k) => {
                     *family_seasons_till_next_mutation = Some(*k - 1);
@@ -1422,26 +1587,25 @@ pub mod submodels {
             }
         }
 
+/**
+According to [@goodman1985menarche], the spacing of births where infant survives
+until birth of next sibling is $2.85±1.35$. It has been hypothesized [@?] that
+the interval may be lower in populations at the pop cap, so we take μ-σ.
+According to [@volk2013infant], the mean child mortality rate
+(cumulative probability of dying prior to approximate sexual maturity at age 15)
+of modern hunter-gatherers is 48.8%, so the mean interval of new adults is the
+mean interval of children, divided by one minus that rate.
+
+*/
+        const YEARS_BETWEEN_ADULTS: f64 = (2.85-1.35) / (1.-0.488);
+
         pub fn maybe_grow(family: &mut Family, season_length_in_years: f64) {
-            // print!("Growing {:} in {:}: size {:} ", family.descendence, family.seasons_till_next_adult, family.effective_size);
             if family.seasons_till_next_adult == 0 {
                 family.effective_size += 1;
-                // According to @goodman1985menarche, the spacing of births
-                // where infant survives until birth of next sibling is
-                // $2.85±1.35$. It has been hypothesized [@?] that the interval
-                // may be lower in populations at the pop cap, so me take μ-σ.
-                // According to @volk2013infant, the mean child mortality rate
-                // (cumulativeprobability of dying prior to approximate sexual
-                // maturity at age 15) of modern hunter-gatherers is 48.8%, so
-                // the mean interval of new adults is the mean interval of
-                // children, divided by one minus that rate.
-                //
-                // 2.9296875 == (2.85-1.35) / (1.-0.488)
-                family.seasons_till_next_adult = (2.929_687_5 / season_length_in_years) as u32;
+                family.seasons_till_next_adult = (YEARS_BETWEEN_ADULTS / season_length_in_years) as u32;
             } else {
                 family.seasons_till_next_adult -= 1;
             }
-            // println!("becomes {:} ({:})", family.effective_size, family.seasons_till_next_adult);
         }
 
         // Find at least a proxy for children using resources, or model children explicitly
@@ -1467,14 +1631,16 @@ pub mod submodels {
     }
 
     pub mod ecology {
-        use crate::{OneYearResources, Parameters};
+        use crate::{OneYearResources, Parameters, interaction, stochasticity};
 
+/**
+
+This function models how much a family contributes to the group effort of
+harvesting a particular ecoregion. The family's contribution is given by its
+size, weighted with how well they know the ecoregion.
+
+*/
         /**
-
-        This function models how much a family contributes to the group effort of
-        harvesting a particular ecoregion. The family's contribution is given by its
-        size, weighted with how well they know the ecoregion.
-
         As a side effect, because this function is the one that knows about the family's
         size, it also adds that size to a counter. This counter is used for the
         per-culture census. (The caller knows the culture of the family.)
@@ -1503,8 +1669,8 @@ pub mod submodels {
         }
 
         pub fn adjust_culture(group: &mut crate::Band, p: &Parameters) {
-            for family in group.families.iter_mut() {
-                crate::submodels::culture::mutate_culture(
+            for family in &mut group.families {
+                crate::submodels::culture::mutate(
                     &mut family.seasons_till_next_mutation,
                     &mut family.culture,
                     &group.culture,
@@ -1532,7 +1698,7 @@ pub mod submodels {
         where
             P: core::ops::DerefMut<Target = crate::Patch>,
         {
-            for mut group in groups.iter_mut() {
+            for mut group in &mut groups {
                 let mut sum_effort = 0.0;
                 let group_storage = group.total_stored;
                 let mut contributions: Vec<_> = group_contribution(
@@ -1541,12 +1707,12 @@ pub mod submodels {
                     &mut sum_effort,
                 );
 
-                for (storage, contribution) in contributions.iter_mut() {
+                for (storage, contribution) in &mut contributions {
                     **storage = group_storage * *contribution / sum_effort;
                 }
             }
 
-            for (ecoregion, (res, max_res)) in patch.resources.iter_mut() {
+            for (ecoregion, (res, max_res)) in &mut patch.resources {
                 let mut total_squared_groups_effort = 1.0;
                 let mut work = groups
                     .iter_mut()
@@ -1554,7 +1720,7 @@ pub mod submodels {
                         let mut sum_effort = 0.0;
                         let contributions: Vec<_> =
                             group_contribution(group, *ecoregion, &mut sum_effort);
-                        total_squared_groups_effort += sum_effort.powi(2);
+                        total_squared_groups_effort += interaction::group_size_effect(sum_effort);
                         (sum_effort, contributions)
                     })
                     .collect::<Vec<(f64, Vec<(&mut OneYearResources, f64)>)>>();
@@ -1564,7 +1730,7 @@ pub mod submodels {
                         assert!(group_effort > 0.);
                         // println!("group effort: {:?}", group_effort);
                         let group_harvest = std::cmp::min(
-                            *res * group_effort.powi(2) / total_squared_groups_effort,
+                            *res * interaction::group_size_effect(group_effort) / total_squared_groups_effort,
                             p.maximum_resources_one_adult_can_harvest
                                 * p.season_length_in_years
                                 * group_effort,
@@ -1577,7 +1743,7 @@ pub mod submodels {
                         );
                         assert!(coefficient > OneYearResources::from(0.));
                         // println!("coefficient: {:?}", coefficient);
-                        for (storage, contribution) in contributions.iter_mut() {
+                        for (storage, contribution) in &mut contributions {
                             **storage += coefficient * p.season_length_in_years * *contribution;
                         }
                         let effort = coefficient * group_effort;
@@ -1615,20 +1781,17 @@ pub mod submodels {
         ```
 
          */
-        use rand::Rng;
         pub fn recover(
             patch_resources: &mut OneYearResources,
             patch_max_resources: OneYearResources,
             resource_recovery_per_season: f64,
         ) {
             if *patch_resources < patch_max_resources {
-                let mut rng = rand::thread_rng();
                 *patch_resources = std::cmp::min(
                     patch_max_resources,
                     patch_max_resources
                         * resource_recovery_per_season
-                        * 2.
-                        * rng.gen_range(0.0..1.0)
+                        * stochasticity::recover_resources_proportion()
                         + *patch_resources,
                 )
             }
@@ -1705,7 +1868,7 @@ pub fn store_state(state: State, statefile: String) -> Result<(), String> {
     }
 }
 
-pub fn run(mut s: State, max_t: Seasons, o: &observation::ObservationSettings) {
+pub fn run(mut s: State, max_t: Seasons, o: &observation::Settings) {
     let mut stored_resources: DashMap<_, _, std::hash::BuildHasherDefault<FxHasher>> =
         DashMap::default();
     let mut cache: DashMap<_, _, std::hash::BuildHasherDefault<FxHasher>> = DashMap::default();

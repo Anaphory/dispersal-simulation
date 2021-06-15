@@ -50,24 +50,24 @@ indicators = {
     "Cuba_persistence",
 }
 
-data["bad"] = (
-    (data["Florida_cultures"] < 2) * 1
-    + (data["Florida_cultures"] > 20) * 1
-    + (data["Florida_cultures"] > 50) * 1
-    + (data["Florida_cultures"] > 100) * 1
-    + (data["Tierra del Fuego (Isla Grande)_cultures"] < 2) * 1
-    + (data["Tierra del Fuego (Isla Grande)_cultures"] > 20) * 1
-    + (data["Haida Nation islands_cultures"] > 2) * 1
-    + (data["Haida Nation islands_cultures"] > 10) * 1
-    + (data["Amazonas_arrival"] < 400) * 1
-    + (data["Amazonas_arrival"] < 600) * 1
-    + (data["Haida Nation islands_relative"] < 0.25) * 1
-    + (data["Alaska_relative"] < 0.1) * 1
-    + (data["Baja California Sur_relative"] < 0.3) * 1
-    + (data["California_relative"] < 0.6) * 1
-    + (data["Amazonas_relative"] < 0.6) * 1
-    + (data["Louisiana_persistence"] < 120) * 1
-    + (data["Cuba_persistence"] < 120) * 1
+data["good"] = (
+    (data["Florida_cultures"] >= 2) * 1
+    + (data["Florida_cultures"] <= 20) * 1
+    + (data["Florida_cultures"] <= 50) * 1
+    + (data["Florida_cultures"] <= 100) * 1
+    + (data["Tierra del Fuego (Isla Grande)_cultures"] >= 2) * 1
+    + (data["Tierra del Fuego (Isla Grande)_cultures"] <= 20) * 1
+    + (data["Haida Nation islands_cultures"] <= 2) * 1
+    + (data["Haida Nation islands_cultures"] <= 10) * 1
+    + (data["Amazonas_arrival"] >= 400) * 1
+    + (data["Amazonas_arrival"] >= 600) * 1
+    + (data["Haida Nation islands_relative"] >= 0.25) * 1
+    + (data["Alaska_relative"] >= 0.1) * 1
+    + (data["Baja California Sur_relative"] >= 0.3) * 1
+    + (data["California_relative"] >= 0.6) * 1
+    + (data["Amazonas_relative"] >= 0.6) * 1
+    + (data["Louisiana_persistence"] >= 120) * 1
+    + (data["Cuba_persistence"] >= 120) * 1
 )
 
 
@@ -113,17 +113,17 @@ for indicator in indicators:
         plt.show()
 
 parameter_choices = {}
-for key in predictors:
+for key in all_predictors:
     choices = set()
-    for value, badness in data[[key, "bad"]].groupby(key):
+    for value, goodness in data[[key, "good"]].groupby(key):
         choices.add(value if int(value) != value else int(value))
     print(key)
     print(choices)
     parameter_choices[key] = sorted(choices)
 
 data.sort_values(
-    ["bad", "Baja California Sur_relative"],
-    ascending=[True, False],
+    ["good", "Baja California Sur_relative"],
+    ascending=[False, False],
     na_position="last",
     inplace=True,
 )
@@ -132,28 +132,35 @@ data.to_csv("summary.csv")
 
 neighbor_points = {}
 for r, row in data.iterrows():
-    values = tuple(row[k] for k in predictors)
+    values = tuple(row[k] for k in all_predictors)
     neighbor_points.setdefault(values, [[], [], []])
 for r, row in data.iterrows():
-    values = tuple(row[k] for k in predictors)
+    values = tuple(row[k] for k in all_predictors)
     for comparison in neighbor_points:
         s = (numpy.array(comparison) != numpy.array(values)).sum()
         if s < len(neighbor_points[comparison]):
             neighbor_points[comparison][s].append(r)
 
-
-for central_point in sorted(
+most_data = sorted(
     neighbor_points,
     key=lambda t: len(neighbor_points[t][0])
     + 2 * len(neighbor_points[t][1])
     + len(neighbor_points[t][2]),
     reverse=True,
-):
-    print(central_point, len(neighbor_points[central_point][0]) + 2 * len(neighbor_points[central_point][1]) + len(neighbor_points[central_point][2]), neighbor_points[central_point])
+)
 
+central_points = []
+for central_point in list(neighbor_points)[:3]:
     copies = data.loc[neighbor_points[central_point][0]]
+
+    if copies["good"].mean() <= 13:
+        continue
+    central_points.append(dict(zip(all_predictors, central_point)))
+    print(central_point, copies["good"], neighbor_points[central_point])
+
     deviations = data.loc[neighbor_points[central_point][1]]
     supplement = data.loc[neighbor_points[central_point][2]]
+
 
     if not args.quick:
         x = []
@@ -219,7 +226,7 @@ for central_point in sorted(
 
 
 if not args.quick:
-    min = numpy.infty
+    min = 0
     all_param = [x for x in tqdm(itertools.product(*parameter_choices.values()))]
     numpy.random.shuffle(all_param)
     try:
@@ -227,7 +234,7 @@ if not args.quick:
             parameter_values = dict(zip(parameter_choices, param))
             characteristics = {k: models[k].predict([param])[0] for k in indicators}
 
-            badness = (
+            goodness = (
                 numpy.hstack(
                     (
                         (characteristics["Florida_cultures"] < 2),
@@ -263,8 +270,8 @@ if not args.quick:
                 * 1
             )
 
-            if badness.sum() <= min:
-                if badness.sum() < min:
+            if goodness.sum() >= min:
+                if goodness.sum() > min:
                     central_points = []
                 print(program_call(parameter_values))
                 filter = True
@@ -274,8 +281,8 @@ if not args.quick:
                 if filter.any():
                     print(data[filter])
                 print(characteristics)
-                print(badness)
-                min = badness.sum()
+                print(goodness)
+                min = goodness.sum()
     except KeyboardInterrupt:
         pass
 

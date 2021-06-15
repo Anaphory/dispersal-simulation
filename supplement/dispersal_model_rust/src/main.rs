@@ -1,6 +1,6 @@
 use model::argparse::parse_args;
 use model::movementgraph::MovementGraph;
-use model::*;
+use model::{Seasons, initialization, observation, run};
 use std::fs;
 
 fn main() -> Result<(), String> {
@@ -16,13 +16,13 @@ fn main() -> Result<(), String> {
 
     let mut p = model::submodels::parameters::Parameters {
         dispersal_graph,
-        ..Default::default()
+        ..model::submodels::parameters::Parameters::default()
     };
     let mut max_t: Seasons = 20000;
     let mut scale = 1.0;
     let mut recovery = p.resource_recovery_per_season / p.season_length_in_years;
 
-    let mut o = observation::ObservationSettings {
+    let mut o = observation::Settings {
         log_every: 30, // Every 5 years, by default parameters
         log_patch_resources: 30,
         store_every: 600,
@@ -41,7 +41,7 @@ fn main() -> Result<(), String> {
 
     println!(" {:?}", o);
     println!(" {:?}", p);
-    let s = initialization(p, scale).unwrap();
+    let s = initialization(p, scale);
     println!("Initialized");
 
     run(s, max_t, &o);
