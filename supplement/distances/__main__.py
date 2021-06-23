@@ -3,6 +3,7 @@ from heapq import heappush as push, heappop as pop
 
 import numpy
 from tqdm import tqdm
+from sqlalchemy import select
 
 import shapely
 import shapely.geometry as sgeom
@@ -171,7 +172,6 @@ def prep_tile(
     except rasterio.RasterioIOError:
         pass
 
-    print("Computing hex extents…")
     transform = rasterio.Affine(
         m_trafo.a,
         0,
@@ -263,16 +263,15 @@ def all_pairwise_distances(
 
 
 def distances_from_focus(
-        source: t.Tuple[int, int],
-        destinations: t.Optional[t.Set[t.Tuple[int, int]]],
-        distance_by_direction: t.Dict[t.Tuple[int, int], numpy.array],
-        pred: t.Optional
+    source: t.Tuple[int, int],
+    destinations: t.Optional[t.Set[t.Tuple[int, int]]],
+    distance_by_direction: t.Dict[t.Tuple[int, int], numpy.array],
+    pred: t.Optional,
 ) -> numpy.array:
     # Dijkstra's algorithm, adapted for our purposes from
     # networkx/algorithms/shortest_paths/weighted.html
     d = distance_by_direction[0, 1]
-    dist: numpy.array = numpy.full((d.shape[0], d.shape[1] + 1),
-        numpy.nan, dtype=float)
+    dist: numpy.array = numpy.full((d.shape[0], d.shape[1] + 1), numpy.nan, dtype=float)
     seen: t.Dict[t.Tuple[int, int], float] = {source: 0.0}
     c = count()
     # use heapq with (distance, label) tuples
@@ -280,7 +279,7 @@ def distances_from_focus(
     push(fringe, (0, next(c), source))
 
     def moore_neighbors(
-            r0: int, c0: int
+        r0: int, c0: int
     ) -> t.Iterable[t.Tuple[t.Tuple[int, int], float]]:
         for (r, c), d in distance_by_direction.items():
             r1, c1 = r0 + r, c0 + c
@@ -303,15 +302,15 @@ def distances_from_focus(
             vu_dist = dist[spot] + cost
             if numpy.isfinite(dist[u]):
                 if vu_dist < dist[u]:
-                    raise ValueError('Contradictory paths found:',
-                                    'negative weights?')
+                    raise ValueError(
+                        "Contradictory paths found. Do you have negative weights?"
+                    )
             elif u not in seen or vu_dist < seen[u]:
                 seen[u] = vu_dist
                 push(fringe, (vu_dist, next(c), u))
                 if pred is not None:
                     pred[u] = spot
     return dist
-
 
 
 # ================
@@ -325,14 +324,7 @@ def find_land_hexagons():
     return hexagons
 
 
-def core_point(hexbin):
-    lat, lon = h3.h3_to_geo(hexbin)
-    elevation, ecoregions, transform = prep_tile(lon, lat)
-    terrain_coefficient_raster = TC[ecoregions]
-    distance_by_direction = all_pairwise_distances(
-        elevation, transform, terrain_coefficient_raster
-    )
-
+def core_point(hexbin, distance_by_direction, transform):
     def rowcol(latlon):
         lat, lon = latlon
         if lon > 170:
@@ -344,9 +336,9 @@ def core_point(hexbin):
         return int(row), int(col)
 
     points = [rowcol(latlon) for latlon in h3.h3_to_geo_boundary(hexbin)]
-    rmin = min(r for r, c in points)
+    rmin = min(r for r, c in points) - 1
     rmax = max(r for r, c in points) + 1
-    cmin = min(c for r, c in points)
+    cmin = min(c for r, c in points) - 1
     cmax = max(c for r, c in points) + 1
 
     dist = {
@@ -361,21 +353,21 @@ def core_point(hexbin):
         for c in range(cmin, cmax):
             lon, lat = transform * (c, r)
             if h3.geo_to_h3(lat, lon, 5) == hexbin:
-                x, y = transform * (c + 1, r)
+                x, y = transform * (r + 1, c)
                 if h3.geo_to_h3(y, x, 5) != hexbin:
-                    border.append((c, r))
+                    border.append((r - rmin, c - cmin))
                     continue
-                x, y = transform * (c - 1, r)
+                x, y = transform * (r - 1, c)
                 if h3.geo_to_h3(y, x, 5) != hexbin:
-                    border.append((c, r))
+                    border.append((r - rmin, c - cmin))
                     continue
-                x, y = transform * (c, r + 1)
+                x, y = transform * (r, c + 1)
                 if h3.geo_to_h3(y, x, 5) != hexbin:
-                    border.append((c, r))
+                    border.append((r - rmin, c - cmin))
                     continue
-                x, y = transform * (c, r - 1)
+                x, y = transform * (r, c - 1)
                 if h3.geo_to_h3(y, x, 5) != hexbin:
-                    border.append((c, r))
+                    border.append((r - rmin, c - cmin))
                     continue
 
     c = t.Counter()
@@ -388,17 +380,34 @@ def core_point(hexbin):
                 n = pred[n]
                 c[n] += 1
     (r0, c0), centrality = c.most_common(1)[0]
-    center[hexbin] = (r0 + rmin, c0 + cmin)
     lon, lat = transform * (c0 + cmin, r0 + rmin)
     rlat, rlon = h3.h3_to_geo(hexbin)
-    print(f"Centalic node at ({lon}, {lat}). [Actual center at ({rlon}, {rlat}).]")
+    print(f"Core node at ({lon}, {lat}). [Actual center at ({rlon}, {rlat}).]")
     return lon, lat
 
 
 COAST = find_coast_hexagons()
-for hexagon in tqdm(find_land_hexagons()):
+
+hexes_by_tile = sorted(
+    find_land_hexagons(),
+    key=lambda hex: tile_from_geocoordinates(*reversed(h3.h3_to_geo(hex))),
+)
+tile = None
+for hexagon in tqdm(hexes_by_tile):
     hlat, hlon = h3.h3_to_geo(hexagon)
-    lon, lat = core_point(hexagon)
+
+    if tile != tile_from_geocoordinates(hlon, hlat):
+        try:
+            elevation, ecoregions, transform = prep_tile(hlon, hlat)
+        except rasterio.errors.RasterioIOError:
+            continue
+        tile = tile_from_geocoordinates(hlon, hlat)
+        terrain_coefficient_raster = TC[ecoregions]
+        distance_by_direction = all_pairwise_distances(
+            elevation, transform, terrain_coefficient_raster
+        )
+
+    lon, lat = core_point(hexagon, distance_by_direction, transform)
     DATABASE.execute(
         TABLES["nodes"]
         .insert()
@@ -427,6 +436,11 @@ if __name__ == "__main__":
         (BBOX.bounds[0], BBOX.bounds[2], BBOX.bounds[1], BBOX.bounds[3])
     )  # x0, x1, y0, y1
     ax.stock_img()
+    xy = zip(
+        *DATABASE.execute(
+            select(TABLES["nodes"].c.longitude, TABLES["nodes"].c.latitude)
+        ).fetchall()
+    )
     shape_feature = ShapelyFeature(
         LAND, ccrs.PlateCarree(), facecolor="none", edgecolor="blue", lw=1
     )
