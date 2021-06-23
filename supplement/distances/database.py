@@ -30,7 +30,7 @@ def db(
         sqlalchemy.Column("latitude", sqlalchemy.Float),
         sqlalchemy.Column("h3longitude", sqlalchemy.Float),
         sqlalchemy.Column("h3latitude", sqlalchemy.Float),
-        sqlalchemy.Column("has_sea", sqlalchemy.Boolean),
+        sqlalchemy.Column("coastal", sqlalchemy.Boolean),
     )
 
     edges = sqlalchemy.Table(
