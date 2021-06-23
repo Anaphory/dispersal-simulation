@@ -356,6 +356,7 @@ for logfile in args.logfile:
                     for c, n in p.items()
                 ]
             except SyntaxError:
+                print("Could not parse line", line)
                 continue
             if timestamp < args.start:
                 continue

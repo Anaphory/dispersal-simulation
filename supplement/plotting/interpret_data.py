@@ -17,7 +17,7 @@ data["fight_deadliness"] = data["fight_deadliness"] / 2 ** 32
 data.loc[data["end"] == "Died out", "last"] = 100000
 
 times = [t for t in data.columns if t.endswith("arrival")]
-populations = [p for p in data.columns if p.endswith("pop")]
+populations = [p for p in data.columns if p.endswith("relative")]
 for t in times:
     r = t[:-7] + "relative"
     p = t[:-7] + "persistence"

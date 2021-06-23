@@ -35,9 +35,6 @@ fn main() -> Result<(), String> {
     };
     p.resource_recovery_per_season = recovery * p.season_length_in_years;
     println!("# Initialization ...");
-    // FIXME: There is something messed up in lat/long -> image pixels. It works
-    // currently, but the names point out that I misunderstood something, eg.
-    // with the layout of the tiff in memory or similar.
 
     println!(" {:?}", o);
     println!(" {:?}", p);
