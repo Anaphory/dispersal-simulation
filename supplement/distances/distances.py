@@ -32,7 +32,6 @@ from shapely.prepared import prep
 import rasterio
 
 from h3 import h3
-from h3.h3 import H3Index as Index
 
 import networkx
 
