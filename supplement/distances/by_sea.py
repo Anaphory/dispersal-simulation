@@ -12,7 +12,7 @@ from shapely.ops import unary_union
 import cartopy.geodesic as geodesic
 import cartopy.io.shapereader as shpreader
 
-from h3 import h3
+from h3.api import basic_int as h3
 
 from database import db
 
@@ -28,8 +28,8 @@ land_geom = unary_union([
 
 LAND = prep(land_geom)
 
-DEFINITELY_INLAND = prep(land_geom.buffer(-1/60., resolution = 4)) # 1 arc minute – 2 km near the equator.
-BUFFER_NOT_SEA = prep(land_geom.buffer(1/60., resolution = 4))
+DEFINITELY_INLAND = prep(land_geom.buffer(-1/12., resolution = 4)) # 10 arc minutes – ~10 km near the equator.
+BUFFER_NOT_SEA = prep(land_geom.buffer(1/12., resolution = 4))
 
 GEODESIC = geodesic.Geodesic()
 
@@ -47,6 +47,7 @@ if __name__ == "__main__":
     t_hex = tables["hex"]
     t_dist = tables["dist"]
 
+def compute():
     failed = set()
     query = sqlalchemy.select([t_hex.c.hexbin, t_hex.c.vlongitude, t_hex.c.vlatitude])
     if args.start:

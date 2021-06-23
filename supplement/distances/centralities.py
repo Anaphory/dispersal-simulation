@@ -246,6 +246,7 @@ def run_on_one_tile(
                     pass
             elif hexbin not in partial:
                 belongs.setdefault(hexbin, set()).add((row, col))
+
         for hexbin in set(belongs) - incomplete:
             print(f"Checking {hexbin}…")
             points = belongs.pop(hexbin)

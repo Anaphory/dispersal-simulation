@@ -424,7 +424,7 @@ fn distribute_each_patch_resources_step(
         // TODO: Change – remove bridge – when DashMap directly supports parallel iteration
         .into_iter()
         .par_bridge()
-        .map(|(patch_id, mut families)| {
+        .map(|(patch_id, families)| {
             let mut cc = FxHashMap::default();
 
             let mut groups = crate::collectives::cooperate_or_fight(families, p);
@@ -675,6 +675,7 @@ expected quality by a factor uniformly distributed between 0 and 1.
         let mut m = max_gain - t_cost;
 
         for (location, gain, l_cost) in kd {
+            // println!("Location {:?} would provide {:?} but cost {:?} to move to.", location, gain, l_cost);
             let g = gain * stochasticity::resource_uncertainty() - *l_cost;
             if g > m {
                 target = location;
@@ -754,7 +755,7 @@ The amount of resources expected per individual is the sum of
         } else {
             stored_by_friendlies
         };
-        (friends, stored_by_friendlies_except_me)
+        (friends + (if family.location == *i {0} else {family.effective_size}), stored_by_friendlies_except_me)
     }
 /**
  - for each ecoregion in the patch, the resources accessible to the family this
@@ -803,7 +804,7 @@ one in the region.
 
         let (friends, stored_by_friendlies_except_me) = from_friends(i, family, storage, p);
 
-        let mut quality =  stored_by_friendlies_except_me / friends as f64 +expected_harvest(family, patch, p) / pop_at_destination as f64;
+        let mut quality = stored_by_friendlies_except_me / friends as f64 +expected_harvest(family, patch, p) / pop_at_destination as f64;
 
         if pop_at_destination > 2 * friends {
             quality = quality * (p.enemy_discount).powi((pop_at_destination - 2 * friends) as i32);
@@ -1022,11 +1023,12 @@ happen with a constant rate
 to random features in ‘linguistic genome’, which is just represented as a binary vector.
 
 */
-    pub fn change_random_bitvec_component(bv: &mut BitVec) {
+    pub fn change_random_bitvec_component(bv: &mut BitSlice) {
         let i = rand::thread_rng().gen_range(0.. bv.len());
-        let mut flip = bitvec![1; 1];
-        flip.shift_left(i);
-        *bv ^= flip;
+        match bv.get_mut(i) {
+            None => {},
+            Some(mut x) => {*x ^= true}
+        };
     }
 /**
 The linguistic assimilation, where families adopt linguistic features of other
@@ -1519,12 +1521,12 @@ an unweighted Hamming distance.
                     let nearby = nearby_cache
                         .entry(family.location)
                         .or_insert_with(|| sensing::nearby_locations(family.location, p));
-                    // println!("{:?}", nearby);
+                    // println!("{:?}", *nearby);
 
                     let (destination, cost) = adaptation::decide_on_moving(
                         &family, storage, &nearby, patches, p, cc,
                     );
-                    // println!("Family {:} moved to {:}", family.descendence, destination);
+                    // println!("Family {:} moved to {:?}", family.descendence, destination);
                     family.history.push(family.location);
                     if family.history.len() > 14 {
                         family.history =
@@ -1539,6 +1541,7 @@ an unweighted Hamming distance.
                         // should) move immediately when created. This behaviour is
                         // taken from del Castillo (2013).
                         Some(mut descendant) => {
+                            // println!("Family {:} split off family {:}", descendant.descendence, family.descendence);
                             let (destination, cost) = adaptation::decide_on_moving(
                                 &descendant,
                                 storage,
