@@ -193,6 +193,7 @@ def prep_tile(
         m_trafo.e,
         m_trafo.f - 500 * m_trafo.e,
     )
+    print("data loaded")
     return elevation, ecoregions, transform
 
 
@@ -337,11 +338,6 @@ def find_land_hexagons():
         hexagons |= h3.polyfill_geojson(d, 5)
     return hexagons
 
-plotting = False
-if __name__ == "__main__":
-    print("Plotting on")
-    plotting = True
-
 def core_point(hexbin, distance_by_direction, transform):
     def rowcol(latlon):
         lat, lon = latlon
@@ -376,9 +372,6 @@ def core_point(hexbin, distance_by_direction, transform):
             round((c0 + c1) / 2)
         ))
 
-    if plotting:
-        plt.imshow(dist[1, 0].T, extent=(0, cmax-cmin+1, rmax-rmin, 0))
-
     c = t.Counter()
     for r0, c0 in border:
         pred = {(r0, c0): None}
@@ -386,23 +379,11 @@ def core_point(hexbin, distance_by_direction, transform):
         for b1 in border:
             n = b1
             while pred[n]:
-                if plotting:
-                    plt.plot([n[1], pred[n][1]], [n[0], pred[n][0]], c="k")
                 n = pred[n]
                 c[n] += 1
 
     (r0, c0), centrality = c.most_common(1)[0]
     lon, lat = transform * (c0 + cmin, r0 + rmin)
-
-    if plotting:
-        rlat, rlon = h3.h3_to_geo(hexbin)
-        print(f"Core node at ({lon}, {lat}). [Actual center at ({rlon}, {rlat}).]")
-        rs, cs = zip(*border)
-        plt.scatter(cs, rs)
-        plt.scatter(c0, r0)
-        rc, rr = ~transform * (rlon, rlat)
-        plt.scatter(rc - cmin, rr - rmin)
-        plt.show()
 
     return lon, lat
 
