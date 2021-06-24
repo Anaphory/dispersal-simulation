@@ -201,6 +201,7 @@ def all_pairwise_distances(
     transform: rasterio.Affine,
     terrain_coefficients: numpy.array,
 ) -> t.Dict[t.Tuple[int, int], numpy.array]:
+    print("Compute pairwise distances…")
     d_n, d_e, d_ne = [], [], []
     for y in range(1, len(elevation) + 1):
         (lon0, lat0) = transform * (0, y)
@@ -366,27 +367,14 @@ def core_point(hexbin, distance_by_direction, transform):
         for (n, e), d in distance_by_direction.items()
     }
 
-    border = []
-    for r in range(rmin, rmax):
-        for c in range(cmin, cmax):
-            lon, lat = transform * (c, r)
-            if h3.geo_to_h3(lat, lon, 5) == hexbin:
-                x, y = transform * (c + 1, r)
-                if h3.geo_to_h3(y, x, 5) != hexbin:
-                    border.append((r - rmin, c - cmin))
-                    continue
-                x, y = transform * (c - 1, r)
-                if h3.geo_to_h3(y, x, 5) != hexbin:
-                    border.append((r - rmin, c - cmin))
-                    continue
-                x, y = transform * (c, r + 1)
-                if h3.geo_to_h3(y, x, 5) != hexbin:
-                    border.append((r - rmin, c - cmin))
-                    continue
-                x, y = transform * (c, r - 1)
-                if h3.geo_to_h3(y, x, 5) != hexbin:
-                    border.append((r - rmin, c - cmin))
-                    continue
+    border = points[:]
+    for i in range(-1, len(points)-1):
+        r0, c0 = points[i]
+        r1, c1 = points[i + 1]
+        border.append((
+            round((r0 + r1) / 2),
+            round((c0 + c1) / 2)
+        ))
 
     if plotting:
         plt.imshow(dist[1, 0].T, extent=(0, cmax-cmin+1, rmax-rmin, 0))
