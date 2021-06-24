@@ -94,6 +94,9 @@ def find_coast_hexagons():
     return coastal
 
 
+COAST = find_coast_hexagons()
+
+
 # =================
 # Raster operations
 # =================
@@ -332,11 +335,12 @@ def distances_from_focus(
 # Process hexagons
 # ================
 def find_land_hexagons():
-    hexagons = find_coast_hexagons()
+    hexagons = COAST
     for poly in LAND.geoms:
         d = shapely.geometry.mapping(poly)
         hexagons |= h3.polyfill_geojson(d, 5)
     return hexagons
+
 
 def core_point(hexbin, distance_by_direction, transform):
     def rowcol(latlon):
@@ -364,13 +368,10 @@ def core_point(hexbin, distance_by_direction, transform):
     }
 
     border = points[:]
-    for i in range(-1, len(points)-1):
+    for i in range(-1, len(points) - 1):
         r0, c0 = points[i]
         r1, c1 = points[i + 1]
-        border.append((
-            round((r0 + r1) / 2),
-            round((c0 + c1) / 2)
-        ))
+        border.append((round((r0 + r1) / 2), round((c0 + c1) / 2)))
 
     c = t.Counter()
     for r0, c0 in border:
@@ -388,13 +389,72 @@ def core_point(hexbin, distance_by_direction, transform):
     return lon, lat
 
 
-COAST = find_coast_hexagons()
+ALL = find_land_hexagons()
 
 hexes_by_tile = sorted(
-    find_land_hexagons()
-    - {n for n, in DATABASE.execute(select(TABLES["nodes"].c.node_id)).fetchall()},
+    ALL,
     key=lambda hex: hash(tile_from_geocoordinates(*reversed(h3.h3_to_geo(hex)))),
 )
+
+
+def all_core_points():
+    known = {n for n, in DATABASE.execute(select(TABLES["nodes"].c.node_id)).fetchall()}
+
+    tile = None
+    for hexagon in tqdm(hexes_by_tile):
+        if hexagon in known:
+            continue
+
+        hlat, hlon = h3.h3_to_geo(hexagon)
+
+        if tile != tile_from_geocoordinates(hlon, hlat):
+            try:
+                elevation, ecoregions, transform = prep_tile(hlon, hlat)
+            except rasterio.errors.RasterioIOError:
+                continue
+            tile = tile_from_geocoordinates(hlon, hlat)
+            terrain_coefficient_raster = TC[ecoregions]
+            distance_by_direction = all_pairwise_distances(
+                elevation, transform, terrain_coefficient_raster
+            )
+            del elevation, ecoregions, terrain_coefficient_raster
+
+        lon, lat = core_point(hexagon, distance_by_direction, transform)
+        DATABASE.execute(
+            insert(TABLES["nodes"])
+            .values(
+                node_id=hexagon,
+                longitude=lon,
+                latitude=lat,
+                h3longitude=hlon,
+                h3latitude=hlat,
+                coastal=(hexagon in COAST),
+            )
+            .on_conflict_do_nothing()
+        )
+
+all_core_points()
+
+def distances(source, points, distance_by_direction, transform):
+    rmin = min(r for r, c in points) - 1
+    rmax = max(r for r, c in points) + 1
+    cmin = min(c for r, c in points) - 1
+    cmax = max(c for r, c in points) + 1
+    points = [(r - rmin, c - cmin) for r, c in points]
+
+    r0, c0 = source[0] - rmin, source[1] - cmin
+
+    dist = {
+        (n, e): d[
+            rmin - min(n, 0) : rmax - max(0, n), cmin - min(e, 0) : cmax - max(0, e)
+        ]
+        for (n, e), d in distance_by_direction.items()
+    }
+
+    return rmin, cmin, distances_from_focus((r0, c0), points, dist, pred=None)
+
+
+
 tile = None
 for hexagon in tqdm(hexes_by_tile):
     hlat, hlon = h3.h3_to_geo(hexagon)
@@ -409,20 +469,66 @@ for hexagon in tqdm(hexes_by_tile):
         distance_by_direction = all_pairwise_distances(
             elevation, transform, terrain_coefficient_raster
         )
+        voronoi_allocation = numpy.zeros(ecoregions.shape, dtype=numpy.uint64)
+        min_distances = numpy.full(ecoregions.shape, numpy.inf, dtype=numpy.float64)
+        del elevation, ecoregions, terrain_coefficient_raster
 
-    lon, lat = core_point(hexagon, distance_by_direction, transform)
-    DATABASE.execute(
-        insert(TABLES["nodes"])
-        .values(
-            node_id=hexagon,
-            longitude=lon,
-            latitude=lat,
-            h3longitude=hlon,
-            h3latitude=hlat,
-            coastal=(hexagon in COAST),
+    extremities = DATABASE.execute(
+        select(TABLES["nodes"].c.longitude, TABLES["nodes"].c.latitude).where(
+            TABLES["nodes"].c.node_id.in_( h3.k_ring(hexagon, 2))
         )
-        .on_conflict_do_nothing()
+    ).fetchall()
+    if not extremities:
+        continue
+
+    x, y = zip(*extremities)
+    nodes = []
+    rowcol = []
+    for node, lon, lat in DATABASE.execute(
+        select(
+            TABLES["nodes"].c.node_id,
+            TABLES["nodes"].c.longitude,
+            TABLES["nodes"].c.latitude,
+        ).where(
+            min(x) <= TABLES["nodes"].c.longitude,
+            TABLES["nodes"].c.longitude <= max(x),
+            min(y) <= TABLES["nodes"].c.latitude,
+            TABLES["nodes"].c.latitude <= max(y),
+        )
+    ):
+        nodes.append(node)
+        if lon > 170:
+            # FIXME: We can and need to do this because we are working on the
+            # Americas and the Americas only. The generic solution is more
+            # difficult.
+            lon = lon - 360
+        col, row = ~transform * (lon, lat)
+        rowcol.append((int(row), int(col)))
+        if node == hexagon:
+            source = rowcol[-1]
+
+    print(dict(zip(nodes, rowcol)))
+
+    rmin, cmin, array = distances(source, rowcol, distance_by_direction, transform)
+    rows, cols = array.shape
+    voronoi_allocation[rmin : rmin + rows, cmin : cmin + cols][
+        min_distances[rmin : rmin + rows, cmin : cmin + cols] > array
+    ] = hexagon
+    min_distances[rmin : rmin + rows, cmin : cmin + cols] = numpy.minimum(
+        min_distances[rmin : rmin + rows, cmin : cmin + cols], array
     )
+
+    for node, (r, c) in zip(nodes, rowcol):
+        DATABASE.execute(
+            insert(TABLES["edges"])
+            .values(
+                node1=hexagon,
+                node2=node,
+                source="grid",
+                travel_time=array[r - rmin, c -  cmin]
+            )
+            .on_conflict_do_update()
+        )
 
 
 if __name__ == "__main__":
