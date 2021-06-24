@@ -42,8 +42,8 @@ def db(
         sqlalchemy.Column(
             "node2", sqlalchemy.Integer, sqlalchemy.ForeignKey(nodes.c.node_id), primary_key=True
         ),
-        sqlalchemy.Column("travel_time", sqlalchemy.Float),
-        sqlalchemy.Column("flat_distance", sqlalchemy.Float),
+        sqlalchemy.Column("travel_time", sqlalchemy.Float), # in seconds
+        sqlalchemy.Column("flat_distance", sqlalchemy.Float), # in meters
         sqlalchemy.Column("source", sqlalchemy.String, primary_key=True),
     )
 

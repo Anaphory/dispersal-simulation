@@ -4,6 +4,7 @@ from heapq import heappush as push, heappop as pop
 import numpy
 from tqdm import tqdm
 from sqlalchemy import select
+from sqlalchemy.dialects.sqlite import insert
 
 import shapely
 import shapely.geometry as sgeom
@@ -16,6 +17,8 @@ import cartopy.io.shapereader as shpreader
 from raster_data import *
 from database import db
 from ecoregions import TC
+
+from matplotlib import pyplot as plt
 
 # Define some constants
 GEODESIC: geodesic.Geodesic = geodesic.Geodesic()
@@ -30,6 +33,16 @@ ALL_LAND = unary_union(
         ).records()
         if record.attributes.get("featurecla") != "Null island"
     ]
+).difference(
+    unary_union(
+        list(
+            shpreader.Reader(
+                shpreader.natural_earth(
+                    resolution="10m", category="physical", name="lakes"
+                )
+            ).geometries()
+        )
+    )
 )
 LAND = BBOX.intersection(ALL_LAND)
 PLAND = prep(LAND)
@@ -323,6 +336,10 @@ def find_land_hexagons():
         hexagons |= h3.polyfill_geojson(d, 5)
     return hexagons
 
+plotting = False
+if __name__ == "__main__":
+    print("Plotting on")
+    plotting = True
 
 def core_point(hexbin, distance_by_direction, transform):
     def rowcol(latlon):
@@ -340,6 +357,7 @@ def core_point(hexbin, distance_by_direction, transform):
     rmax = max(r for r, c in points) + 1
     cmin = min(c for r, c in points) - 1
     cmax = max(c for r, c in points) + 1
+    points = [(r - rmin, c - cmin) for r, c in points]
 
     dist = {
         (n, e): d[
@@ -353,22 +371,25 @@ def core_point(hexbin, distance_by_direction, transform):
         for c in range(cmin, cmax):
             lon, lat = transform * (c, r)
             if h3.geo_to_h3(lat, lon, 5) == hexbin:
-                x, y = transform * (r + 1, c)
+                x, y = transform * (c + 1, r)
                 if h3.geo_to_h3(y, x, 5) != hexbin:
                     border.append((r - rmin, c - cmin))
                     continue
-                x, y = transform * (r - 1, c)
+                x, y = transform * (c - 1, r)
                 if h3.geo_to_h3(y, x, 5) != hexbin:
                     border.append((r - rmin, c - cmin))
                     continue
-                x, y = transform * (r, c + 1)
+                x, y = transform * (c, r + 1)
                 if h3.geo_to_h3(y, x, 5) != hexbin:
                     border.append((r - rmin, c - cmin))
                     continue
-                x, y = transform * (r, c - 1)
+                x, y = transform * (c, r - 1)
                 if h3.geo_to_h3(y, x, 5) != hexbin:
                     border.append((r - rmin, c - cmin))
                     continue
+
+    if plotting:
+        plt.imshow(dist[1, 0].T, extent=(0, cmax-cmin+1, rmax-rmin, 0))
 
     c = t.Counter()
     for r0, c0 in border:
@@ -377,20 +398,33 @@ def core_point(hexbin, distance_by_direction, transform):
         for b1 in border:
             n = b1
             while pred[n]:
+                if plotting:
+                    plt.plot([n[1], pred[n][1]], [n[0], pred[n][0]], c="k")
                 n = pred[n]
                 c[n] += 1
+
     (r0, c0), centrality = c.most_common(1)[0]
     lon, lat = transform * (c0 + cmin, r0 + rmin)
-    rlat, rlon = h3.h3_to_geo(hexbin)
-    print(f"Core node at ({lon}, {lat}). [Actual center at ({rlon}, {rlat}).]")
+
+    if plotting:
+        rlat, rlon = h3.h3_to_geo(hexbin)
+        print(f"Core node at ({lon}, {lat}). [Actual center at ({rlon}, {rlat}).]")
+        rs, cs = zip(*border)
+        plt.scatter(cs, rs)
+        plt.scatter(c0, r0)
+        rc, rr = ~transform * (rlon, rlat)
+        plt.scatter(rc - cmin, rr - rmin)
+        plt.show()
+
     return lon, lat
 
 
 COAST = find_coast_hexagons()
 
 hexes_by_tile = sorted(
-    find_land_hexagons(),
-    key=lambda hex: tile_from_geocoordinates(*reversed(h3.h3_to_geo(hex))),
+    find_land_hexagons()
+    - {n for n, in DATABASE.execute(select(TABLES["nodes"].c.node_id)).fetchall()},
+    key=lambda hex: hash(tile_from_geocoordinates(*reversed(h3.h3_to_geo(hex)))),
 )
 tile = None
 for hexagon in tqdm(hexes_by_tile):
@@ -409,8 +443,7 @@ for hexagon in tqdm(hexes_by_tile):
 
     lon, lat = core_point(hexagon, distance_by_direction, transform)
     DATABASE.execute(
-        TABLES["nodes"]
-        .insert()
+        insert(TABLES["nodes"])
         .values(
             node_id=hexagon,
             longitude=lon,
@@ -419,12 +452,11 @@ for hexagon in tqdm(hexes_by_tile):
             h3latitude=hlat,
             coastal=(hexagon in COAST),
         )
+        .on_conflict_do_nothing()
     )
 
 
 if __name__ == "__main__":
-    main()
-
     import cartopy.crs as ccrs
     import cartopy.feature as cf
     from cartopy.feature import ShapelyFeature
@@ -436,15 +468,18 @@ if __name__ == "__main__":
         (BBOX.bounds[0], BBOX.bounds[2], BBOX.bounds[1], BBOX.bounds[3])
     )  # x0, x1, y0, y1
     ax.stock_img()
-    xy = zip(
+    x, y, coast = zip(
         *DATABASE.execute(
-            select(TABLES["nodes"].c.longitude, TABLES["nodes"].c.latitude)
+            select(
+                TABLES["nodes"].c.longitude,
+                TABLES["nodes"].c.latitude,
+                TABLES["nodes"].c.coastal,
+            )
         ).fetchall()
     )
     shape_feature = ShapelyFeature(
         LAND, ccrs.PlateCarree(), facecolor="none", edgecolor="blue", lw=1
     )
-    y, x = zip(*[h3.h3_to_geo(h) for h in find_land_hexagons()])
-    ax.scatter(x, y)
+    ax.scatter(x, y, c=coast)
     ax.add_feature(shape_feature)
     plt.show()

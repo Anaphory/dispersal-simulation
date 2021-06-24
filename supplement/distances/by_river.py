@@ -2,19 +2,25 @@ import zipfile
 import typing as t
 from pathlib import Path
 
+from tqdm import tqdm
+
 import sqlalchemy
+from sqlalchemy.dialects.sqlite import insert
+
 from more_itertools import windowed
 
 import shapefile
 import shapely.geometry as sgeom
 from shapely.prepared import prep
 
-from h3 import h3
+from h3.api import basic_int as h3
 
 from database import db
 
+
 class RiverNetwork:
     cache = None
+
     @classmethod
     def reaches(cls):
         """
@@ -28,13 +34,13 @@ class RiverNetwork:
         if cls.cache is not None:
             return cls.cache
         zipshape = zipfile.ZipFile(
-            (Path(__file__).parent /
-             "../rivers/GloRiC_v10_shapefile.zip").open("rb"))
+            (Path(__file__).parent / "../rivers/GloRiC_v10_shapefile.zip").open("rb")
+        )
         shape = shapefile.Reader(
             shp=zipshape.open("GloRiC_v10_shapefile/GloRiC_v10.shp"),
             shx=zipshape.open("GloRiC_v10_shapefile/GloRiC_v10.shx"),
             dbf=zipshape.open("GloRiC_v10_shapefile/GloRiC_v10.dbf"),
-            encoding='utf-8'
+            encoding="utf-8",
         )
         cls.cache = shape
         return shape
@@ -53,7 +59,7 @@ class RiverNetwork:
 RESOLUTION = 5
 
 
-def neighbors(hex: h3.H3Index) -> t.Set[h3.H3Index]:
+def neighbors(hex) -> t.Set:
     this, neighbors = h3.k_ring_distances(hex, 1)
     return neighbors
 
@@ -67,25 +73,28 @@ def intersection(xa, ya, xb, yb, xl, yl, xr, yr):
 
     if xl != xr:
         t = (xl * (ya - yb) + xa * (yb - yl) + xb * (yl - ya)) / (
-            (xl - xr) * (ya - yb) + xa * (yr - yl) + xb * (yl - yr))
+            (xl - xr) * (ya - yb) + xa * (yr - yl) + xb * (yl - yr)
+        )
     else:
         t = (yl * (xa - xb) + ya * (xb - xl) + yb * (xl - xa)) / (
-            (yl - yr) * (xa - xb) + ya * (xr - xl) + yb * (xl - xr))
+            (yl - yr) * (xa - xb) + ya * (xr - xl) + yb * (xl - xr)
+        )
 
     if xb != xa:
         u = (xb * (yl - yr) + xl * (yr - yb) + xr * (yb - yl)) / (
-            (xb - xa) * (yl - yr) + xl * (ya - yb) + xr * (yb - ya))
+            (xb - xa) * (yl - yr) + xl * (ya - yb) + xr * (yb - ya)
+        )
     else:
         u = (yb * (xl - xr) + yl * (xr - xb) + yr * (xb - xl)) / (
-            (yb - ya) * (xl - xr) + yl * (xa - xb) + yr * (xb - xa))
+            (yb - ya) * (xl - xr) + yl * (xa - xb) + yr * (xb - xa)
+        )
 
     return t, u
 
 
 def find_hexes_crossed(
-        x0: float, y0: float, x1: float, y1: float,
-        length_start: float, length_end:float
-) -> t.List[t.Tuple[h3.H3Index, float, float]]:
+    x0: float, y0: float, x1: float, y1: float, length_start: float, length_end: float
+) -> t.List[t.Tuple]:
     """Find all hexes that a line segment crosses.
 
     By bisecting the line segment from (x0, y0) to (x1, y1), find all h3 hexes
@@ -95,10 +104,10 @@ def find_hexes_crossed(
     ...
 
     """
-    start_hex: h3.H3Index = h3.geo_to_h3(y0, x0, RESOLUTION)
-    end_hex: h3.H3Index = h3.geo_to_h3(y1, x1, RESOLUTION)
+    start_hex = h3.geo_to_h3(y0, x0, RESOLUTION)
+    end_hex = h3.geo_to_h3(y1, x1, RESOLUTION)
     if start_hex == end_hex:
-        # Hexes are covex, so the line segment must run entirely within.
+        # Hexes are convex, so the line segment must run entirely within.
         return [(start_hex, length_start, length_end)]
     elif end_hex in neighbors(start_hex):
         # Check whether the line segment runs through the left neighbor,
@@ -112,40 +121,47 @@ def find_hexes_crossed(
 
         # strange things can happen when wrapping the date line.
         t, u = intersection(xa, ya, xb, yb, xl, yl, xr, yr)
-        assert 1./6. < t < 5./6.
+        assert 1.0 / 6.0 < t < 5.0 / 6.0
 
         if u < 1e-10:
             # The line practially runs completely on the side of the end hex
             return [(end_hex, length_start, length_end)]
-        if u > 1-1e-10:
+        if u > 1 - 1e-10:
             # The line practially runs completely on the side of the start hex
             return [(start_hex, length_start, length_end)]
 
         crossing_point = length_start + u * (length_end - length_start)
 
-        if t < 1./3.:
+        if t < 1.0 / 3.0:
             x_m, y_m = xa + u * (xb - xa), yb + u * (yb - ya)
-            return find_hexes_crossed(x0, y0, x_m, y_m, length_start, crossing_point) + find_hexes_crossed(x_m, y_m, x1, y1, crossing_point, length_end)
-        elif t > 2./3.:
+            return find_hexes_crossed(
+                x0, y0, x_m, y_m, length_start, crossing_point
+            ) + find_hexes_crossed(x_m, y_m, x1, y1, crossing_point, length_end)
+        elif t > 2.0 / 3.0:
             x_m, y_m = xa + u * (xb - xa), yb + u * (yb - ya)
-            return find_hexes_crossed(x0, y0, x_m, y_m, length_start, crossing_point) + find_hexes_crossed(x_m, y_m, x1, y1, crossing_point, length_end)
+            return find_hexes_crossed(
+                x0, y0, x_m, y_m, length_start, crossing_point
+            ) + find_hexes_crossed(x_m, y_m, x1, y1, crossing_point, length_end)
         else:
-            return [(start_hex, length_start, crossing_point), (end_hex, crossing_point, length_end)]
+            return [
+                (start_hex, length_start, crossing_point),
+                (end_hex, crossing_point, length_end),
+            ]
     else:
-        xmid = (x0 + x1) / 2.
-        ymid = (y0 + y1) / 2.
+        xmid = (x0 + x1) / 2.0
+        ymid = (y0 + y1) / 2.0
         length_mid = length_start + 0.5 * (length_end - length_start)
-        return find_hexes_crossed(x0, y0, xmid, ymid, length_start, length_mid) + find_hexes_crossed(xmid, ymid, x1, y1, length_mid, length_end)
+        return find_hexes_crossed(
+            x0, y0, xmid, ymid, length_start, length_mid
+        ) + find_hexes_crossed(xmid, ymid, x1, y1, length_mid, length_end)
 
 
+# 3 knots is about 1.5433333 m/s
+KAYAK_SPEED = 1.5433333
 
-
-
-# Somewhere, I found speeds of 4.5 knots for kayak cruising. That's 8.334 km/h, but the database stores data in seconds.
-KAYAK_SPEED = 8.334 / 3600
 
 def estimate_flow_speed(discharge, slope):
-    """Estimate the flow speed, in km/s from discharge and slope
+    """Estimate the flow speed, in m/s from discharge (m³/s) and slope (m/m)
 
     This is a very rough estimate, following [@schulze2005simulating]. They
     suggest to at least estimate the widely varying river roughness n, but we
@@ -155,6 +171,8 @@ def estimate_flow_speed(discharge, slope):
     D = 0.349 · Q^0.341
     R = D · W / (2 D + W)
     n = 0.044
+
+    # Manning-Strickler formula
     v = 1/n · R^2/3 · S^1/2
 
     """
@@ -162,27 +180,28 @@ def estimate_flow_speed(discharge, slope):
     w = 2.71 * discharge ** 0.557
     d = 0.349 * discharge ** 0.341
     r = d * w / (2 * d + w)
-    v = 1/n * r ** (2/3) * slope ** 0.5
-    return v / 1000
+    # Manning-Strickler formula
+    v = 1 / n * r ** (2 / 3) * slope ** 0.5
+    return v
+
 
 if __name__ == "__main__":
     import argparse
+
     parser = argparse.ArgumentParser()
     parser.add_argument("database")
     parser.add_argument("--start", type=int)
     args = parser.parse_args()
     engine, tables = db(args.database)
-    t_hex = tables["hex"]
-    t_reach = tables["reach"]
-    t_flows = tables["flows"]
-    t_dist = tables["dist"]
+    t_node = tables["nodes"]
+    t_dist = tables["edges"]
 
     RIVERS = RiverNetwork()
 
-    for r, reach in enumerate(RIVERS.shp.iterShapeRecords()):
+    for r, reach in tqdm(enumerate(RIVERS.shp.iterShapeRecords())):
         data = reach.record
         reach_id = int(data[0])
-        if args.start and reach_id < args.start:
+        if reach_id < 60000000:
             # The Americas have SA 6, NA 7, American Arctic 8, Greenland 9
             continue
 
@@ -202,120 +221,78 @@ if __name__ == "__main__":
         # Stream Power [kg m/s³]
         # = Water Density [kg/m³] * gravity [m/s²] * discharge [m³/s] * slope [m/m]
         # so
-        if (data[3] < 0.9030899869919434 or # log(8.)/log(10.)
-            data[11] / (10 ** data[3]) > 981.0):
+        if (
+            data[3] < 0.9030899869919434
+            or data[11] / (10 ** data[3]) > 981.0  # log(8.)/log(10.)
+        ):
             continue
 
         with engine.begin() as conn:
-           # slope = stream power / discharge / (1000 * 9.81) > 10% = 0.1
-            v = estimate_flow_speed(discharge = 10 ** data[3], slope = data[11] / 10 ** data[3] / (9810))
-            print(data[0], v)
-            if v > 0.1:
-                breakpoint()
+            # slope = stream power / discharge / (1000 * 9.81) > 10% = 0.1
+            v = estimate_flow_speed(
+                discharge=10 ** data[3], slope=data[11] / 10 ** data[3] / (9810)
+            )
+            print(data[0], KAYAK_SPEED + v, KAYAK_SPEED + v)
+            if v > 40.0:
+                raise RuntimeError(
+                    "Found a reach flowing faster than 40 m/s, something is clearly wrong."
+                )
 
             downstream = data[1]
-            try:
-                conn.execute(t_hex.insert(
-                    {"hexbin": reach_id,
-                    "vlongitude": points[0][0],
-                    "vlatitude": points[0][1],
-                    }))
-            except sqlalchemy.exc.IntegrityError:
-                pass
+            conn.execute(
+                insert(t_node)
+                .values(
+                    {
+                        "node_id": reach_id,
+                        "longitude": points[0][0],
+                        "latitude": points[0][1],
+                        "coastal": False,
+                    },
+                )
+                .on_conflict_do_nothing()
+            )
             if downstream == 0:
                 downstream = -reach_id
-                try:
-                    conn.execute(t_hex.insert(
-                        {"hexbin": downstream,
-                        "vlongitude": points[-1][0],
-                        "vlatitude": points[-1][1],
-                        }))
-                except sqlalchemy.exc.IntegrityError:
-                    pass
+                coastal = True
+            else:
+                coastal = False
+            conn.execute(
+                insert(t_node)
+                .values(
+                    {
+                        "node_id": downstream,
+                        "longitude": points[-1][0],
+                        "latitude": points[-1][1],
+                        "coastal": coastal,
+                    },
+                )
+                .on_conflict_do_nothing()
+            )
 
-            try:
-                conn.execute(t_dist.insert(
-                    {"hexbin1": reach_id, "hexbin2": downstream, "source": 2, "flat_distance": data[2] / 1000., "distance": data[2] / (KAYAK_SPEED + v)}))
-            except sqlalchemy.exc.IntegrityError:
-                conn.execute(t_dist.update().values(**
-                    {"flat_distance": data[2] / 1000.,
-                    "distance": data[2] / (KAYAK_SPEED + v)}).where((t_dist.c.hexbin1 == reach_id) & (t_dist.c.hexbin2 == downstream) & (t_dist.c.source == 9)))
-            try:
-                conn.execute(t_dist.insert(
-                    {"hexbin1": downstream, "hexbin2": reach_id, "source": 2, "flat_distance": data[2] / 1000., "distance": data[2] / max(KAYAK_SPEED - v, 0.3)}))
-            except sqlalchemy.exc.IntegrityError:
-                conn.execute(t_dist.update().values(**
-                    {"flat_distance": data[2] / 1000.,
-                    "distance": data[2] / max(KAYAK_SPEED - v, 0.3)}).where((t_dist.c.hexbin2 == reach_id) & (t_dist.c.hexbin1 == downstream) & (t_dist.c.source == 9)))
-
-class RiverNetwork:
-    cache = None
-    @classmethod
-    def reaches(cls):
-        """
-        >>> rivers = RiverNetwork.reaches()
-        >>> rivers.fields
-        [('DeletionFlag', 'C', 1, 0), ['Reach_ID', 'N', 10, 0], ['Next_down', 'N', 10, 0], ['Length_km', 'F', 13, 11], ['Log_Q_avg', 'F', 13, 11], ['Log_Q_var', 'F', 13, 11], ['Class_hydr', 'N', 10, 0], ['Temp_min', 'F', 13, 11], ['CMI_indx', 'F', 13, 11], ['Log_elev', 'F', 13, 11], ['Class_phys', 'N', 10, 0], ['Lake_wet', 'N', 10, 0], ['Stream_pow', 'F', 13, 11], ['Class_geom', 'N', 10, 0], ['Reach_type', 'N', 10, 0], ['Kmeans_30', 'N', 10, 0]]
-        >>> rivers.numRecords
-        ...
-
-        """
-        if cls.cache is not None:
-            return cls.cache
-        zipshape = zipfile.ZipFile(
-            (Path(__file__).parent /
-             "../rivers/GloRiC_v10_shapefile.zip").open("rb"))
-        shape = shapefile.Reader(
-            shp=zipshape.open("GloRiC_v10_shapefile/GloRiC_v10.shp"),
-            shx=zipshape.open("GloRiC_v10_shapefile/GloRiC_v10.shx"),
-            dbf=zipshape.open("GloRiC_v10_shapefile/GloRiC_v10.dbf"),
-            encoding='utf-8'
-        )
-        cls.cache = shape
-        return shape
-
-    def __init__(self, mask: t.Optional[sgeom.Polygon] = None):
-        """
-
-        >>> eco = RiverNetwork()
-        >>> eco.record(508)[1]
-        'Tocantins/Pindare moist forests'
-
-        """
-        self.shp = self.reaches()
-
-RIVERS = RiverNetwork()
-
-oceans_zip = zipfile.ZipFile(
-            (Path(__file__).parent /
-             "../naturalearth/ne_10m_ocean.zip").open("rb"))
-OCEANS = shapefile.Reader(
-            shp=oceans_zip.open("ne_10m_ocean.shp"),
-            shx=oceans_zip.open("ne_10m_ocean.shx"),
-            dbf=oceans_zip.open("ne_10m_ocean.dbf"),
-            encoding='utf-8'
-)
-OCEANS = next(OCEANS.iterShapes())
-OCEANS = make_valid(sgeom.shape(OCEANS))
-
-lakes_zip = zipfile.ZipFile(
-            (Path(__file__).parent /
-             "../naturalearth/ne_10m_lakes.zip").open("rb"))
-LAKES = shapefile.Reader(
-            shp=lakes_zip.open("ne_10m_lakes.shp"),
-            shx=lakes_zip.open("ne_10m_lakes.shx"),
-            dbf=lakes_zip.open("ne_10m_lakes.dbf"),
-            encoding='utf-8'
-)
-
-rivers_zip = zipfile.ZipFile(
-            (Path(__file__).parent /
-             "../naturalearth/ne_10m_rivers_lake_centerlines.zip").open("rb"))
-MORE_RIVERS = shapefile.Reader(
-            shp=rivers_zip.open("ne_10m_rivers_lake_centerlines.shp"),
-            shx=rivers_zip.open("ne_10m_rivers_lake_centerlines.shx"),
-            dbf=rivers_zip.open("ne_10m_rivers_lake_centerlines.dbf"),
-            encoding='utf-8'
-)
-
-
+            conn.execute(
+                insert(t_dist)
+                .values(
+                    {
+                        "node1": reach_id,
+                        "node2": downstream,
+                        "source": "river",
+                        "flat_distance": data[2] * 1000,
+                        "travel_time": data[2] * 1000 / (KAYAK_SPEED + v),
+                    },
+                )
+                .on_conflict_do_nothing()
+            )
+            if KAYAK_SPEED > v:
+                conn.execute(
+                    insert(t_dist)
+                    .values(
+                        {
+                            "node1": downstream,
+                            "node2": reach_id,
+                            "source": "river",
+                            "flat_distance": data[2] * 1000,
+                            "travel_time": data[2] * 1000 / (KAYAK_SPEED - v),
+                        },
+                    )
+                    .on_conflict_do_nothing()
+                )
