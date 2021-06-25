@@ -20,41 +20,39 @@ from database import db
 
 from by_river import KAYAK_SPEED  # in m/s
 
+GEODESIC: geodesic.Geodesic = geodesic.Geodesic()
 
-def compute():
-    failed = set()
+DATABASE, TABLES = db()
+
+def distance_by_sea(definitely_inland):
     query = sqlalchemy.select(
-        [t_hex.c.node_id, t_hex.c.longitude, t_hex.c.latitude]
-    ).where(t_hex.c.coastal)
-    for node0, lon0, lat0 in tqdm(engine.execute(query).fetchall()):
-        with engine.begin() as conn:
-            for node1, lon1, lat1 in engine.execute(
-                sqlalchemy.select(
-                    [t_hex.c.node_id, t_hex.c.longitude, t_hex.c.latitude]
-                )
-                .where(t_hex.c.latitude > lat0 - 2.0)
-                .where(t_hex.c.latitude < lat0 + 2.0)
+        [TABLES["nodes"].c.node_id, TABLES["nodes"].c.longitude, TABLES["nodes"].c.latitude]
+    ).where(TABLES["nodes"].c.coastal)
+    for node0, lon0, lat0 in tqdm(DATABASE.execute(query).fetchall()):
+        with DATABASE.begin() as conn:
+            for node1, lon1, lat1 in DATABASE.execute(
+                query.where(lat0 - TABLES["nodes"].c.latitude > - 3.0)
+                .where(lat0 - TABLES["nodes"].c.latitude < 3.0)
                 .where(
-                    t_hex.c.longitude > lon0 - 2.0 / numpy.cos(lat0 * numpy.pi / 180)
+                    (lon0 - TABLES["nodes"].c.longitude) * numpy.cos(lat0 * numpy.pi / 180) < 3.0
                 )
                 .where(
-                    t_hex.c.longitude < lon0 + 2.0 / numpy.cos(lat0 * numpy.pi / 180)
+                    (lon0 - TABLES["nodes"].c.longitude) * numpy.cos(lat0 * numpy.pi / 180) > -3.0
                 )
-                .where(t_hex.c.coastal)
             ).fetchall():
                 d = GEODESIC.inverse((lon0, lat0), (lon1, lat1))[0, 0]
                 if d > 300_000:  # meters
                     continue
-                if DEFINITELY_INLAND.intersects(
+                if definitely_inland.intersects(
                     sgeom.LineString([(lon0, lat0), (lon1, lat1)])
                 ):
                     continue
                 t = d / KAYAK_SPEED
                 conn.execute(
-                    t_dist.insert(
+                    TABLES["edges"].insert(
                         {
-                            "node1": hexbin0,
-                            "node2": hexbin1,
+                            "node1": node0,
+                            "node2": node1,
                             "source": "sea",
                             "travel_time": t,
                             "flat_distance": d,

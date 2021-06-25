@@ -10,47 +10,15 @@ from sqlalchemy.dialects.sqlite import insert
 
 import shapely
 import shapely.geometry as sgeom
-from shapely.prepared import prep
 from h3.api import basic_int as h3
-import cartopy.geodesic as geodesic
-from shapely.ops import unary_union
-import cartopy.io.shapereader as shpreader
+from matplotlib import pyplot as plt
 
 from raster_data import *
 from database import db
 from ecoregions import TC
-
-from matplotlib import pyplot as plt
-
-# Define some constants
-GEODESIC: geodesic.Geodesic = geodesic.Geodesic()
-
-BBOX = sgeom.box(-168.956, -55.852, -17.556, 83.696)  # minx, miny, maxx, maxy
-
-ALL_LAND = unary_union(
-    [
-        record.geometry
-        for record in shpreader.Reader(
-            shpreader.natural_earth(resolution="10m", category="physical", name="land")
-        ).records()
-        if record.attributes.get("featurecla") != "Null island"
-    ]
-).difference(
-    unary_union(
-        list(
-            shpreader.Reader(
-                shpreader.natural_earth(
-                    resolution="10m", category="physical", name="lakes"
-                )
-            ).geometries()
-        )
-    )
-)
-LAND = BBOX.intersection(ALL_LAND)
-PLAND = prep(LAND)
+from earth import LAND, PLAND, BBOX, GEODESIC
 
 DATABASE, TABLES = db()
-
 
 # =================================
 # General geometry helper functions
@@ -333,7 +301,7 @@ def distances_from_focus(
     # Dijkstra's algorithm, adapted for our purposes from
     # networkx/algorithms/shortest_paths/weighted.html
     d = distance_by_direction[0, 1]
-    dist: numpy.array = numpy.full((d.shape[0], d.shape[1] + 1), numpy.nan, dtype=float)
+    dist: numpy.array = numpy.full((d.shape[0], d.shape[1] + 1), numpy.inf, dtype=float)
     seen: t.Dict[t.Tuple[int, int], float] = {source: 0.0}
     c = count()
     # use heapq with (distance, label) tuples
@@ -430,11 +398,17 @@ def core_point(hexbin, distance_by_direction, transform):
         for (n, e), d in distance_by_direction.items()
     }
 
-    border = points[:]
+    border = []
     for i in range(-1, len(points) - 1):
         r0, c0 = points[i]
         r1, c1 = points[i + 1]
-        border.append((round((r0 + r1) / 2), round((c0 + c1) / 2)))
+        for along in numpy.linrange(0, 1, 9)[:-1]:
+            border.append(
+                (
+                    round(along * r0 + (1 - along) * r1),
+                    round(along * c0 + (1 - along) * c1),
+                )
+            )
 
     c = t.Counter()
     for r0, c0 in border:
@@ -454,19 +428,19 @@ def core_point(hexbin, distance_by_direction, transform):
 
 ALL = find_land_hexagons()
 
-KNOWN = {n for n, in DATABASE.execute(select(TABLES["nodes"].c.node_id)).fetchall()}
 
-
-def all_core_points(skip):
+def all_core_points(skip_existing=True):
     hexes_by_tile = sorted(
         ALL,
         key=lambda hex: hash(tile_from_geocoordinates(*reversed(h3.h3_to_geo(hex)))),
     )
 
     tile = None
-    distance_by_directon, transform = None
+    distance_by_direction, transform = None, None
     for hexagon in tqdm(hexes_by_tile):
-        if hexagon in skip:
+        if skip_existing and hexagon in {
+            n for n, in DATABASE.execute(select(TABLES["nodes"].c.node_id)).fetchall()
+        }:
             continue
 
         hlat, hlon = h3.h3_to_geo(hexagon)
@@ -571,6 +545,7 @@ def voronoi_and_neighbor_distances():
 
         n, x, y = zip(*extremities)
 
+        source = None
         nnodes = []
         nrowcol = []
         for nnode, nlon, nlat in DATABASE.execute(
@@ -585,22 +560,29 @@ def voronoi_and_neighbor_distances():
                 TABLES["nodes"].c.latitude <= max(y),
             )
         ):
-            nnodes.append(nnode)
             if nlon > 170:
                 # FIXME: We can and need to do this because we are working on the
                 # Americas and the Americas only. The generic solution is more
                 # difficult.
                 nlon = nlon - 360
             ncol, nrow = ~transform * (nlon, nlat)
+            if ncol < 0 or nrow < 0 or nrow > 5799 or ncol > 8199:
+                # FIXME: expand buffer and don't hardcode these numbers
+                print("Skipped node", nnode, "which is outside bounds with", nrow, ncol)
+                continue
             nrowcol.append((int(nrow), int(ncol)))
             if node == nnode:
                 source = nrowcol[-1]
+            nnodes.append(nnode)
 
         rmin, cmin, array = distances_trimmed(
             source, nrowcol, distance_by_direction, transform
         )
 
         for nnode, (nr, nc) in zip(nnodes, nrowcol):
+            if nnode == node:
+                # No self loops
+                continue
             DATABASE.execute(
                 insert(TABLES["edges"])
                 .values(
@@ -616,46 +598,24 @@ def voronoi_and_neighbor_distances():
                 )
             )
 
-        rows, cols = array.shape
-        voronoi_allocation[rmin : rmin + rows, cmin : cmin + cols][
-            min_distances[rmin : rmin + rows, cmin : cmin + cols] > array
-        ] = mapping.setdefault(node, len(mapping) + 1)
-        min_distances[rmin : rmin + rows, cmin : cmin + cols] = numpy.minimum(
-            min_distances[rmin : rmin + rows, cmin : cmin + cols], array
-        )
+        if node > 100000000:
+            # Node is an h3 index, not a river reach index, so update the voronoi shapes around it
+            rows, cols = array.shape
+            min_distances[rmin : rmin + rows, cmin : cmin + cols] = numpy.fmin(
+                min_distances[rmin : rmin + rows, cmin : cmin + cols], array
+            )
+            voronoi_allocation[rmin : rmin + rows, cmin : cmin + cols][
+                min_distances[rmin : rmin + rows, cmin : cmin + cols] == array
+            ] = mapping.setdefault(node, len(mapping) + 1)
 
 
 if "core" in sys.argv:
-    all_core_points(skip=KNOWN)
+    all_core_points()
 
 if "voronoi" in sys.argv or "distances" in sys.argv:
     voronoi_and_neighbor_distances()
 
+if "sea" in sys.argv:
+    from by_sea import distance_by_sea
 
-if __name__ == "__main__":
-    import cartopy.crs as ccrs
-    import cartopy.feature as cf
-    from cartopy.feature import ShapelyFeature
-    from matplotlib import pyplot as plt
-
-    proj = ccrs.PlateCarree()
-    ax = plt.axes(projection=proj)
-    ax.set_extent(
-        (BBOX.bounds[0], BBOX.bounds[2], BBOX.bounds[1], BBOX.bounds[3])
-    )  # x0, x1, y0, y1
-    ax.stock_img()
-    x, y, coast = zip(
-        *DATABASE.execute(
-            select(
-                TABLES["nodes"].c.longitude,
-                TABLES["nodes"].c.latitude,
-                TABLES["nodes"].c.coastal,
-            )
-        ).fetchall()
-    )
-    shape_feature = ShapelyFeature(
-        LAND, ccrs.PlateCarree(), facecolor="none", edgecolor="blue", lw=1
-    )
-    ax.scatter(x, y, c=coast)
-    ax.add_feature(shape_feature)
-    plt.show()
+    distance_by_sea(LAND.buffer(-0.04))
