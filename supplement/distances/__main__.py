@@ -1,3 +1,4 @@
+from pathlib import Path
 import typing as t
 import sys
 import pickle
@@ -368,11 +369,11 @@ def distances_trimmed(source, points, distance_by_direction, transform):
 # Process hexagons
 # ================
 def find_land_hexagons():
-    hexagons = COAST
+    hexagons = set()
     for poly in LAND.geoms:
         d = shapely.geometry.mapping(poly)
         hexagons |= h3.polyfill_geojson(d, 5)
-    return hexagons
+    return hexagons | COAST
 
 
 def core_point(hexbin, distance_by_direction, transform):
@@ -441,11 +442,22 @@ def all_core_points(skip_existing=True):
     distance_by_direction, transform = None, None
     for hexagon in tqdm(hexes_by_tile):
         if skip_existing and hexagon in {
-            n for n, in DATABASE.execute(select(TABLES["nodes"].c.node_id)).fetchall()
+            n for n, in DATABASE.execute(select(TABLES["nodes"].c.node_id).where(TABLES["nodes"].c.node_id == hexagon)).fetchall()
         }:
             continue
 
         hlat, hlon = h3.h3_to_geo(hexagon)
+        DATABASE.execute(
+            insert(TABLES["nodes"])
+            .values(
+                node_id=hexagon,
+                h3longitude=hlon,
+                h3latitude=hlat,
+                coastal=(hexagon in COAST),
+            )
+            .on_conflict_do_nothing()
+        )
+
 
         if tile != tile_from_geocoordinates(hlon, hlat):
             del distance_by_direction, transform
@@ -453,6 +465,7 @@ def all_core_points(skip_existing=True):
             try:
                 distance_by_direction, transform = distances_and_cache(hlon, hlat)
             except rasterio.errors.RasterioIOError:
+                tile, distance_by_direction, transform = None, None, None
                 continue
 
         lon, lat = core_point(hexagon, distance_by_direction, transform)
@@ -466,7 +479,7 @@ def all_core_points(skip_existing=True):
                 h3latitude=hlat,
                 coastal=(hexagon in COAST),
             )
-            .on_conflict_do_nothing()
+            .on_conflict_do_update(set_={"longitude": lon, "latitude": lat,})
         )
 
 
@@ -483,7 +496,7 @@ def voronoi_and_neighbor_distances():
             )
         )
     ]
-    nodes.sort(key=lambda n: hash(tile_from_geocoordinates(*n[1])))
+    nodes.sort(key=lambda n: tile_from_geocoordinates(*n[1]))
 
     tile = None
     for node, (lon, lat) in tqdm(nodes):

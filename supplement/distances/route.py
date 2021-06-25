@@ -77,6 +77,10 @@ def find_node(lon, lat, rivers=False):
             TABLES["nodes"].c.longitude,
             TABLES["nodes"].c.latitude,
         )
+        .where(
+            TABLES["nodes"].c.longitude != None,
+            TABLES["nodes"].c.latitude != None,
+        )
         .order_by(
             func.abs(TABLES["nodes"].c.latitude - lat)
             + func.abs(TABLES["nodes"].c.longitude - lon) * cos(lat * pi / 180)
@@ -133,6 +137,20 @@ hexagon_id, x, y, hx, hy, coast = zip(
 c = numpy.array(coast)
 ax.scatter(hx, hy, c=c, marker="*")
 ax.scatter(x, y, c=c, marker=".")
+
+node_id, x, y, coast = zip(
+    *DATABASE.execute(
+        select(
+            TABLES["nodes"].c.node_id,
+            TABLES["nodes"].c.longitude,
+            TABLES["nodes"].c.latitude,
+            TABLES["nodes"].c.coastal,
+        ).where(TABLES["nodes"].c.node_id <= 100000000)
+    ).fetchall()
+)
+c = numpy.array(coast)
+ax.scatter(x, y, c=c, marker="+")
+
 
 shape_feature = ShapelyFeature(
     LAND, ccrs.PlateCarree(), facecolor="none", edgecolor="blue", lw=1
