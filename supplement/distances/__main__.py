@@ -1,3 +1,4 @@
+import typing as t
 import sys
 import pickle
 from itertools import count
@@ -13,7 +14,8 @@ import shapely.geometry as sgeom
 from h3.api import basic_int as h3
 from matplotlib import pyplot as plt
 
-from raster_data import *
+import rasterio
+from raster_data import tile_from_geocoordinates, gmted_tile_from_geocoordinates, ecoregion_tile_from_geocoordinates
 from database import db
 from ecoregions import TC
 from earth import LAND, PLAND, BBOX, GEODESIC
@@ -24,7 +26,7 @@ DATABASE, TABLES = db()
 # General geometry helper functions
 # =================================
 def as_point(h3_index):
-    y, x = h3.h3_to_geo(index)
+    y, x = h3.h3_to_geo(h3_index)
     return sgeom.Point(x, y)
 
 
@@ -265,7 +267,7 @@ def distances_and_cache(lon, lat):
             (0, -1): distance_raster.read(7),
             (-1, -1): distance_raster.read(8),
         }, distance_raster.transform
-    except:
+    except rasterio.errors.RasterioIOError:
         print("Cache miss")
 
     elevation, ecoregions, transform = prep_tile(lon=lon, lat=lat)
@@ -405,8 +407,8 @@ def core_point(hexbin, distance_by_direction, transform):
         for along in numpy.linspace(0, 1, 9)[:-1]:
             border.append(
                 (
-                    round(along * r0 + (1 - along) * r1),
-                    round(along * c0 + (1 - along) * c1),
+                    int(round(along * r0 + (1 - along) * r1)),
+                    int(round(along * c0 + (1 - along) * c1)),
                 )
             )
 
@@ -432,7 +434,7 @@ ALL = find_land_hexagons()
 def all_core_points(skip_existing=True):
     hexes_by_tile = sorted(
         ALL,
-        key=lambda hex: hash(tile_from_geocoordinates(*reversed(h3.h3_to_geo(hex)))),
+        key=lambda hex: tile_from_geocoordinates(*reversed(h3.h3_to_geo(hex))),
     )
 
     tile = None
