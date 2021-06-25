@@ -402,7 +402,7 @@ def core_point(hexbin, distance_by_direction, transform):
     for i in range(-1, len(points) - 1):
         r0, c0 = points[i]
         r1, c1 = points[i + 1]
-        for along in numpy.linrange(0, 1, 9)[:-1]:
+        for along in numpy.linspace(0, 1, 9)[:-1]:
             border.append(
                 (
                     round(along * r0 + (1 - along) * r1),
@@ -448,7 +448,10 @@ def all_core_points(skip_existing=True):
         if tile != tile_from_geocoordinates(hlon, hlat):
             del distance_by_direction, transform
             tile = tile_from_geocoordinates(hlon, hlat)
-            distance_by_direction, transform = distances_and_cache(hlon, hlat)
+            try:
+                distance_by_direction, transform = distances_and_cache(hlon, hlat)
+            except rasterio.errors.RasterioIOError:
+                continue
 
         lon, lat = core_point(hexagon, distance_by_direction, transform)
         DATABASE.execute(
