@@ -16,7 +16,11 @@ from h3.api import basic_int as h3
 from matplotlib import pyplot as plt
 
 import rasterio
-from raster_data import tile_from_geocoordinates, gmted_tile_from_geocoordinates, ecoregion_tile_from_geocoordinates
+from raster_data import (
+    tile_from_geocoordinates,
+    gmted_tile_from_geocoordinates,
+    ecoregion_tile_from_geocoordinates,
+)
 from database import db
 from ecoregions import TC
 from earth import LAND, PLAND, BBOX, GEODESIC
@@ -442,7 +446,12 @@ def all_core_points(skip_existing=True):
     distance_by_direction, transform = None, None
     for hexagon in tqdm(hexes_by_tile):
         if skip_existing and hexagon in {
-            n for n, in DATABASE.execute(select(TABLES["nodes"].c.node_id).where(TABLES["nodes"].c.node_id == hexagon)).fetchall()
+            n
+            for n, in DATABASE.execute(
+                select(TABLES["nodes"].c.node_id).where(
+                    TABLES["nodes"].c.node_id == hexagon
+                )
+            ).fetchall()
         }:
             continue
 
@@ -457,7 +466,6 @@ def all_core_points(skip_existing=True):
             )
             .on_conflict_do_nothing()
         )
-
 
         if tile != tile_from_geocoordinates(hlon, hlat):
             del distance_by_direction, transform
@@ -479,11 +487,17 @@ def all_core_points(skip_existing=True):
                 h3latitude=hlat,
                 coastal=(hexagon in COAST),
             )
-            .on_conflict_do_update(set_={"longitude": lon, "latitude": lat,})
+            .on_conflict_do_update(
+                set_={
+                    "longitude": lon,
+                    "latitude": lat,
+                }
+            )
         )
 
 
-def voronoi_and_neighbor_distances():
+def voronoi_and_neighbor_distances(skip_existing=True):
+    myself = str(numpy.random.randint(1024))
     mapping = {}
 
     nodes = [
@@ -493,6 +507,9 @@ def voronoi_and_neighbor_distances():
                 TABLES["nodes"].c.node_id,
                 TABLES["nodes"].c.longitude,
                 TABLES["nodes"].c.latitude,
+            ).where(
+                TABLES["nodes"].c.longitude != None,
+                TABLES["nodes"].c.latitude != None,
             )
         )
     ]
@@ -502,39 +519,28 @@ def voronoi_and_neighbor_distances():
     for node, (lon, lat) in tqdm(nodes):
         if tile != tile_from_geocoordinates(lon, lat):
             if tile is not None:
-                fname_v = "voronoi-{:s}{:d}{:s}{:d}.tif".format(*tile)
-                fname_d = "min_distances-{:s}{:d}{:s}{:d}.tif".format(*tile)
-
-                profile = rasterio.profiles.DefaultGTiffProfile()
-                profile["height"] = voronoi_allocation.shape[0]
-                profile["width"] = voronoi_allocation.shape[1]
-                profile["transform"] = transform
-                del profile["dtype"]
-                profile["count"] = 1
-
-                with rasterio.open(
-                    fname_v,
-                    "w",
-                    dtype=numpy.uint16,
-                    **profile,
-                ) as dst:
-                    dst.write(voronoi_allocation, 1)
-                with rasterio.open(
-                    fname_d,
-                    "w",
-                    dtype=numpy.float32,
-                    **profile,
-                ) as dst:
-                    dst.write(min_distances, 1)
                 del voronoi_allocation, min_distances
                 del distance_by_direction, transform
+                Path("voronoi-{:s}{:d}{:s}{:d}.lock".format(*tile)).unlink()
 
             tile = tile_from_geocoordinates(lon, lat)
-            distance_by_direction, transform = distances_and_cache(lon, lat)
 
             try:
-                fname_v = "voronoi-{:s}{:d}{:s}{:d}.tif".format(*tile)
-                fname_d = "min_distances-{:s}{:d}{:s}{:d}.tif".format(*tile)
+                if (
+                    Path("voronoi-{:s}{:d}{:s}{:d}.lock".format(*tile)).open("r").read()
+                    != myself
+                ):
+                    tile = None
+                    continue
+            except FileNotFoundError:
+                Path("voronoi-{:s}{:d}{:s}{:d}.lock".format(*tile)).open("w").write(
+                    myself
+                )
+
+            distance_by_direction, transform = distances_and_cache(lon, lat)
+            fname_v = "voronoi-{:s}{:d}{:s}{:d}.tif".format(*tile)
+            fname_d = "min_distances-{:s}{:d}{:s}{:d}.tif".format(*tile)
+            try:
                 voronoi_allocation = rasterio.open(fname_v).read(1)
                 min_distances = rasterio.open(fname_d).read(1)
             except rasterio.errors.RasterioIOError:
@@ -545,6 +551,13 @@ def voronoi_and_neighbor_distances():
                 min_distances = numpy.full(
                     (height + 1, width + 1), numpy.inf, dtype=numpy.float32
                 )
+
+            profile = rasterio.profiles.DefaultGTiffProfile()
+            profile["height"] = voronoi_allocation.shape[0]
+            profile["width"] = voronoi_allocation.shape[1]
+            profile["transform"] = transform
+            del profile["dtype"]
+            profile["count"] = 1
 
         if node > 100000000:
             # Node is an h3 index, not a river reach index
@@ -558,7 +571,11 @@ def voronoi_and_neighbor_distances():
                 TABLES["nodes"].c.node_id,
                 TABLES["nodes"].c.longitude,
                 TABLES["nodes"].c.latitude,
-            ).where(TABLES["nodes"].c.node_id.in_(environment))
+            ).where(
+                TABLES["nodes"].c.longitude != None,
+                TABLES["nodes"].c.latitude != None,
+                TABLES["nodes"].c.node_id.in_(environment),
+            )
         ).fetchall()
 
         n, x, y = zip(*extremities)
@@ -598,9 +615,6 @@ def voronoi_and_neighbor_distances():
         )
 
         for nnode, (nr, nc) in zip(nnodes, nrowcol):
-            if nnode == node:
-                # No self loops
-                continue
             DATABASE.execute(
                 insert(TABLES["edges"])
                 .values(
@@ -619,12 +633,27 @@ def voronoi_and_neighbor_distances():
         if node > 100000000:
             # Node is an h3 index, not a river reach index, so update the voronoi shapes around it
             rows, cols = array.shape
+            voronoi_allocation[rmin : rmin + rows, cmin : cmin + cols][
+                min_distances[rmin : rmin + rows, cmin : cmin + cols] > array
+            ] = mapping.setdefault(node, len(mapping) + 1)
             min_distances[rmin : rmin + rows, cmin : cmin + cols] = numpy.fmin(
                 min_distances[rmin : rmin + rows, cmin : cmin + cols], array
             )
-            voronoi_allocation[rmin : rmin + rows, cmin : cmin + cols][
-                min_distances[rmin : rmin + rows, cmin : cmin + cols] == array
-            ] = mapping.setdefault(node, len(mapping) + 1)
+
+            with rasterio.open(
+                fname_v,
+                "w",
+                dtype=numpy.uint16,
+                **profile,
+            ) as dst:
+                dst.write(voronoi_allocation, 1)
+            with rasterio.open(
+                fname_d,
+                "w",
+                dtype=numpy.float32,
+                **profile,
+            ) as dst:
+                dst.write(min_distances, 1)
 
 
 if "core" in sys.argv:
