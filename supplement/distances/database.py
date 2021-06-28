@@ -19,7 +19,7 @@ def set_sqlite_pragma(
 def db(
     file: str = "sqlite:///migration-network.sqlite",
 ) -> t.Tuple[sqlalchemy.engine.Connectable, t.Dict[str, sqlalchemy.Table]]:
-    engine = sqlalchemy.create_engine(file)
+    engine = sqlalchemy.create_engine(file, connect_args={'timeout': 60})
     metadata = sqlalchemy.MetaData()
 
     nodes = sqlalchemy.Table(
@@ -31,6 +31,7 @@ def db(
         sqlalchemy.Column("h3longitude", sqlalchemy.Float),
         sqlalchemy.Column("h3latitude", sqlalchemy.Float),
         sqlalchemy.Column("coastal", sqlalchemy.Boolean),
+        sqlalchemy.Column("short", sqlalchemy.Integer),
     )
 
     edges = sqlalchemy.Table(

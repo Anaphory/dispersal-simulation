@@ -1,3 +1,6 @@
+#!/home/cluster/gkaipi/.pyenv/shims/python
+import json
+import itertools
 from pathlib import Path
 import typing as t
 import sys
@@ -25,7 +28,7 @@ from database import db
 from ecoregions import TC
 from earth import LAND, PLAND, BBOX, GEODESIC
 
-DATABASE, TABLES = db()
+DATABASE, TABLES = db(sys.argv[1])
 
 # =================================
 # General geometry helper functions
@@ -46,7 +49,11 @@ def find_coast_hexagons():
     return coastal
 
 
-COAST = find_coast_hexagons()
+try:
+    COAST = set(json.load(open("COAST.json")))
+except (FileNotFoundError, json.JSONDecodeError):
+    COAST = find_coast_hexagons()
+    json.dump(list(COAST), open("COAST.json", "w"))
 
 
 # =========================
@@ -303,7 +310,7 @@ def distances_from_focus(
     source: t.Tuple[int, int],
     destinations: t.Optional[t.Set[t.Tuple[int, int]]],
     distance_by_direction: t.Dict[t.Tuple[int, int], numpy.array],
-    pred: t.Optional,
+    pred: t.Optional = None,
 ) -> numpy.array:
     # Dijkstra's algorithm, adapted for our purposes from
     # networkx/algorithms/shortest_paths/weighted.html
@@ -404,36 +411,37 @@ def core_point(hexbin, distance_by_direction, transform):
         ]
         for (n, e), d in distance_by_direction.items()
     }
+    dist[0, -1] = dist[0, 1] = dist[0, 1] + dist[0, -1]
+    dist[-1, -1] = dist[1, 1] = dist[1, 1] + dist[-1, -1]
+    dist[1, -1] = dist[-1, 1] = dist[-1, 1] + dist[1, -1]
+    dist[-1, 0] = dist[1, 0] = dist[1, 0] + dist[-1, 0]
 
-    border = []
+    border = points[:]
     for i in range(-1, len(points) - 1):
         r0, c0 = points[i]
         r1, c1 = points[i + 1]
-        for along in numpy.linspace(0, 1, 9)[:-1]:
-            border.append(
-                (
-                    int(round(along * r0 + (1 - along) * r1)),
-                    int(round(along * c0 + (1 - along) * c1)),
-                )
+        border.append(
+            (
+                round(0.5 * (r0 + r1)),
+                round(0.5 * (c0 + c1)),
             )
+        )
 
-    c = t.Counter()
+    all_dist = 0
     for r0, c0 in border:
-        pred = {(r0, c0): None}
-        all_dist = distances_from_focus((r0, c0), set(border), dist, pred=pred)
-        for b1 in border:
-            n = b1
-            while pred[n]:
-                n = pred[n]
-                c[n] += 1
+        all_dist = all_dist + distances_from_focus((r0, c0), set(border), dist)
 
-    (r0, c0), centrality = c.most_common(1)[0]
+    (r0, c0) = numpy.unravel_index(numpy.argmin(all_dist), all_dist.shape)
     lon, lat = transform * (c0 + cmin, r0 + rmin)
 
     return lon, lat
 
 
-ALL = find_land_hexagons()
+try:
+    ALL = set(json.load(open("ALL.json")))
+except (FileNotFoundError, json.JSONDecodeError):
+    ALL = find_land_hexagons()
+    json.dump(list(ALL), open("ALL.json", "w"))
 
 
 def all_core_points(skip_existing=True):
@@ -496,173 +504,184 @@ def all_core_points(skip_existing=True):
         )
 
 
-def voronoi_and_neighbor_distances(skip_existing=True):
+def voronoi_and_neighbor_distances(tile, skip_existing=True):
     myself = str(numpy.random.randint(1024))
-    mapping = {}
+    west = (-1 if tile[2] == "W" else 1) * tile[3]
+    south = (-1 if tile[0] == "S" else 1) * tile[1]
 
     nodes = [
-        (node, (lon, lat))
-        for node, lon, lat in DATABASE.execute(
+        (node, short, (lon, lat))
+        for node, short, lon, lat in DATABASE.execute(
             select(
                 TABLES["nodes"].c.node_id,
+                TABLES["nodes"].c.short,
                 TABLES["nodes"].c.longitude,
                 TABLES["nodes"].c.latitude,
             ).where(
-                TABLES["nodes"].c.longitude != None,
-                TABLES["nodes"].c.latitude != None,
+                west <= TABLES["nodes"].c.longitude,
+                TABLES["nodes"].c.longitude <= west + 30,
+                south <= TABLES["nodes"].c.latitude,
+                TABLES["nodes"].c.latitude <= south + 20,
             )
         )
     ]
-    nodes.sort(key=lambda n: tile_from_geocoordinates(*n[1]))
 
-    tile = None
-    for node, (lon, lat) in tqdm(nodes):
-        if tile != tile_from_geocoordinates(lon, lat):
-            if tile is not None:
-                del voronoi_allocation, min_distances
-                del distance_by_direction, transform
-                Path("voronoi-{:s}{:d}{:s}{:d}.lock".format(*tile)).unlink()
-
-            tile = tile_from_geocoordinates(lon, lat)
-
-            try:
-                if (
-                    Path("voronoi-{:s}{:d}{:s}{:d}.lock".format(*tile)).open("r").read()
-                    != myself
-                ):
-                    tile = None
-                    continue
-            except FileNotFoundError:
-                Path("voronoi-{:s}{:d}{:s}{:d}.lock".format(*tile)).open("w").write(
-                    myself
-                )
-
-            distance_by_direction, transform = distances_and_cache(lon, lat)
-            fname_v = "voronoi-{:s}{:d}{:s}{:d}.tif".format(*tile)
-            fname_d = "min_distances-{:s}{:d}{:s}{:d}.tif".format(*tile)
-            try:
-                voronoi_allocation = rasterio.open(fname_v).read(1)
-                min_distances = rasterio.open(fname_d).read(1)
-            except rasterio.errors.RasterioIOError:
-                height, width = distance_by_direction[1, 1].shape
-                voronoi_allocation = numpy.zeros(
-                    (height + 1, width + 1), dtype=numpy.uint16
-                )
-                min_distances = numpy.full(
-                    (height + 1, width + 1), numpy.inf, dtype=numpy.float32
-                )
-
-            profile = rasterio.profiles.DefaultGTiffProfile()
-            profile["height"] = voronoi_allocation.shape[0]
-            profile["width"] = voronoi_allocation.shape[1]
-            profile["transform"] = transform
-            del profile["dtype"]
-            profile["count"] = 1
-
-        if node > 100000000:
-            # Node is an h3 index, not a river reach index
-            environment = h3.k_ring(node, 2)
-        else:
-            environment = h3.k_ring(h3.geo_to_h3(lat, lon, 5), 1)
-            environment.add(node)
-
-        extremities = DATABASE.execute(
-            select(
-                TABLES["nodes"].c.node_id,
-                TABLES["nodes"].c.longitude,
-                TABLES["nodes"].c.latitude,
-            ).where(
-                TABLES["nodes"].c.longitude != None,
-                TABLES["nodes"].c.latitude != None,
-                TABLES["nodes"].c.node_id.in_(environment),
-            )
-        ).fetchall()
-
-        n, x, y = zip(*extremities)
-
-        source = None
-        nnodes = []
-        nrowcol = []
-        for nnode, nlon, nlat in DATABASE.execute(
-            select(
-                TABLES["nodes"].c.node_id,
-                TABLES["nodes"].c.longitude,
-                TABLES["nodes"].c.latitude,
-            ).where(
-                min(x) <= TABLES["nodes"].c.longitude,
-                TABLES["nodes"].c.longitude <= max(x),
-                min(y) <= TABLES["nodes"].c.latitude,
-                TABLES["nodes"].c.latitude <= max(y),
-            )
-        ):
-            if nlon > 170:
-                # FIXME: We can and need to do this because we are working on the
-                # Americas and the Americas only. The generic solution is more
-                # difficult.
-                nlon = nlon - 360
-            ncol, nrow = ~transform * (nlon, nlat)
-            if ncol < 0 or nrow < 0 or nrow > 5799 or ncol > 8199:
-                # FIXME: expand buffer and don't hardcode these numbers
-                print("Skipped node", nnode, "which is outside bounds with", nrow, ncol)
-                continue
-            nrowcol.append((int(nrow), int(ncol)))
-            if node == nnode:
-                source = nrowcol[-1]
-            nnodes.append(nnode)
-
-        rmin, cmin, array = distances_trimmed(
-            source, nrowcol, distance_by_direction, transform
+    distance_by_direction, transform = distances_and_cache(west + 15, south + 10)
+    fname_v = "voronoi-{:s}{:d}{:s}{:d}.tif".format(*tile)
+    fname_d = "min_distances-{:s}{:d}{:s}{:d}.tif".format(*tile)
+    try:
+        voronoi_allocation = rasterio.open(fname_v).read(1)
+        min_distances = rasterio.open(fname_d).read(1)
+    except rasterio.errors.RasterioIOError:
+        height, width = distance_by_direction[1, 1].shape
+        voronoi_allocation = numpy.zeros((height + 1, width + 1), dtype=numpy.uint16)
+        min_distances = numpy.full(
+            (height + 1, width + 1), numpy.inf, dtype=numpy.float32
         )
 
-        for nnode, (nr, nc) in zip(nnodes, nrowcol):
-            DATABASE.execute(
-                insert(TABLES["edges"])
-                .values(
-                    node1=node,
-                    node2=nnode,
-                    source="grid",
-                    travel_time=array[nr - rmin, nc - cmin],
+    profile = rasterio.profiles.DefaultGTiffProfile()
+    profile["height"] = voronoi_allocation.shape[0]
+    profile["width"] = voronoi_allocation.shape[1]
+    profile["transform"] = transform
+    del profile["dtype"]
+    profile["count"] = 1
+
+    with rasterio.open(
+        fname_v,
+        "w",
+        dtype=numpy.uint16,
+        **profile,
+    ) as dst:
+        dst.write(voronoi_allocation, 1)
+
+    try:
+        for node, short, (lon, lat) in tqdm(nodes):
+            if node > 100000000:
+                # Node is an h3 index, not a river reach index
+                environment = h3.k_ring(node, 2)
+            else:
+                environment = h3.k_ring(h3.geo_to_h3(lat, lon, 5), 1)
+                environment.add(node)
+
+            extremities = DATABASE.execute(
+                select(
+                    TABLES["nodes"].c.node_id,
+                    TABLES["nodes"].c.longitude,
+                    TABLES["nodes"].c.latitude,
+                ).where(
+                    TABLES["nodes"].c.longitude != None,
+                    TABLES["nodes"].c.latitude != None,
+                    TABLES["nodes"].c.node_id.in_(environment),
                 )
-                .on_conflict_do_update(
-                    set_={
-                        "travel_time": array[nr - rmin, nc - cmin],
-                    }
+            ).fetchall()
+
+            n, x, y = zip(*extremities)
+
+            source = None
+            nnodes = []
+            nrowcol = []
+            neighbors = DATABASE.execute(
+                select(
+                    TABLES["nodes"].c.node_id,
+                    TABLES["nodes"].c.longitude,
+                    TABLES["nodes"].c.latitude,
+                ).where(
+                    min(x) <= TABLES["nodes"].c.longitude,
+                    TABLES["nodes"].c.longitude <= max(x),
+                    min(y) <= TABLES["nodes"].c.latitude,
+                    TABLES["nodes"].c.latitude <= max(y),
                 )
+            ).fetchall()
+
+            for h in environment:
+                if h > 100000000:
+                    h_lat, h_lon = h3.h3_to_geo(h)
+                    neighbors.append((None, h_lon, h_lat))
+            for nnode, nlon, nlat in neighbors:
+                if nlon > 170:
+                    # FIXME: We can and need to do this because we are working on the
+                    # Americas and the Americas only. The generic solution is more
+                    # difficult.
+                    nlon = nlon - 360
+                ncol, nrow = ~transform * (nlon, nlat)
+                nrowcol.append((int(nrow), int(ncol)))
+                if node == nnode:
+                    source = nrowcol[-1]
+                nnodes.append(nnode)
+
+            if skip_existing:
+                already_known = {
+                    n
+                    for n, in DATABASE.execute(
+                        select(TABLES["edges"].c.node2).where(
+                            TABLES["edges"].c.node1 == node,
+                            TABLES["edges"].c.source == "grid"
+                        )
+                    )
+                }
+                to_be_known = {n for n, _, _ in neighbors} - {None}
+                if already_known >= to_be_known and (
+                    node < 100000000 or min_distances[source] == 0.0
+                ):
+                    continue
+                print(already_known - to_be_known, to_be_known - already_known)
+
+            rmin, cmin, array = distances_trimmed(
+                source, nrowcol, distance_by_direction, transform
             )
 
-        if node > 100000000:
-            # Node is an h3 index, not a river reach index, so update the voronoi shapes around it
-            rows, cols = array.shape
-            voronoi_allocation[rmin : rmin + rows, cmin : cmin + cols][
-                min_distances[rmin : rmin + rows, cmin : cmin + cols] > array
-            ] = mapping.setdefault(node, len(mapping) + 1)
-            min_distances[rmin : rmin + rows, cmin : cmin + cols] = numpy.fmin(
-                min_distances[rmin : rmin + rows, cmin : cmin + cols], array
-            )
+            for nnode, (nr, nc) in zip(nnodes, nrowcol):
+                if nnode is None:
+                    continue
+                DATABASE.execute(
+                    insert(TABLES["edges"])
+                    .values(
+                        node1=node,
+                        node2=nnode,
+                        source="grid",
+                        travel_time=array[nr - rmin, nc - cmin],
+                    )
+                    .on_conflict_do_update(
+                        set_={
+                            "travel_time": array[nr - rmin, nc - cmin],
+                        }
+                    )
+                )
 
-            with rasterio.open(
-                fname_v,
-                "w",
-                dtype=numpy.uint16,
-                **profile,
-            ) as dst:
-                dst.write(voronoi_allocation, 1)
-            with rasterio.open(
-                fname_d,
-                "w",
-                dtype=numpy.float32,
-                **profile,
-            ) as dst:
-                dst.write(min_distances, 1)
+            if node > 100000000:
+                # Node is an h3 index, not a river reach index, so update the voronoi shapes around it
+                rows, cols = array.shape
+                voronoi_allocation[rmin : rmin + rows, cmin : cmin + cols][
+                    min_distances[rmin : rmin + rows, cmin : cmin + cols] > array
+                ] = short
+                min_distances[rmin : rmin + rows, cmin : cmin + cols] = numpy.fmin(
+                    min_distances[rmin : rmin + rows, cmin : cmin + cols], array
+                )
+    finally:
+        with rasterio.open(
+            fname_v,
+            "w",
+            dtype=numpy.uint16,
+            **profile,
+        ) as dst:
+            dst.write(voronoi_allocation, 1)
+        with rasterio.open(
+            fname_d,
+            "w",
+            dtype=numpy.float32,
+            **profile,
+        ) as dst:
+            dst.write(min_distances, 1)
 
 
 if "core" in sys.argv:
     all_core_points()
 
 if "voronoi" in sys.argv or "distances" in sys.argv:
-    voronoi_and_neighbor_distances()
-
-if "sea" in sys.argv:
-    from by_sea import distance_by_sea
-
-    distance_by_sea(LAND.buffer(-0.04))
+    for tile in itertools.product(
+        ["N", "S"], [10, 30, 50, 70], ["E", "W"], [30, 60, 90, 120, 150, 180]
+    ):
+        try:
+            voronoi_and_neighbor_distances(tile)
+        except rasterio.errors.RasterioIOError:
+            print("Tile {:s}{:d}{:s}{:d} not found.".format(*tile))
