@@ -12,7 +12,7 @@ import shapely.geometry as sgeom
 from shapely.prepared import prep
 
 from database import db
-from raster_data import ecoregion_tile_from_geocoordinates
+from raster_data import ecoregion_tile
 
 RESOLUTION: int = 5
 
@@ -165,7 +165,7 @@ def analyze_all_hexes():
     for lon in range(-165, 165, 30):
         for lat in range(-80, 80, 20):
             try:
-                ecoraster = ecoregion_tile_from_geocoordinates(lon, lat)
+                ecoraster = ecoregion_tile(tile_from_geocoordinates(lon, lat))
             except rasterio.RasterioIOError:
                 continue
             print(f"loading ecoregions and hexes around {lon}, {lat}…")

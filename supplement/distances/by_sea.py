@@ -61,18 +61,10 @@ def distance_by_sea(definitely_inland, skip=True):
             .on_conflict_do_nothing()
         )
         for node1, lon1, lat1 in DATABASE.execute(
-                query.where(lat0 - TABLES["nodes"].c.latitude > -3.0)
-                .where(lat0 - TABLES["nodes"].c.latitude < 3.0)
-                .where(
-                    (lon0 - TABLES["nodes"].c.longitude)
-                    * numpy.cos(lat0 * numpy.pi / 180)
-                    < 3.0
-                )
-                .where(
-                    (lon0 - TABLES["nodes"].c.longitude)
-                    * numpy.cos(lat0 * numpy.pi / 180)
-                    > -3.0
-                )
+                query.where((lat0 - TABLES["nodes"].c.latitude ) ** 2
+                   + (lon0 - TABLES["nodes"].c.longitude) ** 2
+                    * numpy.cos(lat0 * numpy.pi / 180)**2
+                    < 9)
             ).fetchall():
                 d = GEODESIC.inverse((lon0, lat0), (lon1, lat1))[0, 0]
                 if d > 300_000:  # meters

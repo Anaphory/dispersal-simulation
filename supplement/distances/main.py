@@ -10,6 +10,7 @@ from heapq import heappush as push, heappop as pop
 
 import numpy
 from tqdm import tqdm
+from sqlalchemy import func
 from sqlalchemy import select
 from sqlalchemy.dialects.sqlite import insert
 
@@ -21,24 +22,35 @@ from matplotlib import pyplot as plt
 import rasterio
 from raster_data import (
     tile_from_geocoordinates,
-    gmted_tile_from_geocoordinates,
-    ecoregion_tile_from_geocoordinates,
+    gmted_tile,
+    ecoregion_tile,
+    boundingbox_from_tile,
+    Tile,
 )
 from database import db
 from ecoregions import TC
 from earth import LAND, PLAND, BBOX, GEODESIC
 
-DATABASE, TABLES = db(sys.argv[1])
+DATABASE, TABLES = db()
+RESOLUTION = 5
+
+# ============
+# Type aliases
+# ============
+
+RowCol = t.Tuple[int, int]
+LonLat = t.Tuple[float, float]
+H3Index = int
 
 # =================================
 # General geometry helper functions
 # =================================
-def as_point(h3_index):
+def as_point(h3_index: H3Index) -> sgeom.Point:
     y, x = h3.h3_to_geo(h3_index)
     return sgeom.Point(x, y)
 
 
-def find_coast_hexagons():
+def find_coast_hexagons() -> t.Set[H3Index]:
     coastal = set()
     # Coast resolution is 10m and coasts are not known to be straight, so we
     # can expect that every coastal hexagon contains at least one of the
@@ -84,91 +96,77 @@ def navigation_speed(slope: float) -> float:
 # =================
 # Raster operations
 # =================
-def prep_tile(
-    lon: float,
-    lat: float,
-):
-    print("Preparing rasters around ({:}, {:}):".format(lon, lat))
-    elevation_file = gmted_tile_from_geocoordinates(lon, lat)
+def prep_tile(tile: Tile) -> t.Tuple[numpy.ndarray, numpy.ndarray, rasterio.Affine]:
+    """Load ecology data.
+
+    Load the ecology metadata (elevations and ecoregions, in that order) of the
+    tile (30°×20°) surrounding `containing`, plus a 500 pixel overlapping
+    boundary region on each side, giving a (8200×5800) numpy array for the
+    elevations (in m) and the ecoregions (integer categories)
+
+    Returns
+    =======
+    Elevation: numpy.array
+    Ecoregions: numpy.array
+    transform: rasterio.Affine
+
+    """
+    print(f"Preparing rasters around for tile {tile}:")
+    elevation_file = gmted_tile(tile)
     m_trafo = elevation_file.transform
     height, width = elevation_file.shape
     elevation = numpy.full((height + 1000, width + 1000), -100, int)
     ecoregions = numpy.full((height + 1000, width + 1000), 999, int)
     elevation[500:-500, 500:-500] = elevation_file.read(1)
-    ecoregions[500:-500, 500:-500] = ecoregion_tile_from_geocoordinates(lon, lat).read(
-        1
-    )
-    print("Loading adjacent data…")
+    ecoregions[500:-500, 500:-500] = ecoregion_tile(tile).read(1)
+    print("Loading margins of adjacent tiles…")
+    west, south, east, north = boundingbox_from_tile(tile)
     try:
-        elevation[:500, :500] = (
-            gmted_tile_from_geocoordinates(lon - 30, lat + 20)
-        ).read(1)[-500:, -500:]
-        ecoregions[:500, :500] = ecoregion_tile_from_geocoordinates(
-            lon - 30, lat + 20
-        ).read(1)[-500:, -500:]
+        nw = tile_from_geocoordinates(west - 15, north + 10)
+        elevation[:500, :500] = gmted_tile(nw).read(1)[-500:, -500:]
+        ecoregions[:500, :500] = ecoregion_tile(nw).read(1)[-500:, -500:]
     except rasterio.RasterioIOError:
         pass
     try:
-        elevation[:500, 500:-500] = (
-            gmted_tile_from_geocoordinates(lon, lat + 20)
-        ).read(1)[-500:, :]
-        ecoregions[:500, 500:-500] = ecoregion_tile_from_geocoordinates(
-            lon, lat + 20
-        ).read(1)[-500:, :]
+        n = tile_from_geocoordinates(west + 15, north + 10)
+        elevation[:500, 500:-500] = gmted_tile(n).read(1)[-500:, :]
+        ecoregions[:500, 500:-500] = ecoregion_tile(n).read(1)[-500:, :]
     except rasterio.RasterioIOError:
         pass
     try:
-        elevation[:500, -500:] = (
-            gmted_tile_from_geocoordinates(lon + 30, lat + 20)
-        ).read(1)[-500:, :500]
-        ecoregions[:500, -500:] = ecoregion_tile_from_geocoordinates(
-            lon + 30, lat + 20
-        ).read(1)[-500:, :500]
+        ne = tile_from_geocoordinates(east + 15, north + 10)
+        elevation[:500, -500:] = gmted_tile(ne).read(1)[-500:, :500]
+        ecoregions[:500, -500:] = ecoregion_tile(ne).read(1)[-500:, :500]
     except rasterio.RasterioIOError:
         pass
     try:
-        elevation[500:-500, :500] = (
-            gmted_tile_from_geocoordinates(lon - 30, lat)
-        ).read(1)[:, -500:]
-        ecoregions[500:-500, :500] = ecoregion_tile_from_geocoordinates(
-            lon - 30, lat
-        ).read(1)[:, -500:]
+        w = tile_from_geocoordinates(west - 15, south + 10)
+        elevation[500:-500, :500] = gmted_tile(w).read(1)[:, -500:]
+        ecoregions[500:-500, :500] = ecoregion_tile(w).read(1)[:, -500:]
     except rasterio.RasterioIOError:
         pass
     try:
-        elevation[500:-500, -500:] = (
-            gmted_tile_from_geocoordinates(lon + 30, lat)
-        ).read(1)[:, :500]
-        ecoregions[500:-500, -500:] = ecoregion_tile_from_geocoordinates(
-            lon + 30, lat
-        ).read(1)[:, :500]
+        e = tile_from_geocoordinates(east + 15, south + 10)
+        elevation[500:-500, -500:] = gmted_tile(e).read(1)[:, :500]
+        ecoregions[500:-500, -500:] = ecoregion_tile(e).read(1)[:, :500]
     except rasterio.RasterioIOError:
         pass
     try:
-        elevation[-500:, :500] = (
-            gmted_tile_from_geocoordinates(lon - 30, lat - 20)
-        ).read(1)[:500, -500:]
-        ecoregions[-500:, :500] = ecoregion_tile_from_geocoordinates(
-            lon - 30, lat - 20
-        ).read(1)[:500, -500:]
+        sw = tile_from_geocoordinates(west - 15, south - 10)
+        elevation[-500:, :500] = gmted_tile(sw).read(1)[:500, -500:]
+        ecoregions[-500:, :500] = ecoregion_tile(sw).read(1)[:500, -500:]
     except rasterio.RasterioIOError:
         pass
     try:
-        elevation[-500:, 500:-500] = (
-            gmted_tile_from_geocoordinates(lon, lat - 20)
-        ).read(1)[:500, :]
-        ecoregions[-500:, 500:-500] = ecoregion_tile_from_geocoordinates(
-            lon, lat - 20
-        ).read(1)[:500, :]
+        s = tile_from_geocoordinates(west + 15, south - 10)
+        elevation[-500:, 500:-500] = gmted_tile(s).read(1)[:500, :]
+        ecoregions[-500:, 500:-500] = ecoregion_tile(s).read(1)[:500, :]
     except rasterio.RasterioIOError:
         pass
     try:
-        elevation[-500:, -500:] = (
-            gmted_tile_from_geocoordinates(lon + 30, lat - 20)
-        ).read(1)[:500, :500]
-        ecoregions[-500:, -500:] = ecoregion_tile_from_geocoordinates(
-            lon + 30, lat - 20
-        ).read(1)[:500, :500]
+        se = tile_from_geocoordinates(east + 15, south - 10)
+        elevation[-500:, -500:] = gmted_tile(se).read(1)[:500, :500]
+        ecoregions[-500:, -500:] = ecoregion_tile(se).read(1)[:500, :500]
     except rasterio.RasterioIOError:
         pass
 
@@ -180,15 +178,35 @@ def prep_tile(
         m_trafo.e,
         m_trafo.f - 500 * m_trafo.e,
     )
-    print("data loaded")
+    print("Data loaded")
     return elevation, ecoregions, transform
 
 
-def all_pairwise_distances(
+def all_moore_neighbor_distances(
     elevation: numpy.array,
     transform: rasterio.Affine,
     terrain_coefficients: numpy.array,
-) -> t.Dict[t.Tuple[int, int], numpy.array]:
+) -> t.Dict[RowCol, numpy.array]:
+    """Calculate the arrays of distances in all 8 neighbor directions.
+
+    From an elevation raster and a terrain coefficient raster (higher
+    coefficient = higher walking speed), localized using an affine
+    transformation, compute the walking times 1 pixel into each direction (N,
+    NE, E, …, NW).
+
+    Return the resulting arrays inside a dictionary with index manipulations:
+
+        {
+         (-1, 0): distance to north,
+         (-1, 1): distance to north east,
+         (0, 1): distance to east,
+         ...
+         (-1, -1): distance to north west,
+        }
+
+    """
+    # Compute the geodesic distances. They are constant for each row, which
+    # corresponds to a constant latitude.
     d_n, d_e, d_ne = [], [], []
     for y in range(1, len(elevation) + 1):
         (lon0, lat0) = transform * (0, y)
@@ -263,8 +281,7 @@ def all_pairwise_distances(
     }
 
 
-def distances_and_cache(lon, lat):
-    tile = tile_from_geocoordinates(lon, lat)
+def distances_and_cache(tile: Tile):
     fname = "distances-{:s}{:d}{:s}{:d}.tif".format(*tile)
 
     try:
@@ -282,10 +299,10 @@ def distances_and_cache(lon, lat):
     except rasterio.errors.RasterioIOError:
         print("Cache miss")
 
-    elevation, ecoregions, transform = prep_tile(lon=lon, lat=lat)
+    elevation, ecoregions, transform = prep_tile(tile)
 
     terrain_coefficient_raster = TC[ecoregions]
-    distance_by_direction = all_pairwise_distances(
+    distance_by_direction = all_moore_neighbor_distances(
         elevation, transform, terrain_coefficient_raster
     )
     profile = rasterio.profiles.DefaultGTiffProfile()
@@ -308,8 +325,8 @@ def distances_and_cache(lon, lat):
 
 def distances_from_focus(
     source: t.Tuple[int, int],
-    destinations: t.Optional[t.Set[t.Tuple[int, int]]],
-    distance_by_direction: t.Dict[t.Tuple[int, int], numpy.array],
+    destinations: t.Optional[t.Set[RowCol]],
+    distance_by_direction: t.Dict[RowCol, numpy.array],
     pred: t.Optional = None,
 ) -> numpy.array:
     # Dijkstra's algorithm, adapted for our purposes from
@@ -387,6 +404,13 @@ def find_land_hexagons():
     return hexagons | COAST
 
 
+try:
+    ALL = set(json.load(open("ALL.json")))
+except (FileNotFoundError, json.JSONDecodeError):
+    ALL = find_land_hexagons()
+    json.dump(list(ALL), open("ALL.json", "w"))
+
+
 def core_point(hexbin, distance_by_direction, transform):
     def rowcol(latlon):
         lat, lon = latlon
@@ -432,83 +456,55 @@ def core_point(hexbin, distance_by_direction, transform):
         all_dist = all_dist + distances_from_focus((r0, c0), set(border), dist)
 
     (r0, c0) = numpy.unravel_index(numpy.argmin(all_dist), all_dist.shape)
-    lon, lat = transform * (c0 + cmin, r0 + rmin)
-
-    return lon, lat
+    return (r0 + rmin, c0 + cmin)
 
 
-try:
-    ALL = set(json.load(open("ALL.json")))
-except (FileNotFoundError, json.JSONDecodeError):
-    ALL = find_land_hexagons()
-    json.dump(list(ALL), open("ALL.json", "w"))
+def tile_core_points(tile: Tile, skip_existing=True):
+    west, south, east, north = boundingbox_from_tile(tile)
 
+    def contains(h3: H3Index):
+        lat, lon = h3_to_geo(hex)
+        return (west < lon < east) and (south < lat < north)
 
-def all_core_points(skip_existing=True):
-    hexes_by_tile = sorted(
-        ALL,
-        key=lambda hex: tile_from_geocoordinates(*reversed(h3.h3_to_geo(hex))),
-    )
-
-    tile = None
-    distance_by_direction, transform = None, None
-    for hexagon in tqdm(hexes_by_tile):
-        if skip_existing and hexagon in {
+    hexes_by_tile = {hex for hex in ALL if contains(hex)}
+    if skip_existing:
+        hexes_by_tile -= {
             n
             for n, in DATABASE.execute(
                 select(TABLES["nodes"].c.node_id).where(
-                    TABLES["nodes"].c.node_id == hexagon
+                    TABLES["nodes"].c.h3latitude >= west,
+                    TABLES["nodes"].c.h3latitude >= south,
+                    TABLES["nodes"].c.h3latitude < east,
+                    TABLES["nodes"].c.h3latitude < north,
                 )
-            ).fetchall()
-        }:
-            continue
-
-        hlat, hlon = h3.h3_to_geo(hexagon)
-        DATABASE.execute(
-            insert(TABLES["nodes"])
-            .values(
-                node_id=hexagon,
-                h3longitude=hlon,
-                h3latitude=hlat,
-                coastal=(hexagon in COAST),
             )
-            .on_conflict_do_nothing()
-        )
+        }
 
-        if tile != tile_from_geocoordinates(hlon, hlat):
-            del distance_by_direction, transform
-            tile = tile_from_geocoordinates(hlon, hlat)
-            try:
-                distance_by_direction, transform = distances_and_cache(hlon, hlat)
-            except rasterio.errors.RasterioIOError:
-                tile, distance_by_direction, transform = None, None, None
-                continue
+    distance_by_direction, transform = distances_and_cache(hlon, hlat)
 
-        lon, lat = core_point(hexagon, distance_by_direction, transform)
-        DATABASE.execute(
-            insert(TABLES["nodes"])
-            .values(
-                node_id=hexagon,
-                longitude=lon,
-                latitude=lat,
-                h3longitude=hlon,
-                h3latitude=hlat,
-                coastal=(hexagon in COAST),
-            )
-            .on_conflict_do_update(
-                set_={
+    try:
+        for hexagon in tqdm(hexes_by_tile):
+            hlat, hlon = h3.h3_to_geo(hexagon)
+            row, col = core_point(hexagon, distance_by_direction, transform)
+            lon, lat = transform * (col, row)
+            values.append(
+                {
+                    "node_id": hexagon,
                     "longitude": lon,
                     "latitude": lat,
+                    "h3longitude": hlon,
+                    "h3latitude": hlat,
+                    "coastal": (hexagon in COAST),
                 }
             )
+    finally:
+        DATABASE.execute(
+            insert(TABLES["nodes"]).values(values).on_conflict_do_nothing()
         )
 
 
 def voronoi_and_neighbor_distances(tile, skip_existing=True):
-    myself = str(numpy.random.randint(1024))
-    west = (-1 if tile[2] == "W" else 1) * tile[3]
-    south = (-1 if tile[0] == "S" else 1) * tile[1]
-
+    west, south, east, north = boundingbox_from_tile(tile)
     nodes = [
         (node, short, (lon, lat))
         for node, short, lon, lat in DATABASE.execute(
@@ -518,10 +514,10 @@ def voronoi_and_neighbor_distances(tile, skip_existing=True):
                 TABLES["nodes"].c.longitude,
                 TABLES["nodes"].c.latitude,
             ).where(
-                west <= TABLES["nodes"].c.longitude,
-                TABLES["nodes"].c.longitude <= west + 30,
-                south <= TABLES["nodes"].c.latitude,
-                TABLES["nodes"].c.latitude <= south + 20,
+                TABLES["nodes"].c.latitude >= west,
+                TABLES["nodes"].c.latitude >= south,
+                TABLES["nodes"].c.latitude < east,
+                TABLES["nodes"].c.latitude < north,
             )
         )
     ]
@@ -539,35 +535,45 @@ def voronoi_and_neighbor_distances(tile, skip_existing=True):
             (height + 1, width + 1), numpy.inf, dtype=numpy.float32
         )
 
-    profile = rasterio.profiles.DefaultGTiffProfile()
-    profile["height"] = voronoi_allocation.shape[0]
-    profile["width"] = voronoi_allocation.shape[1]
-    profile["transform"] = transform
-    del profile["dtype"]
-    profile["count"] = 1
-
-    with rasterio.open(
-        fname_v,
-        "w",
-        dtype=numpy.uint16,
-        **profile,
-    ) as dst:
-        dst.write(voronoi_allocation, 1)
+    def rowcol(lonlat: LonLat):
+        nlon, nlat = lonlat
+        if nlon > 170:
+            # FIXME: We can and need to do this because we are working on the
+            # Americas and the Americas only. The generic solution is more
+            # difficult.
+            nlon = nlon - 360
+        ncol, nrow = ~transform * (nlon, nlat)
+        return (int(nrow), int(ncol))
 
     try:
         for node, short, (lon, lat) in tqdm(nodes):
             if node > 100000000:
                 # Node is an h3 index, not a river reach index
                 environment = h3.k_ring(node, 2)
+                # Make sure we have a small int to refer to this node!
+                if short is None:
+                    DATABASE.execute(
+                        TABLE["nodes"]
+                        .update()
+                        .values(short=func.max(TABLE["nodes"].c.short) + 1)
+                        .where(TABLE["nodes"].node_id == node)
+                    )
+                    (short,) = DATABASE.execute(
+                        select(TABLE["nodes"].short).where(
+                            TABLE["nodes"].node_id == node
+                        )
+                    ).fetchone()
             else:
+                # Node is a river reach end point
                 environment = h3.k_ring(h3.geo_to_h3(lat, lon, 5), 1)
                 environment.add(node)
 
             extremities = DATABASE.execute(
                 select(
-                    TABLES["nodes"].c.node_id,
                     TABLES["nodes"].c.longitude,
                     TABLES["nodes"].c.latitude,
+                    TABLES["nodes"].c.h3longitude,
+                    TABLES["nodes"].c.h3latitude,
                 ).where(
                     TABLES["nodes"].c.longitude != None,
                     TABLES["nodes"].c.latitude != None,
@@ -575,9 +581,9 @@ def voronoi_and_neighbor_distances(tile, skip_existing=True):
                 )
             ).fetchall()
 
-            n, x, y = zip(*extremities)
+            x, y = zip(*extremities)
 
-            source = None
+            source = rowcol((lon, lat))
             nnodes = []
             nrowcol = []
             neighbors = DATABASE.execute(
@@ -593,29 +599,13 @@ def voronoi_and_neighbor_distances(tile, skip_existing=True):
                 )
             ).fetchall()
 
-            for h in environment:
-                if h > 100000000:
-                    h_lat, h_lon = h3.h3_to_geo(h)
-                    neighbors.append((None, h_lon, h_lat))
-            for nnode, nlon, nlat in neighbors:
-                if nlon > 170:
-                    # FIXME: We can and need to do this because we are working on the
-                    # Americas and the Americas only. The generic solution is more
-                    # difficult.
-                    nlon = nlon - 360
-                ncol, nrow = ~transform * (nlon, nlat)
-                nrowcol.append((int(nrow), int(ncol)))
-                if node == nnode:
-                    source = nrowcol[-1]
-                nnodes.append(nnode)
-
             if skip_existing:
                 already_known = {
                     n
                     for n, in DATABASE.execute(
                         select(TABLES["edges"].c.node2).where(
                             TABLES["edges"].c.node1 == node,
-                            TABLES["edges"].c.source == "grid"
+                            TABLES["edges"].c.source == "grid",
                         )
                     )
                 }
@@ -626,27 +616,30 @@ def voronoi_and_neighbor_distances(tile, skip_existing=True):
                     continue
                 print(already_known - to_be_known, to_be_known - already_known)
 
+                if h > 100000000:
+                    h_lat, h_lon = h3.h3_to_geo(h)
+                    neighbors.append((None, h_lon, h_lat))
+
+            for nnode, nlon, nlat in neighbors:
+                nrowcol.append(rowcol((nlon, nlat)))
+                nnodes.append(nnode)
+
             rmin, cmin, array = distances_trimmed(
                 source, nrowcol, distance_by_direction, transform
             )
 
-            for nnode, (nr, nc) in zip(nnodes, nrowcol):
-                if nnode is None:
-                    continue
-                DATABASE.execute(
-                    insert(TABLES["edges"])
-                    .values(
-                        node1=node,
-                        node2=nnode,
-                        source="grid",
-                        travel_time=array[nr - rmin, nc - cmin],
-                    )
-                    .on_conflict_do_update(
-                        set_={
-                            "travel_time": array[nr - rmin, nc - cmin],
-                        }
-                    )
-                )
+            values = [
+                {
+                    "node1": node,
+                    "node2": nnode,
+                    "source": "grid",
+                    "travel_time": array[nr - rmin, nc - cmin],
+                }
+                for nnode, (nr, nc) in zip(nnodes, nrowcol)
+            ]
+            DATABASE.execute(
+                insert(TABLES["edges"]).values(values).on_conflict_do_nothing()
+            )
 
             if node > 100000000:
                 # Node is an h3 index, not a river reach index, so update the voronoi shapes around it
@@ -658,6 +651,13 @@ def voronoi_and_neighbor_distances(tile, skip_existing=True):
                     min_distances[rmin : rmin + rows, cmin : cmin + cols], array
                 )
     finally:
+        profile = rasterio.profiles.DefaultGTiffProfile()
+        profile["height"] = voronoi_allocation.shape[0]
+        profile["width"] = voronoi_allocation.shape[1]
+        profile["transform"] = transform
+        del profile["dtype"]
+        profile["count"] = 1
+
         with rasterio.open(
             fname_v,
             "w",
@@ -673,15 +673,34 @@ def voronoi_and_neighbor_distances(tile, skip_existing=True):
         ) as dst:
             dst.write(min_distances, 1)
 
+if __name__ == "__main__":
+    if "distances" in sys.argv:
+        for tile in itertools.product(
+            ["N", "S"], [10, 30, 50, 70], ["E", "W"], [30, 60, 90, 120, 150, 180]
+        ):
+            try:
+                distances_and_cache()
+            except rasterio.errors.RasterioIOError:
+                print("Tile {:s}{:d}{:s}{:d} not found.".format(*tile))
 
-if "core" in sys.argv:
-    all_core_points()
+    if "rivers" in sys.argv:
+        # Separate module, which imports this one!
+        ...
 
-if "voronoi" in sys.argv or "distances" in sys.argv:
-    for tile in itertools.product(
-        ["N", "S"], [10, 30, 50, 70], ["E", "W"], [30, 60, 90, 120, 150, 180]
-    ):
-        try:
-            voronoi_and_neighbor_distances(tile)
-        except rasterio.errors.RasterioIOError:
-            print("Tile {:s}{:d}{:s}{:d} not found.".format(*tile))
+    if "core" in sys.argv:
+        for tile in itertools.product(
+            ["N", "S"], [10, 30, 50, 70], ["E", "W"], [30, 60, 90, 120, 150, 180]
+        ):
+            try:
+                tile_core_points()
+            except rasterio.errors.RasterioIOError:
+                print("Tile {:s}{:d}{:s}{:d} not found.".format(*tile))
+
+    if "voronoi" in sys.argv or "distances" in sys.argv:
+        for tile in itertools.product(
+            ["N", "S"], [10, 30, 50, 70], ["E", "W"], [30, 60, 90, 120, 150, 180]
+        ):
+            try:
+                voronoi_and_neighbor_distances(tile)
+            except rasterio.errors.RasterioIOError:
+                print("Tile {:s}{:d}{:s}{:d} not found.".format(*tile))

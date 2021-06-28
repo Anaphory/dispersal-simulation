@@ -1,7 +1,9 @@
+import itertools
 import zipfile
 import typing as t
 from pathlib import Path
 
+import numpy
 from tqdm import tqdm
 
 import sqlalchemy
@@ -9,13 +11,16 @@ from sqlalchemy.dialects.sqlite import insert
 
 from more_itertools import windowed
 
+import rasterio.errors
 import shapefile
 import shapely.geometry as sgeom
 from shapely.prepared import prep
 
 from h3.api import basic_int as h3
 
+from raster_data import tile_from_geocoordinates, boundingbox_from_tile
 from database import db
+from main import distances_and_cache
 
 
 class RiverNetwork:
@@ -190,109 +195,236 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("database")
-    parser.add_argument("--start", type=int)
     args = parser.parse_args()
-    engine, tables = db(args.database)
+    engine, tables = db()
     t_node = tables["nodes"]
     t_dist = tables["edges"]
 
     RIVERS = RiverNetwork()
+    for tile in itertools.product(
+        ["N", "S"], [10, 30, 50, 70], ["E", "W"], [0, 30, 60, 90, 120, 150, 180]
+    ):
+        west, south, east, north = boundingbox_from_tile(tile)
 
-    for r, reach in tqdm(enumerate(RIVERS.shp.iterShapeRecords())):
-        data = reach.record
-        reach_id = int(data[0])
-        if reach_id < 60000000:
-            # The Americas have SA 6, NA 7, American Arctic 8, Greenland 9
+        try:
+            try:
+                del rasters
+            except NameError:
+                pass
+            rasters, transform = distances_and_cache(tile)
+            
+            if Path("rivers-{:s}{:d}{:s}{:d}.tif".format(*tile)).exists():
+                continue
+            is_river = numpy.zeros(rasters[1, 1].shape, dtype=bool)
+        except rasterio.errors.RasterioIOError:
             continue
 
-        points: t.List[t.Tuple[float, float]] = reach.shape.points
+        for r, reach in tqdm(enumerate(RIVERS.shp.iterShapeRecords())):
+            data = reach.record
+            reach_id = int(data[0])
+            if reach_id < 60000000:
+                # The Americas have SA 6, NA 7, American Arctic 8, Greenland 9
+                continue
 
-        # Is this reach navigable by Kayak? From
-        # [@rood2006instream,@zinke2018comparing] it seems that reaches with a
-        # flow lower than 5m³/s are not navigable even by professional extreme
-        # sport athletes, and generally even that number seems to be an outlier
-        # with opinions starting at 8m³/s, so we take that as the cutoff.
-        #
-        # [@zinke2018comparing] further plots wild water kayaking run slopes
-        # vs. difficulty. All of these are below 10%, so we assume that reaches
-        # above 10% are not navigable. Gradient is not directly available in
-        # the data, but the stream power is directly proportional to the
-        # product of discharge and gradient, so we can reverse-engineer it:
-        # Stream Power [kg m/s³]
-        # = Water Density [kg/m³] * gravity [m/s²] * discharge [m³/s] * slope [m/m]
-        # so
-        if (
-            data[3] < 0.9030899869919434
-            or data[11] / (10 ** data[3]) > 981.0  # log(8.)/log(10.)
-        ):
-            continue
+            points: t.List[t.Tuple[float, float]] = reach.shape.points
 
-        with engine.begin() as conn:
-            # slope = stream power / discharge / (1000 * 9.81) > 10% = 0.1
-            v = estimate_flow_speed(
-                discharge=10 ** data[3], slope=data[11] / 10 ** data[3] / (9810)
-            )
-            print(data[0], KAYAK_SPEED + v, KAYAK_SPEED + v)
-            if v > 40.0:
-                raise RuntimeError(
-                    "Found a reach flowing faster than 40 m/s, something is clearly wrong."
-                )
-
-            downstream = data[1]
-            conn.execute(
-                insert(t_node)
-                .values(
-                    {
-                        "node_id": reach_id,
-                        "longitude": points[0][0],
-                        "latitude": points[0][1],
-                        "coastal": False,
-                    },
-                )
-                .on_conflict_do_nothing()
-            )
-            if downstream == 0:
-                downstream = -reach_id
-                coastal = True
+            inside_tile = False
+            # River crossing penalties following [@livingood2012no]
+            if data[3] < -0.5479551057398296:
+                continue
             else:
-                coastal = False
-            conn.execute(
-                insert(t_node)
-                .values(
-                    {
-                        "node_id": downstream,
-                        "longitude": points[-1][0],
-                        "latitude": points[-1][1],
-                        "coastal": coastal,
-                    },
-                )
-                .on_conflict_do_nothing()
-            )
+                if data[3] < 0.4520448942601702:
+                    crossing_penalty = 3.0
+                elif data[3] < 1.4520448942601702:
+                    crossing_penalty = 300.0
+                elif data[3] < 2.4520448942601702:
+                    crossing_penalty = 600.0
+                else:
+                    crossing_penalty = 1800.0
 
-            conn.execute(
-                insert(t_dist)
-                .values(
-                    {
-                        "node1": reach_id,
-                        "node2": downstream,
-                        "source": "river",
-                        "flat_distance": data[2] * 1000,
-                        "travel_time": data[2] * 1000 / (KAYAK_SPEED + v),
-                    },
+                for (lon0, lat0), (lon1, lat1) in windowed(points, 2):
+                    if not (
+                        (west < lon0 < east or west < lon1 < east)
+                        and (south < lat0 < north or south < lat1 < north)
+                    ):
+                        continue
+                    inside_tile = True
+
+                    col0, row0 = ~transform * (lon0, lat0)
+                    col1, row1 = ~transform * (lon1, lat1)
+                    cells = {
+                        (
+                            int(round(along * row0 + (1 - along) * row1)),
+                            int(round(along * col0 + (1 - along) * col1)),
+                        )
+                        for along in numpy.linspace(
+                            0, 1, int(abs(row1 - row0) + abs(col1 - col0))
+                        )
+                    }
+                    cells = [c for c in cells if 0 <= c[0] < is_river.shape[0] if 0 < c[1] < is_river.shape[1]
+                             if not is_river[c]]
+                    direction = (
+                        round(4 * numpy.arctan2((lon1 - lon0), (lat1 - lat0)) / numpy.pi)
+                        % 4
+                    )
+                    # Crossing a river takes a penalty when rougly orthogonal
+                    # to the river, and is impossible diagonally.
+                    if direction == 0:
+                        for cell in cells:
+                            is_river[cell] = True
+                            rasters[0, 1][cell] += crossing_penalty
+                            rasters[0, -1][cell] += crossing_penalty
+                            rasters[1, 1][cell] = numpy.inf
+                            rasters[1, -1][cell] = numpy.inf
+                            rasters[-1, 1][cell] = numpy.inf
+                            rasters[-1, -1][cell] = numpy.inf
+                    elif direction == 1:
+                        for cell in cells:
+                            is_river[cell] = True
+                            rasters[-1, 1][cell] += crossing_penalty
+                            rasters[1, -1][cell] += crossing_penalty
+                            rasters[0, 1][cell] = numpy.inf
+                            rasters[0, -1][cell] = numpy.inf
+                            rasters[1, 0][cell] = numpy.inf
+                            rasters[-1, 0][cell] = numpy.inf
+                    elif direction == 2:
+                        for cell in cells:
+                            is_river[cell] = True
+                            rasters[1, 0][cell] += crossing_penalty
+                            rasters[-1, 0][cell] += crossing_penalty
+                            rasters[1, 1][cell] = numpy.inf
+                            rasters[1, -1][cell] = numpy.inf
+                            rasters[-1, 1][cell] = numpy.inf
+                            rasters[-1, -1][cell] = numpy.inf
+                    elif direction == 3:
+                        for cell in cells:
+                            is_river[cell] = True
+                            rasters[1, 1][cell] += crossing_penalty
+                            rasters[-1, -1][cell] += crossing_penalty
+                            rasters[0, 1][cell] = numpy.inf
+                            rasters[0, -1][cell] = numpy.inf
+                            rasters[1, 0][cell] = numpy.inf
+                            rasters[-1, 0][cell] = numpy.inf
+            if not inside_tile:
+                continue
+
+            # Is this reach navigable by Kayak/Canoe? From
+            # [@rood2006instream,@zinke2018comparing] it seems that reaches with a
+            # flow lower than 5m³/s are not navigable even by professional extreme
+            # sport athletes, and generally even that number seems to be an outlier
+            # with opinions starting at 8m³/s, so we take that as the cutoff.
+            #
+            # [@zinke2018comparing] further plots wild water kayaking run slopes
+            # vs. difficulty. All of these are below 10%, so we assume that reaches
+            # above 10% are not navigable. Gradient is not directly available in
+            # the data, but the stream power is directly proportional to the
+            # product of discharge and gradient, so we can reverse-engineer it:
+            # Stream Power [kg m/s³]
+            # = Water Density [kg/m³] * gravity [m/s²] * discharge [m³/s] * slope [m/m]
+            # so
+            if (
+                data[3] < 0.9030899869919434
+                or data[11] / (10 ** data[3]) > 981.0  # log(8.)/log(10.)
+            ):
+                continue
+
+            with engine.begin() as conn:
+                # slope = stream power / discharge / (1000 * 9.81) > 10% = 0.1
+                v = estimate_flow_speed(
+                    discharge=10 ** data[3], slope=data[11] / 10 ** data[3] / (9810)
                 )
-                .on_conflict_do_nothing()
-            )
-            if KAYAK_SPEED > v:
+                print(data[0], KAYAK_SPEED + v, KAYAK_SPEED + v)
+                if v > 40.0:
+                    raise RuntimeError(
+                        "Found a reach flowing faster than 40 m/s, something is clearly wrong."
+                    )
+
+                downstream = data[1]
                 conn.execute(
-                    insert(t_dist)
+                    insert(t_node)
                     .values(
                         {
-                            "node1": downstream,
-                            "node2": reach_id,
-                            "source": "river",
-                            "flat_distance": data[2] * 1000,
-                            "travel_time": data[2] * 1000 / (KAYAK_SPEED - v),
+                            "node_id": reach_id,
+                            "longitude": points[0][0],
+                            "latitude": points[0][1],
+                            "coastal": False,
                         },
                     )
                     .on_conflict_do_nothing()
                 )
+                if downstream == 0:
+                    downstream = -reach_id
+                    coastal = True
+                else:
+                    coastal = False
+                conn.execute(
+                    insert(t_node)
+                    .values(
+                        {
+                            "node_id": downstream,
+                            "longitude": points[-1][0],
+                            "latitude": points[-1][1],
+                            "coastal": coastal,
+                        },
+                    )
+                    .on_conflict_do_nothing()
+                )
+
+                conn.execute(
+                    insert(t_dist)
+                    .values(
+                        {
+                            "node1": reach_id,
+                            "node2": downstream,
+                            "source": "river",
+                            "flat_distance": data[2] * 1000,
+                            "travel_time": data[2] * 1000 / (KAYAK_SPEED + v),
+                        },
+                    )
+                    .on_conflict_do_nothing()
+                )
+                if KAYAK_SPEED > v:
+                    conn.execute(
+                        insert(t_dist)
+                        .values(
+                            {
+                                "node1": downstream,
+                                "node2": reach_id,
+                                "source": "river",
+                                "flat_distance": data[2] * 1000,
+                                "travel_time": data[2] * 1000 / (KAYAK_SPEED - v),
+                            },
+                        )
+                        .on_conflict_do_nothing()
+                    )
+
+        profile = rasterio.profiles.DefaultGTiffProfile()
+        profile["height"] = rasters[1, 1].shape[0] + 1
+        profile["width"] = rasters[1, 1].shape[1] + 1
+        profile["transform"] = transform
+        profile["dtype"] = rasterio.float64
+        profile["count"] = 8
+
+        fname = "distances-{:s}{:d}{:s}{:d}.tif".format(*tile)
+        with rasterio.open(
+                fname,
+                "w",
+                **profile,
+        ) as dst:
+            for i, band in enumerate(rasters.values(), 1):
+                dst.write(band.astype(rasterio.float64), i)
+
+        profile = rasterio.profiles.DefaultGTiffProfile()
+        profile["height"] = is_river.shape[0]
+        profile["width"] = is_river.shape[1]
+        profile["transform"] = transform
+        profile["dtype"] = numpy.uint8
+        profile["count"] = 1
+
+        fname = "rivers-{:s}{:d}{:s}{:d}.tif".format(*tile)
+        with rasterio.open(
+                fname,
+                "w",
+                **profile,
+        ) as dst:
+            dst.write(is_river.astype(numpy.uint8), 1)
