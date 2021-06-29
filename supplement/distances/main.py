@@ -710,9 +710,9 @@ if __name__ == "__main__":
         n = ((n + 13999) // 140000) * 140000
         for tile in itertools.product(
             ["N", "S"],
-            [10, 30, 50, 70],
+            reversed([10, 30, 50, 70]),
             ["E", "W"],
-            [0, 30, 60, 90, 120, 150, 180],
+            reversed([0, 30, 60, 90, 120, 150, 180]),
         ):
             try:
                 n = tile_core_points(tile, n=n)

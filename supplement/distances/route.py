@@ -34,16 +34,20 @@ def distances_from_focus(
     # use heapq with (distance, label) tuples
     fringe: t.List[t.Tuple[float, int, t.Tuple[int, int]]] = []
     source_lonlat = DATABASE.execute(
-        select([
-            TABLES["nodes"].c.longitude,
-            TABLES["nodes"].c.latitude,
-            ]).where(TABLES["nodes"].c.node_id == source)
+        select(
+            [
+                TABLES["nodes"].c.longitude,
+                TABLES["nodes"].c.latitude,
+            ]
+        ).where(TABLES["nodes"].c.node_id == source)
     ).fetchone()
     dest_lonlat = DATABASE.execute(
-        select([
-            TABLES["nodes"].c.longitude,
-            TABLES["nodes"].c.latitude,
-            ]).where(TABLES["nodes"].c.node_id == destination)
+        select(
+            [
+                TABLES["nodes"].c.longitude,
+                TABLES["nodes"].c.latitude,
+            ]
+        ).where(TABLES["nodes"].c.node_id == destination)
     ).fetchone()
     # Speeds faster than 2m/s are really rare, even on rivers, so use geodesic
     # distance with a speed of 2m/s as heuristic
@@ -66,13 +70,15 @@ def distances_from_focus(
             break
 
         for u, cost, source, lon, lat in DATABASE.execute(
-            select([
-                TABLES["edges"].c.node2,
-                TABLES["edges"].c.travel_time,
-                TABLES["edges"].c.source,
-                TABLES["nodes"].c.longitude,
-                TABLES["nodes"].c.latitude,
-                ])
+            select(
+                [
+                    TABLES["edges"].c.node2,
+                    TABLES["edges"].c.travel_time,
+                    TABLES["edges"].c.source,
+                    TABLES["nodes"].c.longitude,
+                    TABLES["nodes"].c.latitude,
+                ]
+            )
             .select_from(
                 TABLES["edges"].join(
                     TABLES["nodes"],
@@ -103,14 +109,16 @@ def find_node(lon, lat, rivers=False):
 
     # Find the seven nearest nodes, in terms of raw coordinates, using an approximation
     query = (
-        select([
-            TABLES["nodes"].c.node_id,
-            TABLES["nodes"].c.longitude,
-            TABLES["nodes"].c.latitude,
-            ])
-        .where((
-            TABLES["nodes"].c.longitude != None)&(
-            TABLES["nodes"].c.latitude != None ))
+        select(
+            [
+                TABLES["nodes"].c.node_id,
+                TABLES["nodes"].c.longitude,
+                TABLES["nodes"].c.latitude,
+            ]
+        )
+        .where(
+            (TABLES["nodes"].c.longitude != None) & (TABLES["nodes"].c.latitude != None)
+        )
         .order_by(
             func.abs(TABLES["nodes"].c.latitude - lat)
             + func.abs(TABLES["nodes"].c.longitude - lon) * cos(lat * pi / 180)
@@ -170,10 +178,12 @@ print("Backtrack…")
 while pred.get(backtrack):
     backtrack, source = pred[backtrack]
     lonlat = DATABASE.execute(
-        select([
-            TABLES["nodes"].c.longitude,
-            TABLES["nodes"].c.latitude,
-            ]).where(TABLES["nodes"].c.node_id == backtrack)
+        select(
+            [
+                TABLES["nodes"].c.longitude,
+                TABLES["nodes"].c.latitude,
+            ]
+        ).where(TABLES["nodes"].c.node_id == backtrack)
     ).fetchone()
     if lonlat is None:
         break
@@ -196,10 +206,12 @@ print("Backtrack…")
 while pred.get(rbacktrack):
     backtrack, source = pred[rbacktrack]
     lonlat = DATABASE.execute(
-        select([
-            TABLES["nodes"].c.longitude,
-            TABLES["nodes"].c.latitude,
-            ]).where(TABLES["nodes"].c.node_id == backtrack)
+        select(
+            [
+                TABLES["nodes"].c.longitude,
+                TABLES["nodes"].c.latitude,
+            ]
+        ).where(TABLES["nodes"].c.node_id == backtrack)
     ).fetchone()
     if lonlat is None:
         break
@@ -273,14 +285,16 @@ ax.add_geometries(
 
 hexagon_id, x, y, hx, hy, coast = zip(
     *DATABASE.execute(
-        select([
-            TABLES["nodes"].c.node_id,
-            TABLES["nodes"].c.longitude,
-            TABLES["nodes"].c.latitude,
-            TABLES["nodes"].c.h3longitude,
-            TABLES["nodes"].c.h3latitude,
-            TABLES["nodes"].c.coastal,
-            ]).where(TABLES["nodes"].c.node_id > 100000000)
+        select(
+            [
+                TABLES["nodes"].c.node_id,
+                TABLES["nodes"].c.longitude,
+                TABLES["nodes"].c.latitude,
+                TABLES["nodes"].c.h3longitude,
+                TABLES["nodes"].c.h3latitude,
+                TABLES["nodes"].c.coastal,
+            ]
+        ).where(TABLES["nodes"].c.node_id > 100000000)
     ).fetchall()
 )
 
@@ -305,12 +319,14 @@ ax.scatter(
 )
 node_id, x, y, coast = zip(
     *DATABASE.execute(
-        select([
-            TABLES["nodes"].c.node_id,
-            TABLES["nodes"].c.longitude,
-            TABLES["nodes"].c.latitude,
-            TABLES["nodes"].c.coastal,
-            ]).where(TABLES["nodes"].c.node_id <= 100000000)
+        select(
+            [
+                TABLES["nodes"].c.node_id,
+                TABLES["nodes"].c.longitude,
+                TABLES["nodes"].c.latitude,
+                TABLES["nodes"].c.coastal,
+            ]
+        ).where(TABLES["nodes"].c.node_id <= 100000000)
     ).fetchall(),
 )
 ax.scatter(
