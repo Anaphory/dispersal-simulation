@@ -2,6 +2,7 @@ import typing as t
 
 import sqlalchemy
 from sqlalchemy import event
+from sqlalchemy.schema import PrimaryKeyConstraint
 from sqlalchemy.engine import Engine
 
 from h3.api import basic_int as h3
@@ -31,12 +32,13 @@ def db(
             primary_key=True,
             sqlite_on_conflict_primary_key="REPLACE",
         ),
-        sqlalchemy.Column("longitude", sqlalchemy.Float),
-        sqlalchemy.Column("latitude", sqlalchemy.Float),
+        sqlalchemy.Column("longitude", sqlalchemy.Float, nullable=False),
+        sqlalchemy.Column("latitude", sqlalchemy.Float, nullable=False),
         sqlalchemy.Column("h3longitude", sqlalchemy.Float),
         sqlalchemy.Column("h3latitude", sqlalchemy.Float),
         sqlalchemy.Column("coastal", sqlalchemy.Boolean),
-        sqlalchemy.Column("short", sqlalchemy.Integer),
+        sqlalchemy.Column("popdensity", sqlalchemy.Float),  # 1/km^2
+        sqlalchemy.Column("short", sqlalchemy.Integer, unique=True, nullable=True),
     )
 
     edges = sqlalchemy.Table(
@@ -46,17 +48,17 @@ def db(
             "node1",
             sqlalchemy.Integer,
             sqlalchemy.ForeignKey(nodes.c.node_id),
-            primary_key=True,
         ),
         sqlalchemy.Column(
             "node2",
             sqlalchemy.Integer,
             sqlalchemy.ForeignKey(nodes.c.node_id),
-            primary_key=True,
         ),
         sqlalchemy.Column("travel_time", sqlalchemy.Float),  # in seconds
         sqlalchemy.Column("flat_distance", sqlalchemy.Float),  # in meters
-        sqlalchemy.Column("source", sqlalchemy.String, primary_key=True),
+        sqlalchemy.Column("source", sqlalchemy.String),
+        PrimaryKeyConstraint("node1", "node2", "source", sqlite_on_conflict='REPLACE')
+
     )
 
     ecology = sqlalchemy.Table(
@@ -69,8 +71,9 @@ def db(
             primary_key=True,
         ),
         sqlalchemy.Column("ecoregion", sqlalchemy.Integer(), primary_key=True),
-        sqlalchemy.Column("area", sqlalchemy.Float),
+        sqlalchemy.Column("area", sqlalchemy.Float), # in km^2
         sqlalchemy.Column("population_capacity", sqlalchemy.Float),
+        PrimaryKeyConstraint("node", "ecoregion", sqlite_on_conflict='REPLACE')
     )
 
     metadata.create_all(engine)

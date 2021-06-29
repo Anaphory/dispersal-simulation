@@ -550,21 +550,11 @@ def voronoi_and_neighbor_distances(tile, skip_existing=True):
     try:
         for node, short, (lon, lat) in tqdm(nodes):
             if node > 100000000:
-                # Node is an h3 index, not a river reach index
-                environment = h3.k_ring(node, 2)
                 # Make sure we have a small int to refer to this node!
                 if short is None:
-                    DATABASE.execute(
-                        TABLE["nodes"]
-                        .update()
-                        .values(short=func.max(TABLE["nodes"].c.short) + 1)
-                        .where(TABLE["nodes"].node_id == node)
-                    )
-                    (short,) = DATABASE.execute(
-                        select(TABLE["nodes"].short).where(
-                            TABLE["nodes"].node_id == node
-                        )
-                    ).fetchone()
+                    raise ValueError("Short ID of a hex node must not be None")
+                # Node is an h3 index, not a river reach index
+                environment = h3.k_ring(node, 2)
             else:
                 # Node is a river reach end point
                 environment = h3.k_ring(h3.geo_to_h3(lat, lon, 5), 1)
@@ -619,7 +609,11 @@ def voronoi_and_neighbor_distances(tile, skip_existing=True):
                 }
                 to_be_known = {n for n, _, _ in neighbors} - {None}
                 if already_known >= to_be_known and (
-                    node < 100000000 or min_distances[source] == 0.0
+                    (node < 100000000)
+                    or (
+                        min_distances[source] == 0.0
+                        and voronoi_allocation[source] == short
+                    )
                 ):
                     continue
                 print(already_known - to_be_known, to_be_known - already_known)
@@ -712,9 +706,13 @@ if __name__ == "__main__":
         ...
 
     if "core" in sys.argv:
-        n = 0
+        n, = DATABASE.execute(select(func.max(TABLES["nodes"].c.short))).fetchone()
+        n = ((n + 13999) // 140000) * 140000
         for tile in itertools.product(
-            ["N", "S"], [10, 30, 50, 70], ["E", "W"], [0, 30, 60, 90, 120, 150, 180]
+            ["N", "S"],
+            [10, 30, 50, 70],
+            ["E", "W"],
+            [0, 30, 60, 90, 120, 150, 180],
         ):
             try:
                 n = tile_core_points(tile, n=n)
