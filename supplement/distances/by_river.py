@@ -194,7 +194,6 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("database")
     args = parser.parse_args()
     engine, tables = db()
     t_node = tables["nodes"]
@@ -212,7 +211,7 @@ if __name__ == "__main__":
             except NameError:
                 pass
             rasters, transform = distances_and_cache(tile)
-            
+
             if Path("rivers-{:s}{:d}{:s}{:d}.tif".format(*tile)).exists():
                 continue
             is_river = numpy.zeros(rasters[1, 1].shape, dtype=bool)
@@ -250,15 +249,15 @@ if __name__ == "__main__":
                         continue
                     inside_tile = True
 
-                    col0, row0 = ~transform * (lon0, lat0)
-                    col1, row1 = ~transform * (lon1, lat1)
+                    col0, row0 = ~transform * (lon0 + 0.0002, lat0 + 0.0001)
+                    col1, row1 = ~transform * (lon1 + 0.0002, lat1 + 0.0002)
                     cells = {
                         (
                             int(round(along * row0 + (1 - along) * row1)),
                             int(round(along * col0 + (1 - along) * col1)),
                         )
                         for along in numpy.linspace(
-                            0, 1, int(abs(row1 - row0) + abs(col1 - col0))
+                            0, 1, 4*int(abs(row1 - row0) + abs(col1 - col0)) + 1
                         )
                     }
                     cells = [c for c in cells if 0 <= c[0] < is_river.shape[0] if 0 < c[1] < is_river.shape[1]

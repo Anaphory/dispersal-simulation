@@ -48,6 +48,8 @@ def distances_from_focus(
         if spot == destination:
             break
 
+        print(d)
+
         for u, cost, source in itertools.chain(
             DATABASE.execute(
                 select(
@@ -117,6 +119,7 @@ def find_node(lon, lat, rivers=False):
 
 nashville = find_node(-86.9759, 36.0346)
 natchez = find_node(-91.36892, 31.54543)
+print(nashville, natchez)
 
 # Plotting
 import cartopy.crs as ccrs
@@ -129,6 +132,7 @@ from matplotlib.colors import ListedColormap
 proj = ccrs.PlateCarree()
 ax = plt.axes(projection=proj)
 
+print("Plotting parkway…")
 natchez_trace_parkway = shapely.wkb.load(open("./natchez_trace.wkb", "rb"))
 ax.add_geometries(
     natchez_trace_parkway,
@@ -139,12 +143,14 @@ ax.add_geometries(
     zorder=32,
 )
 
+print("Nashville to Natchez…")
 pred = {nashville: (None, "self-loop")}
 d = distances_from_focus(nashville, natchez, pred=pred, filter_sources={"grid"})
 backtrack = natchez
 lons = [-91.36892]
 lats = [31.54543]
 sources = []
+print("Backtrack…")
 while pred.get(backtrack):
     backtrack, source = pred[backtrack]
     backtrack = pred[backtrack]
@@ -160,12 +166,14 @@ while pred.get(backtrack):
 bbox = (min(lons), max(lons), min(lats), max(lats))
 ax.plot(lons, lats, zorder=30)
 
+print("Natchez to Nashville…")
 rpred = {natchez: (None, "self-loop")}
 rd = distances_from_focus(natchez, nashville, pred=rpred)
 rbacktrack = nashville
 rlons = [-86.9759]
 rlats = [36.0346]
 rsources = []
+print("Backtrack…")
 while rpred.get(rbacktrack):
     backtrack, source = rpred[rbacktrack]
     lon, lat = DATABASE.execute(
@@ -178,6 +186,7 @@ while rpred.get(rbacktrack):
     rlats.append(lat)
     rsources.append(source)
 
+print("Set up plot…")
 bbox = (
     min(bbox[0], *rlons),
     max(bbox[1], *rlons),
@@ -192,9 +201,10 @@ random = ListedColormap(
     [(1, 1, 1, 0)] + [numpy.random.random(3) for _ in range(2 ** 16 - 1)], name="random"
 )
 
-for tile in itertools.product(
+print("Plot voronoi…")
+for tile in tqdm(tertools.product(
     ["N", "S"], [10, 30, 50, 70], ["E", "W"], [30, 60, 90, 120, 150, 180]
-):
+)):
     fname_v = "voronoi-{:s}{:d}{:s}{:d}.tif".format(*tile)
     try:
         data = rasterio.open(fname_v, "r").read(1)[500:-500, 500:-500]
@@ -214,6 +224,7 @@ for tile in itertools.product(
     v.set_zorder(1)
     # TODO: we tend to run out of memory otherwise, but at least test!
 
+print("Background of plot…")
 # shape_feature = ShapelyFeature(LAND, ccrs.PlateCarree(), facecolor="none", edgecolor="blue", lw=1)
 ax.add_geometries(
     shpreader.Reader(
@@ -250,6 +261,7 @@ hexagon_id, x, y, hx, hy, coast = zip(
 )
 
 
+print("Nodes…")
 ax.scatter(
     hx,
     hy,
@@ -286,4 +298,5 @@ ax.scatter(
     zorder=4,
 )
 
+print("Show…")
 plt.show()

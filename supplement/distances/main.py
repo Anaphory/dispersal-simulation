@@ -459,14 +459,14 @@ def core_point(hexbin, distance_by_direction, transform):
     return (r0 + rmin, c0 + cmin)
 
 
-def tile_core_points(tile: Tile, skip_existing=True):
+def tile_core_points(tile: Tile, skip_existing=True, n=0):
     west, south, east, north = boundingbox_from_tile(tile)
 
-    def contains(h3: H3Index):
-        lat, lon = h3_to_geo(hex)
+    def tile_contains(hexagon: H3Index):
+        lat, lon = h3.h3_to_geo(hexagon)
         return (west < lon < east) and (south < lat < north)
 
-    hexes_by_tile = {hex for hex in ALL if contains(hex)}
+    hexes_by_tile = {hex for hex in ALL if tile_contains(hex)}
     if skip_existing:
         hexes_by_tile -= {
             n
@@ -480,13 +480,15 @@ def tile_core_points(tile: Tile, skip_existing=True):
             )
         }
 
-    distance_by_direction, transform = distances_and_cache(hlon, hlat)
+    distance_by_direction, transform = distances_and_cache(tile)
 
     try:
+        values = []
         for hexagon in tqdm(hexes_by_tile):
             hlat, hlon = h3.h3_to_geo(hexagon)
             row, col = core_point(hexagon, distance_by_direction, transform)
             lon, lat = transform * (col, row)
+            n += 1
             values.append(
                 {
                     "node_id": hexagon,
@@ -495,12 +497,14 @@ def tile_core_points(tile: Tile, skip_existing=True):
                     "h3longitude": hlon,
                     "h3latitude": hlat,
                     "coastal": (hexagon in COAST),
+                    "short": n
                 }
             )
     finally:
         DATABASE.execute(
             insert(TABLES["nodes"]).values(values).on_conflict_do_nothing()
         )
+    return n
 
 
 def voronoi_and_neighbor_distances(tile, skip_existing=True):
@@ -514,15 +518,15 @@ def voronoi_and_neighbor_distances(tile, skip_existing=True):
                 TABLES["nodes"].c.longitude,
                 TABLES["nodes"].c.latitude,
             ).where(
-                TABLES["nodes"].c.latitude >= west,
+                TABLES["nodes"].c.longitude >= west,
                 TABLES["nodes"].c.latitude >= south,
-                TABLES["nodes"].c.latitude < east,
+                TABLES["nodes"].c.longitude < east,
                 TABLES["nodes"].c.latitude < north,
             )
         )
     ]
 
-    distance_by_direction, transform = distances_and_cache(west + 15, south + 10)
+    distance_by_direction, transform = distances_and_cache(tile)
     fname_v = "voronoi-{:s}{:d}{:s}{:d}.tif".format(*tile)
     fname_d = "min_distances-{:s}{:d}{:s}{:d}.tif".format(*tile)
     try:
@@ -581,7 +585,7 @@ def voronoi_and_neighbor_distances(tile, skip_existing=True):
                 )
             ).fetchall()
 
-            x, y = zip(*extremities)
+            x, y, hx, hy = zip(*extremities)
 
             source = rowcol((lon, lat))
             nnodes = []
@@ -597,7 +601,7 @@ def voronoi_and_neighbor_distances(tile, skip_existing=True):
                     min(y) <= TABLES["nodes"].c.latitude,
                     TABLES["nodes"].c.latitude <= max(y),
                 )
-            ).fetchall()
+            ).fetchall() + [(None, hlon, hlat) for hlon, hlat in zip(hx, hy)]
 
             if skip_existing:
                 already_known = {
@@ -616,10 +620,6 @@ def voronoi_and_neighbor_distances(tile, skip_existing=True):
                     continue
                 print(already_known - to_be_known, to_be_known - already_known)
 
-                if h > 100000000:
-                    h_lat, h_lon = h3.h3_to_geo(h)
-                    neighbors.append((None, h_lon, h_lat))
-
             for nnode, nlon, nlat in neighbors:
                 nrowcol.append(rowcol((nlon, nlat)))
                 nnodes.append(nnode)
@@ -636,6 +636,7 @@ def voronoi_and_neighbor_distances(tile, skip_existing=True):
                     "travel_time": array[nr - rmin, nc - cmin],
                 }
                 for nnode, (nr, nc) in zip(nnodes, nrowcol)
+                if nnode is not None
             ]
             DATABASE.execute(
                 insert(TABLES["edges"]).values(values).on_conflict_do_nothing()
@@ -674,25 +675,18 @@ def voronoi_and_neighbor_distances(tile, skip_existing=True):
             dst.write(min_distances, 1)
 
 if __name__ == "__main__":
-    if "distances" in sys.argv:
-        for tile in itertools.product(
-            ["N", "S"], [10, 30, 50, 70], ["E", "W"], [30, 60, 90, 120, 150, 180]
-        ):
-            try:
-                distances_and_cache()
-            except rasterio.errors.RasterioIOError:
-                print("Tile {:s}{:d}{:s}{:d} not found.".format(*tile))
-
     if "rivers" in sys.argv:
-        # Separate module, which imports this one!
+        # Separate module, which imports this one! It creates the distances
+        # caches, too.
         ...
 
     if "core" in sys.argv:
+        n = 0
         for tile in itertools.product(
             ["N", "S"], [10, 30, 50, 70], ["E", "W"], [30, 60, 90, 120, 150, 180]
         ):
             try:
-                tile_core_points()
+                n = tile_core_points(tile, n=n)
             except rasterio.errors.RasterioIOError:
                 print("Tile {:s}{:d}{:s}{:d} not found.".format(*tile))
 
@@ -700,6 +694,7 @@ if __name__ == "__main__":
         for tile in itertools.product(
             ["N", "S"], [10, 30, 50, 70], ["E", "W"], [30, 60, 90, 120, 150, 180]
         ):
+            print("Working on tile {:s}{:d}{:s}{:d}…".format(*tile))
             try:
                 voronoi_and_neighbor_distances(tile)
             except rasterio.errors.RasterioIOError:
