@@ -793,19 +793,20 @@ fit.dens.high2 <- lm(ldensityC ~ npp + biodiv + pathos, data=data[data$nrg=="hi"
 # Partial residual plots for models that include also non-significant predictors.
 # The same code can be applied to the models including only significant predictors
 par(mfrow=c(2,3), mar=c(4,4,3,0.5))
-visreg(fit.dens.low2, "npp", points=list(cex=0.8, pch=1, col="black"), xlab="",
-  ylab="ln(Pop. density)", ylim=c(-2,6), xlim=c(100,1500))
-visreg(fit.dens.low2, "biodiv", points=list(cex=0.8, pch=1, col="black"),
-  main="Low-productivity", xlab="", ylab="", ylim=c(-2,6), xlim=c(0,0.5), yaxt="n")
-visreg(fit.dens.low2, "pathos", points=list(cex=0.8, pch=1, col="black"),
-  xlab="", ylab="", ylim=c(-2,6), xlim=c(-1,1), yaxt="n")
-visreg(fit.dens.high2, "npp", points=list(cex=0.8, pch=1, col="black"),
-  xlab="NPP", ylab="ln(Pop. density)", ylim=c(0,6))
-visreg(fit.dens.high2, "biodiv", points=list(cex=0.8, pch=1, col="black"),
-  main="High-productivity", xlab="Biodiversity", ylab="", ylim=c(0,6),
-  xlim=c(0.1,0.7), yaxt="n")
-visreg(fit.dens.high2, "pathos", points=list(cex=0.8, pch=1, col="black"),
-  xlab="Pathogens", ylab="", ylim=c(0,6), xlim=c(-1,0.2), yaxt="n")
+## TODO: Is visreg compatible with R 4.1.0?? I get an error in the following lines.
+# visreg(fit.dens.low2, xvar="npp", points=list(cex=0.8, pch=1, col="black"), xlab="",
+#   ylab="ln(Pop. density)", ylim=c(-2,6), xlim=c(100,1500))
+# visreg(fit.dens.low2, "biodiv", points=list(cex=0.8, pch=1, col="black"),
+#   main="Low-productivity", xlab="", ylab="", ylim=c(-2,6), xlim=c(0,0.5), yaxt="n")
+# visreg(fit.dens.low2, "pathos", points=list(cex=0.8, pch=1, col="black"),
+#   xlab="", ylab="", ylim=c(-2,6), xlim=c(-1,1), yaxt="n")
+# visreg(fit.dens.high2, "npp", points=list(cex=0.8, pch=1, col="black"),
+#   xlab="NPP", ylab="ln(Pop. density)", ylim=c(0,6))
+# visreg(fit.dens.high2, "biodiv", points=list(cex=0.8, pch=1, col="black"),
+#   main="High-productivity", xlab="Biodiversity", ylab="", ylim=c(0,6),
+#   xlim=c(0.1,0.7), yaxt="n")
+# visreg(fit.dens.high2, "pathos", points=list(cex=0.8, pch=1, col="black"),
+#   xlab="Pathogens", ylab="", ylim=c(0,6), xlim=c(-1,0.2), yaxt="n")
 ```
 ```{r}
 # Predictive power
@@ -1117,8 +1118,8 @@ URL <- paste(
   "https://www.naturalearthdata.com",
   "http//www.naturalearthdata.com",
   "download/50m/physical",
-  "ne_50m_glaciated_areas.zip?version=2.0.0",
-  # I had problems downloading the current version, but 2.0.0 I could get.
+  "ne_50m_glaciated_areas.zip",
+  # I had problems downloading the current version, but 2.0.0 I could get: ?version=2.0.0
   sep="/")
 wd <- getwd()
 setwd(td)
@@ -1144,9 +1145,11 @@ writeRaster(lpdensity, "lpdensity.tif", overwrite=T)
 
 ```{r}
 library(DBI)
-con <- dbConnect(RSQLite::SQLite(), "../distances/plot.sqlite")
+con <- dbConnect(RSQLite::SQLite(), "../distances/with-eco.sqlite")
 
-res <- dbSendQuery(con, "SELECT * FROM hex")
+# res <- dbExecute(con, "ALTER TABLE nodes ADD COLUMN lpdensity REAL")
+
+res <- dbSendQuery(con, "SELECT node_id, latitude, longitude FROM nodes WHERE latitude IS NOT NULL AND longitude IS NOT NULL AND h3latitude IS NOT NULL AND h3longitude IS NOT NULL")
 coords <- dbFetch(res)
 coords <- SpatialPointsDataFrame(
   coords = coords[,c("longitude", "latitude")],
@@ -1164,8 +1167,8 @@ dbWriteTable(con, "hex", as.data.frame(coords),
              overwrite=T)
 
 ggplot(as.data.frame(coords)) +
-  geom_point(aes(x=longitude, y=latitude, colour=popdensity), size=0.1) +
-  scale_color_viridis_c()
+  geom_point(aes(x=longitude, y=latitude, colour=popdensity), size=0.1) + 
+  scale_color_viridis_c(trans = "log")
 ```
 
 ```{r}
