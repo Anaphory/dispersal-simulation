@@ -26,8 +26,9 @@ from by_river import KAYAK_SPEED  # in m/s
 GEODESIC: geodesic.Geodesic = geodesic.Geodesic()
 
 DATABASE, TABLES = db(
-    file = "sqlite:///migration-network-add-sea.sqlite",
+    file="sqlite:///migration-network.sqlite",
 )
+
 
 def distance_by_sea(definitely_inland, skip=True):
     query = sqlalchemy.select(
@@ -49,41 +50,39 @@ def distance_by_sea(definitely_inland, skip=True):
             ).fetchall()
         ):
             continue
-        DATABASE.execute(
-            insert(TABLES["edges"])
-            .values(
-                node1=node0,
-                node2=node0,
-                source="sea",
-                travel_time=0.0,
-                flat_distance=0.0,
-            )
-            .on_conflict_do_nothing()
-        )
+        values = []
         for node1, lon1, lat1 in DATABASE.execute(
-                query.where((lat0 - TABLES["nodes"].c.latitude ) ** 2
-                   + (lon0 - TABLES["nodes"].c.longitude) ** 2
-                    * numpy.cos(lat0 * numpy.pi / 180)**2
-                    < 9)
-            ).fetchall():
-                d = GEODESIC.inverse((lon0, lat0), (lon1, lat1))[0, 0]
-                if d > 300_000:  # meters
-                    continue
-                if definitely_inland.intersects(
-                    sgeom.LineString([(lon0, lat0), (lon1, lat1)])
-                ):
-                    continue
-                t = d / KAYAK_SPEED
-                DATABASE.execute(
-                    insert(TABLES["edges"])
-                    .values(
-                        node1=node0,
-                        node2=node1,
-                        source="sea",
-                        travel_time=t,
-                        flat_distance=d,
-                    )
-                    .on_conflict_do_nothing()
+            query.where(
+                (
+                    (lat0 - TABLES["nodes"].c.latitude)
+                    * (lat0 - TABLES["nodes"].c.latitude)
                 )
+                + (
+                    (lon0 - TABLES["nodes"].c.longitude)
+                    * (lon0 - TABLES["nodes"].c.longitude)
+                )
+                * numpy.cos(lat0 * numpy.pi / 180) ** 2
+                < 9
+            )
+        ).fetchall():
+            d = GEODESIC.inverse((lon0, lat0), (lon1, lat1))[0, 0]
+            if d > 300_000:  # meters
+                continue
+            if definitely_inland.intersects(
+                sgeom.LineString([(lon0, lat0), (lon1, lat1)])
+            ):
+                continue
+            t = d / KAYAK_SPEED
+            values.append(
+                {
+                    "node1": node0,
+                    "node2": node1,
+                    "source": "sea",
+                    "travel_time": t,
+                    "flat_distance": d,
+                }
+            )
+        DATABASE.execute(insert(TABLES["edges"]).values(values))
+
 
 distance_by_sea(LAND.buffer(-0.04))

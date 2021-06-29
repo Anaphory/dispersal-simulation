@@ -19,13 +19,18 @@ def set_sqlite_pragma(
 def db(
     file: str = "sqlite:///migration-network.sqlite",
 ) -> t.Tuple[sqlalchemy.engine.Connectable, t.Dict[str, sqlalchemy.Table]]:
-    engine = sqlalchemy.create_engine(file, connect_args={'timeout': 60})
+    engine = sqlalchemy.create_engine(file, connect_args={"timeout": 60})
     metadata = sqlalchemy.MetaData()
 
     nodes = sqlalchemy.Table(
         "nodes",
         metadata,
-        sqlalchemy.Column("node_id", sqlalchemy.Integer, primary_key=True),
+        sqlalchemy.Column(
+            "node_id",
+            sqlalchemy.Integer,
+            primary_key=True,
+            sqlite_on_conflict_primary_key="REPLACE",
+        ),
         sqlalchemy.Column("longitude", sqlalchemy.Float),
         sqlalchemy.Column("latitude", sqlalchemy.Float),
         sqlalchemy.Column("h3longitude", sqlalchemy.Float),
@@ -38,13 +43,19 @@ def db(
         "edges",
         metadata,
         sqlalchemy.Column(
-            "node1", sqlalchemy.Integer, sqlalchemy.ForeignKey(nodes.c.node_id), primary_key=True
+            "node1",
+            sqlalchemy.Integer,
+            sqlalchemy.ForeignKey(nodes.c.node_id),
+            primary_key=True,
         ),
         sqlalchemy.Column(
-            "node2", sqlalchemy.Integer, sqlalchemy.ForeignKey(nodes.c.node_id), primary_key=True
+            "node2",
+            sqlalchemy.Integer,
+            sqlalchemy.ForeignKey(nodes.c.node_id),
+            primary_key=True,
         ),
-        sqlalchemy.Column("travel_time", sqlalchemy.Float), # in seconds
-        sqlalchemy.Column("flat_distance", sqlalchemy.Float), # in meters
+        sqlalchemy.Column("travel_time", sqlalchemy.Float),  # in seconds
+        sqlalchemy.Column("flat_distance", sqlalchemy.Float),  # in meters
         sqlalchemy.Column("source", sqlalchemy.String, primary_key=True),
     )
 
@@ -52,18 +63,18 @@ def db(
         "ecology",
         metadata,
         sqlalchemy.Column(
-            "node", sqlalchemy.Integer, sqlalchemy.ForeignKey(nodes.c.node_id), primary_key=True
+            "node",
+            sqlalchemy.Integer,
+            sqlalchemy.ForeignKey(nodes.c.node_id),
+            primary_key=True,
         ),
         sqlalchemy.Column("ecoregion", sqlalchemy.Integer(), primary_key=True),
+        sqlalchemy.Column("area", sqlalchemy.Float),
         sqlalchemy.Column("population_capacity", sqlalchemy.Float),
     )
 
     metadata.create_all(engine)
-    return engine, {
-        "nodes": nodes,
-        "edges": edges,
-        "ecology": ecology
-    }
+    return engine, {"nodes": nodes, "edges": edges, "ecology": ecology}
 
 
 # TODO: Add a SpatiaLite geometry column
@@ -71,7 +82,7 @@ def db(
 #
 # Spatial indexing latitude/longitude columns
 # Here's a recipe for taking a table with existing latitude and longitude columns, adding a SpatiaLite POINT geometry column to that table, populating the new column and then populating a spatial index:
-# 
+#
 # import sqlite3
 # conn = sqlite3.connect('museums.db')
 # # Lead the spatialite extension:

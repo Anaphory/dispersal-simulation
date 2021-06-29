@@ -26,12 +26,28 @@ def distances_from_focus(
     pred: t.Optional = None,
 ) -> numpy.array:
     # Dijkstra's algorithm, adapted for our purposes from
-    # networkx/algorithms/shortest_paths/weighted.html
+    # networkx/algorithms/shortest_paths/weighted.html,
+    # extended to be an A* implementation
     seen: t.Dict[t.Tuple[int, int], float] = {source: 0.0}
     c = count()
     # use heapq with (distance, label) tuples
     fringe: t.List[t.Tuple[float, int, t.Tuple[int, int]]] = []
-    push(fringe, (0, next(c), source))
+    source_lonlat = DATABASE.execute(
+        select(
+            TABLES["nodes"].c.longitude,
+            TABLES["nodes"].c.latitude,
+        ).where(TABLES["nodes"].c.node_id == source)
+    ).fetchone()
+    dest_lonlat = DATABASE.execute(
+        select(
+            TABLES["nodes"].c.longitude,
+            TABLES["nodes"].c.latitude,
+        ).where(TABLES["nodes"].c.node_id == destination)
+    ).fetchone()
+    # Speeds faster than 2m/s are really rare, even on rivers, so use geodesic
+    # distance with a speed of 2m/s as heuristic
+    heuristic = GEODESIC.inverse(source_lonlat, dest_lonlat)[0, 0] / 2
+    push(fringe, (heuristic, next(c), source))
 
     if filter_sources:
         filter = [TABLES["edges"].c.source.in_(filter_sources)]
@@ -50,22 +66,19 @@ def distances_from_focus(
 
         print(d)
 
-        for u, cost, source in itertools.chain(
-            DATABASE.execute(
-                select(
-                    TABLES["edges"].c.node2,
-                    TABLES["edges"].c.travel_time,
-                    TABLES["edges"].c.source,
-                ).where(TABLES["edges"].c.node1 == spot, *filter)
-            ),
-            # TODO: Remove reverse direction!
-            DATABASE.execute(
-                select(
-                    TABLES["edges"].c.node1,
-                    TABLES["edges"].c.travel_time,
-                    TABLES["edges"].c.source,
-                ).where(TABLES["edges"].c.node2 == spot, *filter)
-            ),
+        for u, cost, source, lon, lat in DATABASE.execute(
+            select(
+                TABLES["edges"].c.node2,
+                TABLES["edges"].c.travel_time,
+                TABLES["edges"].c.source,
+                TABLES["nodes"].c.longitude,
+                TABLES["nodes"].c.latitude,
+            )
+            .select_from(
+                TABLES["edges"].join(TABLES["nodes"]),
+                onclause=TABLES["edges"].c.node2 == TABLES["nodes"].c.node_id,
+            )
+            .where(TABLES["edges"].c.node1 == spot, *filter)
         ):
             vu_dist = dist[spot] + cost
             if u in dist and vu_dist < dist[u]:
@@ -74,7 +87,8 @@ def distances_from_focus(
                 )
             elif u not in seen or vu_dist < seen[u]:
                 seen[u] = vu_dist
-                push(fringe, (vu_dist, next(c), u))
+                heuristic = GEODESIC.inverse((lon, lat), dest_lonlat)[0, 0] / 2
+                push(fringe, (vu_dist + heuristic, next(c), u))
                 if pred is not None:
                     pred[u] = spot, source
     return dist
@@ -202,9 +216,11 @@ random = ListedColormap(
 )
 
 print("Plot voronoi…")
-for tile in tqdm(tertools.product(
-    ["N", "S"], [10, 30, 50, 70], ["E", "W"], [30, 60, 90, 120, 150, 180]
-)):
+for tile in tqdm(
+    tertools.product(
+        ["N", "S"], [10, 30, 50, 70], ["E", "W"], [30, 60, 90, 120, 150, 180]
+    )
+):
     fname_v = "voronoi-{:s}{:d}{:s}{:d}.tif".format(*tile)
     try:
         data = rasterio.open(fname_v, "r").read(1)[500:-500, 500:-500]

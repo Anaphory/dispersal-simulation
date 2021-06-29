@@ -472,9 +472,9 @@ def tile_core_points(tile: Tile, skip_existing=True, n=0):
             n
             for n, in DATABASE.execute(
                 select(TABLES["nodes"].c.node_id).where(
-                    TABLES["nodes"].c.h3latitude >= west,
+                    TABLES["nodes"].c.h3longitude >= west,
                     TABLES["nodes"].c.h3latitude >= south,
-                    TABLES["nodes"].c.h3latitude < east,
+                    TABLES["nodes"].c.h3longitude < east,
                     TABLES["nodes"].c.h3latitude < north,
                 )
             )
@@ -497,13 +497,11 @@ def tile_core_points(tile: Tile, skip_existing=True, n=0):
                     "h3longitude": hlon,
                     "h3latitude": hlat,
                     "coastal": (hexagon in COAST),
-                    "short": n
+                    "short": n,
                 }
             )
     finally:
-        DATABASE.execute(
-            insert(TABLES["nodes"]).values(values).on_conflict_do_nothing()
-        )
+        DATABASE.execute(insert(TABLES["nodes"]).values(values))
     return n
 
 
@@ -601,7 +599,13 @@ def voronoi_and_neighbor_distances(tile, skip_existing=True):
                     min(y) <= TABLES["nodes"].c.latitude,
                     TABLES["nodes"].c.latitude <= max(y),
                 )
-            ).fetchall() + [(None, hlon, hlat) for hlon, hlat in zip(hx, hy)]
+            ).fetchall() + [
+                # Add the hexagon neighbors as virtual targets, to have a
+                # uniform breadth
+                (None, hlon, hlat)
+                for hlon, hlat in zip(hx, hy)
+                if hlon is not None and hlat is not None
+            ]
 
             if skip_existing:
                 already_known = {
@@ -674,6 +678,33 @@ def voronoi_and_neighbor_distances(tile, skip_existing=True):
         ) as dst:
             dst.write(min_distances, 1)
 
+
+def measure_ecoregions(tile: Tile):
+    fname_v = "voronoi-{:s}{:d}{:s}{:d}.tif".format(*tile)
+    voronoi_allocation = rasterio.open(fname_v).read(
+        1, window=((500, 5800 - 500), (500, 8200 - 500))
+    )
+    ecoregion_data = ecoregion_tile(tile)
+    ecoregions = ecoregion_data.read(1)
+    transform = ecoregion_data.transform
+    areas = numpy.zeros(len(ecoregions))
+    for y, _ in enumerate(areas):
+        # Approximate grid cells by rectangles.
+        (lon0, lat0) = transform * (0, y)
+        (lon1, lat1) = transform * (1, y + 1)
+
+        d = GEODESIC.inverse((lon0, lat0), [(lon0, lat1), (lon1, lat0)])
+        areas[y] = d[0, 0] * d[0, 1]
+
+    values = t.DefaultDict(t.Counter)
+    for area, voronoi, eco in zip(areas, voronoi_allocation, ecoregions):
+        for v, e in zip(voronoi, eco):
+            if e != 999 and v != 0:
+                values[v][e] += area
+    print(values)
+    return values
+
+
 if __name__ == "__main__":
     if "rivers" in sys.argv:
         # Separate module, which imports this one! It creates the distances
@@ -683,7 +714,7 @@ if __name__ == "__main__":
     if "core" in sys.argv:
         n = 0
         for tile in itertools.product(
-            ["N", "S"], [10, 30, 50, 70], ["E", "W"], [30, 60, 90, 120, 150, 180]
+            ["N", "S"], [10, 30, 50, 70], ["E", "W"], [0, 30, 60, 90, 120, 150, 180]
         ):
             try:
                 n = tile_core_points(tile, n=n)
@@ -692,10 +723,32 @@ if __name__ == "__main__":
 
     if "voronoi" in sys.argv or "distances" in sys.argv:
         for tile in itertools.product(
-            ["N", "S"], [10, 30, 50, 70], ["E", "W"], [30, 60, 90, 120, 150, 180]
+            ["N", "S"], [10, 30, 50, 70], ["E", "W"], [0, 30, 60, 90, 120, 150, 180]
         ):
             print("Working on tile {:s}{:d}{:s}{:d}…".format(*tile))
             try:
                 voronoi_and_neighbor_distances(tile)
             except rasterio.errors.RasterioIOError:
                 print("Tile {:s}{:d}{:s}{:d} not found.".format(*tile))
+
+    if "areas" in sys.argv:
+        for tile in itertools.product(
+            ["N", "S"], [10, 30, 50, 70], ["E", "W"], [0, 30, 60, 90, 120, 150, 180]
+        ):
+            print("Working on tile {:s}{:d}{:s}{:d}…".format(*tile))
+            values = t.DefaultDict(t.Counter)
+            try:
+                for key, counter in measure_ecoregions(tile):
+                    values[key] += counter
+            except rasterio.errors.RasterioIOError:
+                print("Tile {:s}{:d}{:s}{:d} not found.".format(*tile))
+            json.dump(values, open("areas.json", "w"))
+            DATABASE.execute(
+                insert(TABLES["ecology"]).values(
+                    [
+                        {"node": node, "ecoregion": ecoregion, "area": area / 1000000}
+                        for node, areas in values.items()
+                        for ecoregion, area in areas.items()
+                    ]
+                )
+            )
