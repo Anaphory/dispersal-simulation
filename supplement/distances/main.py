@@ -676,6 +676,7 @@ def voronoi_and_neighbor_distances(tile, skip_existing=True):
 
 def measure_ecoregions(tile: Tile):
     fname_v = "voronoi-{:s}{:d}{:s}{:d}.tif".format(*tile)
+    # Only read the non-overlapping part
     voronoi_allocation = rasterio.open(fname_v).read(
         1, window=((500, 5800 - 500), (500, 8200 - 500))
     )
@@ -772,15 +773,15 @@ if __name__ == "__main__":
             except rasterio.errors.RasterioIOError:
                 print("Tile {:s}{:d}{:s}{:d} not found.".format(*tile))
             json.dump(values, open("areas.json", "w"))
-            DATABASE.execute(
-                insert(TABLES["ecology"]).values(
-                    [
-                        {"node": node, "ecoregion": ecoregion, "area": area / 1000000}
-                        for node, areas in values.items()
-                        for ecoregion, area in areas.items()
-                    ]
-                )
+        DATABASE.execute(
+            insert(TABLES["ecology"]).values(
+                [
+                    {"node": node, "ecoregion": ecoregion, "area": area / 1000000}
+                    for node, areas in values.items()
+                    for ecoregion, area in areas.items()
+                ]
             )
+        )
 
     if "populations" in sys.argv:
         # Needs `popdense` and `areas`.
