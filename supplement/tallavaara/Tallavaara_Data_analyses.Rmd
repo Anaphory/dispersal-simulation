@@ -1147,8 +1147,6 @@ writeRaster(lpdensity, "lpdensity.tif", overwrite=T)
 library(DBI)
 con <- dbConnect(RSQLite::SQLite(), "../distances/with-eco.sqlite")
 
-# res <- dbExecute(con, "ALTER TABLE nodes ADD COLUMN lpdensity REAL")
-
 res <- dbSendQuery(con, "SELECT node_id, latitude, longitude FROM nodes WHERE latitude IS NOT NULL AND longitude IS NOT NULL AND h3latitude IS NOT NULL AND h3longitude IS NOT NULL")
 coords <- dbFetch(res)
 coords <- SpatialPointsDataFrame(
@@ -1163,7 +1161,7 @@ coords[is.na(coords$popdensity),"popdensity"] <- krige(
 
 coords$popdensity <- exp(coords$popdensity)
 
-dbWriteTable(con, "hex", as.data.frame(coords),
+dbWriteTable(con, "nodes_with_density", as.data.frame(coords),
              overwrite=T)
 
 ggplot(as.data.frame(coords)) +
