@@ -723,6 +723,16 @@ if __name__ == "__main__":
             except rasterio.errors.RasterioIOError:
                 print("Tile {:s}{:d}{:s}{:d} not found.".format(*tile))
 
+    if "popdense" in sys.argv:
+        # A modification of Tallavaara's R Markdown script.
+        ...
+
+    if "sea" in sys.argv:
+        # Separate module. This can run in parallel to the following steps, it
+        # only needs all core points to be defined, but does not interfere with
+        # voronoi cells or grid distances.
+        ...
+
     if "voronoi" in sys.argv or "distances" in sys.argv:
         for tile in itertools.product(
             ["N", "S"], [10, 30, 50, 70], ["E", "W"], [0, 30, 60, 90, 120, 150, 180]
@@ -733,7 +743,16 @@ if __name__ == "__main__":
             except rasterio.errors.RasterioIOError:
                 print("Tile {:s}{:d}{:s}{:d} not found.".format(*tile))
 
+    if "stitch" in sys.argv:
+        # Separate module, and quite fast. You could run it on every Voronoi
+        # tile whose neighbors have been computed.
+        ...
+
     if "areas" in sys.argv:
+        # The other steps can be run per tile (with some artefacts on the tile
+        # boundaries, if the neighboring tiles have not finished the previous
+        # step), but this one really needs all voronoi computations to have
+        # finished.
         for tile in itertools.product(
             ["N", "S"], [10, 30, 50, 70], ["E", "W"], [0, 30, 60, 90, 120, 150, 180]
         ):
@@ -754,3 +773,8 @@ if __name__ == "__main__":
                     ]
                 )
             )
+
+    if "populations" in sys.argv:
+        # Needs `popdense` and `areas`.
+        raise NotImplementedError()
+
