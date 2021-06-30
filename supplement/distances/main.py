@@ -776,7 +776,7 @@ if __name__ == "__main__":
                 insert(TABLES["ecology"]).values(
                     [
                         {"node": node, "ecoregion": ecoregion, "area": area / 1000000}
-                        for short, areas in values.items()
+                        for node, areas in values.items()
                         for ecoregion, area in areas.items()
                     ]
                 )
