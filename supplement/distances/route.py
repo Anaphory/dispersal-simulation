@@ -85,7 +85,7 @@ def distances_from_focus(
                     onclause=TABLES["edges"].c.node2 == TABLES["nodes"].c.node_id,
                 )
             )
-            .where(filter & (TABLES["edges"].c.node1 == spot))
+            .where((TABLES["edges"].c.node1 == spot) if filter is True else filter & (TABLES["edges"].c.node1 == spot))
         ):
             vu_dist = dist[spot] + cost
             if u in dist and vu_dist < dist[u]:
@@ -239,7 +239,7 @@ print("Plot voronoi…")
 for tile in tqdm(
     itertools.product(
         ["N", "S"], [10, 30, 50, 70], ["E", "W"], [30, 60, 90, 120, 150, 180]
-    )
+    ), total=96
 ):
     fname_v = "voronoi-{:s}{:d}{:s}{:d}.tif".format(*tile)
     try:
@@ -268,7 +268,7 @@ ax.add_geometries(
     ).geometries(),
     ccrs.PlateCarree(),
     facecolor="white",
-    alpha="0.8",
+    alpha=0.8,
     edgecolor="none",
     zorder=2,
 )
