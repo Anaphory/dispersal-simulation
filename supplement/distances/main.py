@@ -501,7 +501,8 @@ def tile_core_points(tile: Tile, skip_existing=True, n=0):
                 }
             )
     finally:
-        DATABASE.execute(insert(TABLES["nodes"]).values(values))
+        if values:
+            DATABASE.execute(insert(TABLES["nodes"]).values(values).on_conflict_do_nothing())
     return n
 
 
@@ -532,7 +533,7 @@ def voronoi_and_neighbor_distances(tile, skip_existing=True):
         min_distances = rasterio.open(fname_d).read(1)
     except rasterio.errors.RasterioIOError:
         height, width = distance_by_direction[1, 1].shape
-        voronoi_allocation = numpy.zeros((height + 1, width + 1), dtype=numpy.uint16)
+        voronoi_allocation = numpy.zeros((height + 1, width + 1), dtype=numpy.uint32)
         min_distances = numpy.full(
             (height + 1, width + 1), numpy.inf, dtype=numpy.float32
         )
@@ -644,7 +645,7 @@ def voronoi_and_neighbor_distances(tile, skip_existing=True):
                 # Node is an h3 index, not a river reach index, so update the voronoi shapes around it
                 rows, cols = array.shape
                 voronoi_allocation[rmin : rmin + rows, cmin : cmin + cols][
-                    min_distances[rmin : rmin + rows, cmin : cmin + cols] > array
+                    min_distances[rmin : rmin + rows, cmin : cmin + cols] >= array
                 ] = short
                 min_distances[rmin : rmin + rows, cmin : cmin + cols] = numpy.fmin(
                     min_distances[rmin : rmin + rows, cmin : cmin + cols], array
@@ -660,7 +661,7 @@ def voronoi_and_neighbor_distances(tile, skip_existing=True):
         with rasterio.open(
             fname_v,
             "w",
-            dtype=numpy.uint16,
+            dtype=numpy.uint32,
             **profile,
         ) as dst:
             dst.write(voronoi_allocation, 1)
@@ -707,12 +708,15 @@ if __name__ == "__main__":
 
     if "core" in sys.argv:
         n, = DATABASE.execute(select(func.max(TABLES["nodes"].c.short))).fetchone()
-        n = ((n + 13999) // 140000) * 140000
+        if n is None:
+            n = 0
+        else:
+            n = (n // 140000 + 1) * 140000
         for tile in itertools.product(
             ["N", "S"],
-            reversed([10, 30, 50, 70]),
+            [10, 30, 50, 70],
             ["E", "W"],
-            reversed([0, 30, 60, 90, 120, 150, 180]),
+            [0, 30, 60, 90, 120, 150, 180],
         ):
             try:
                 n = tile_core_points(tile, n=n)
