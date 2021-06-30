@@ -753,14 +753,22 @@ if __name__ == "__main__":
         # boundaries, if the neighboring tiles have not finished the previous
         # step), but this one really needs all voronoi computations to have
         # finished.
+        values = t.DefaultDict(t.Counter)
+        node_from_short = dict(
+            DATABASE.execute(
+                select(
+                    TABLES["nodes"].c.short,
+                    TABLES["nodes"].c.node_id,
+                ).where(TABLES["nodes"].c.short != None)
+            )
+        )
         for tile in itertools.product(
             ["N", "S"], [10, 30, 50, 70], ["E", "W"], [0, 30, 60, 90, 120, 150, 180]
         ):
             print("Working on tile {:s}{:d}{:s}{:d}…".format(*tile))
-            values = t.DefaultDict(t.Counter)
             try:
-                for key, counter in measure_ecoregions(tile):
-                    values[key] += counter
+                for short, counter in measure_ecoregions(tile):
+                    values[node_from_short[short]] += counter
             except rasterio.errors.RasterioIOError:
                 print("Tile {:s}{:d}{:s}{:d} not found.".format(*tile))
             json.dump(values, open("areas.json", "w"))
@@ -768,7 +776,7 @@ if __name__ == "__main__":
                 insert(TABLES["ecology"]).values(
                     [
                         {"node": node, "ecoregion": ecoregion, "area": area / 1000000}
-                        for node, areas in values.items()
+                        for short, areas in values.items()
                         for ecoregion, area in areas.items()
                     ]
                 )
@@ -776,5 +784,20 @@ if __name__ == "__main__":
 
     if "populations" in sys.argv:
         # Needs `popdense` and `areas`.
-        raise NotImplementedError()
-
+        for node, ecoregion, area, popdensity in DATABASE.execute(
+            select(
+                TABLES["ecology"].c.node,
+                TABLES["ecology"].c.ecoregion,
+                TABLES["ecology"].c.area,
+                TABLES["nodes"].c.popdensity,
+            ).select_from(TABLES["ecology"].join(TABLES["nodes"]))
+        ):
+            DATABASE.execute(
+                TABLES["ecology"]
+                .update()
+                .values(population_capacity=popdensity * area)
+                .where(
+                    (TABLES["ecology"].c.node == node)
+                    & (TABLES["ecology"].c.ecoregion == ecoregion)
+                )
+            )
