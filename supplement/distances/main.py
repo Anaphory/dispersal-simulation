@@ -684,7 +684,7 @@ def measure_ecoregions(tile: Tile):
     ecoregions = ecoregion_data.read(1)
     transform = ecoregion_data.transform
     areas = numpy.zeros(len(ecoregions))
-    for y, _ in enumerate(areas):
+    for y, _ in tqdm(enumerate(areas)):
         # Approximate grid cells by rectangles.
         (lon0, lat0) = transform * (0, y)
         (lon1, lat1) = transform * (1, y + 1)
@@ -696,7 +696,7 @@ def measure_ecoregions(tile: Tile):
     for area, voronoi, eco in zip(areas, voronoi_allocation, ecoregions):
         for v, e in zip(voronoi, eco):
             if e != 999 and v != 0:
-                values[v][e] += area
+                values[int(v)][int(e)] += area
     print(values)
     return values
 
@@ -755,24 +755,24 @@ if __name__ == "__main__":
         # step), but this one really needs all voronoi computations to have
         # finished.
         values = t.DefaultDict(t.Counter)
-        node_from_short = dict(
+        node_from_short = dict(list(
             DATABASE.execute(
                 select(
                     TABLES["nodes"].c.short,
                     TABLES["nodes"].c.node_id,
                 ).where(TABLES["nodes"].c.short != None)
             )
-        )
+        ))
         for tile in itertools.product(
             ["N", "S"], [10, 30, 50, 70], ["E", "W"], [0, 30, 60, 90, 120, 150, 180]
         ):
             print("Working on tile {:s}{:d}{:s}{:d}…".format(*tile))
             try:
-                for short, counter in measure_ecoregions(tile):
-                    values[node_from_short[short]] += counter
+                for short, counter in measure_ecoregions(tile).items():
+                    values[node_from_short.get(short, -short)].update(counter)
             except rasterio.errors.RasterioIOError:
                 print("Tile {:s}{:d}{:s}{:d} not found.".format(*tile))
-            json.dump(values, open("areas.json", "w"))
+            json.dump(values, open("areas.json", "w"), indent=2)
         DATABASE.execute(
             insert(TABLES["ecology"]).values(
                 [
@@ -802,3 +802,5 @@ if __name__ == "__main__":
                     & (TABLES["ecology"].c.ecoregion == ecoregion)
                 )
             )
+TODO: change caching behaviour
+TODO: change borders for distances

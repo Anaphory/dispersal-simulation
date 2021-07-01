@@ -241,6 +241,9 @@ if __name__ == "__main__":
                 else:
                     crossing_penalty = 1800.0
 
+                start = ~transform*points[0]
+                end = ~transform * points[-1]
+
                 for (lon0, lat0), (lon1, lat1) in windowed(points, 2):
                     if not (
                         (west < lon0 < east or west < lon1 < east)
@@ -249,8 +252,9 @@ if __name__ == "__main__":
                         continue
                     inside_tile = True
 
-                    col0, row0 = ~transform * (lon0 + 0.0002, lat0 + 0.0001)
-                    col1, row1 = ~transform * (lon1 + 0.0002, lat1 + 0.0002)
+
+                    col0, row0 = ~transform * (lon0, lat0)
+                    col1, row1 = ~transform * (lon1, lat1)
                     cells = {
                         (
                             # The river network shows artefacts of being
@@ -270,48 +274,13 @@ if __name__ == "__main__":
                     }
                     cells = [c for c in cells if 0 <= c[0] < is_river.shape[0] if 0 < c[1] < is_river.shape[1]
                              if not is_river[c]]
-                    direction = (
-                        round(4 * numpy.arctan2((lon1 - lon0), (lat1 - lat0)) / numpy.pi)
-                        % 4
-                    )
-                    # Crossing a river takes a penalty when rougly orthogonal
-                    # to the river, and is impossible diagonally.
-                    if direction == 0:
-                        for cell in cells:
-                            is_river[cell] = True
-                            rasters[0, 1][cell] += crossing_penalty
-                            rasters[0, -1][cell] += crossing_penalty
-                            rasters[1, 1][cell] = numpy.inf
-                            rasters[1, -1][cell] = numpy.inf
-                            rasters[-1, 1][cell] = numpy.inf
-                            rasters[-1, -1][cell] = numpy.inf
-                    elif direction == 1:
-                        for cell in cells:
-                            is_river[cell] = True
-                            rasters[-1, 1][cell] += crossing_penalty
-                            rasters[1, -1][cell] += crossing_penalty
-                            rasters[0, 1][cell] = numpy.inf
-                            rasters[0, -1][cell] = numpy.inf
-                            rasters[1, 0][cell] = numpy.inf
-                            rasters[-1, 0][cell] = numpy.inf
-                    elif direction == 2:
-                        for cell in cells:
-                            is_river[cell] = True
-                            rasters[1, 0][cell] += crossing_penalty
-                            rasters[-1, 0][cell] += crossing_penalty
-                            rasters[1, 1][cell] = numpy.inf
-                            rasters[1, -1][cell] = numpy.inf
-                            rasters[-1, 1][cell] = numpy.inf
-                            rasters[-1, -1][cell] = numpy.inf
-                    elif direction == 3:
-                        for cell in cells:
-                            is_river[cell] = True
-                            rasters[1, 1][cell] += crossing_penalty
-                            rasters[-1, -1][cell] += crossing_penalty
-                            rasters[0, 1][cell] = numpy.inf
-                            rasters[0, -1][cell] = numpy.inf
-                            rasters[1, 0][cell] = numpy.inf
-                            rasters[-1, 0][cell] = numpy.inf
+                    # Leaving a river pixel costs time. This discourages
+                    # following a river exactly, but the logic of permitting it
+                    # is difficult. Throughout a line segment, it could still
+                    for cell in cells:
+                        for direction in rasters.values:
+                            direction[cell] += crossing_penalty
+                            direction[cell] += crossing_penalty
             if not inside_tile:
                 continue
 

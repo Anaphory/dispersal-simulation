@@ -238,9 +238,9 @@ random = ListedColormap(
 print("Plot voronoi…")
 for tile in tqdm(
     itertools.product(
-        ["N", "S"], [10, 30, 50, 70], ["E", "W"], [30, 60, 90, 120, 150, 180]
+        ["N"], [10, 30], ["W"], [90, 120]
     ), total=96
-):
+    ):
     fname_v = "voronoi-{:s}{:d}{:s}{:d}.tif".format(*tile)
     try:
         data = rasterio.open(fname_v, "r").read(1)[500:-500, 500:-500]
