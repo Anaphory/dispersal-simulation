@@ -253,8 +253,16 @@ if __name__ == "__main__":
                     col1, row1 = ~transform * (lon1 + 0.0002, lat1 + 0.0002)
                     cells = {
                         (
-                            int(round(along * row0 + (1 - along) * row1)),
-                            int(round(along * col0 + (1 - along) * col1)),
+                            # The river network shows artefacts of being
+                            # derived from a GEM with compatible resolution (I
+                            # think 15" instead of 30"), which show up as NE-SW
+                            # running river reaches crossing exactly through
+                            # the pixel diagonals. Shifting them a tiny bit to
+                            # SE – taking care that it won't be precisely
+                            # diagonal, to avoid introducing other artefacts –
+                            # should help with that.
+                            int(round(along * row0 + (1 - along) * row1 + 0.05)),
+                            int(round(along * col0 + (1 - along) * col1 + 0.04)),
                         )
                         for along in numpy.linspace(
                             0, 1, 4*int(abs(row1 - row0) + abs(col1 - col0)) + 1
