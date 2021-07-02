@@ -1,36 +1,22 @@
 #!/home/cluster/gkaipi/.pyenv/shims/python
 from tqdm import tqdm
-import zipfile
-import typing as t
-from pathlib import Path
 import numpy
 
 import sqlalchemy
 from sqlalchemy.dialects.sqlite import insert
-from more_itertools import windowed
 
-import shapefile
 import shapely.geometry as sgeom
-from shapely.prepared import prep
-from shapely.ops import unary_union
-import cartopy.geodesic as geodesic
-import cartopy.io.shapereader as shpreader
-from earth import LAND
 
-from h3.api import basic_int as h3
-
+from earth import GEODESIC
 from database import db
-
 from by_river import KAYAK_SPEED  # in m/s
-
-GEODESIC: geodesic.Geodesic = geodesic.Geodesic()
 
 DATABASE, TABLES = db(
     file="sqlite:///migration-network.sqlite",
 )
 
 
-def distance_by_sea(definitely_inland, skip=True):
+def distance_by_sea(definitely_inland, skip: bool = True) -> None:
     query = sqlalchemy.select(
         [
             TABLES["nodes"].c.node_id,
@@ -83,6 +69,3 @@ def distance_by_sea(definitely_inland, skip=True):
                 }
             )
         DATABASE.execute(insert(TABLES["edges"]).values(values))
-
-
-distance_by_sea(LAND.buffer(-0.04))

@@ -10,12 +10,16 @@ from numpy import pi, cos, inf
 from sqlalchemy import select
 
 import rasterio
-import cartopy.geodesic as geodesic
 import cartopy.io.shapereader as shpreader
 import shapely.wkb
 
+import cartopy.crs as ccrs
+from matplotlib import pyplot as plt
+from matplotlib.colors import ListedColormap
+
+
 from database import db
-from earth import LAND, BBOX, GEODESIC
+from earth import GEODESIC
 
 DATABASE, TABLES = db("sqlite:///migration-network.sqlite")
 
@@ -85,7 +89,11 @@ def distances_from_focus(
                     onclause=TABLES["edges"].c.node2 == TABLES["nodes"].c.node_id,
                 )
             )
-            .where((TABLES["edges"].c.node1 == spot) if filter is True else filter & (TABLES["edges"].c.node1 == spot))
+            .where(
+                (TABLES["edges"].c.node1 == spot)
+                if filter is True
+                else filter & (TABLES["edges"].c.node1 == spot)
+            )
         ):
             vu_dist = dist[spot] + cost
             if u in dist and vu_dist < dist[u]:
@@ -144,13 +152,6 @@ natchez = find_node(-91.36892, 31.54543)
 print(nashville, natchez)
 
 # Plotting
-import cartopy.crs as ccrs
-import cartopy.feature as cf
-from cartopy.feature import ShapelyFeature
-from matplotlib import pyplot as plt
-from matplotlib.colors import ListedColormap
-
-
 proj = ccrs.PlateCarree()
 ax = plt.axes(projection=proj)
 
@@ -236,11 +237,7 @@ random = ListedColormap(
 )
 
 print("Plot voronoi…")
-for tile in tqdm(
-    itertools.product(
-        ["N"], [10, 30], ["W"], [90, 120]
-    ), total=96
-    ):
+for tile in tqdm(itertools.product(["N"], [10, 30], ["W"], [90, 120])):
     fname_v = "voronoi-{:s}{:d}{:s}{:d}.tif".format(*tile)
     try:
         data = rasterio.open(fname_v, "r").read(1)[500:-500, 500:-500]

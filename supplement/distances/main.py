@@ -1,10 +1,8 @@
 #!/home/cluster/gkaipi/.pyenv/shims/python
 import json
 import itertools
-from pathlib import Path
 import typing as t
 import sys
-import pickle
 from itertools import count
 from heapq import heappush as push, heappop as pop
 
@@ -17,30 +15,23 @@ from sqlalchemy.dialects.sqlite import insert
 import shapely
 import shapely.geometry as sgeom
 from h3.api import basic_int as h3
-from matplotlib import pyplot as plt
 
 import rasterio
-from raster_data import (
-    tile_from_geocoordinates,
-    gmted_tile,
-    ecoregion_tile,
-    boundingbox_from_tile,
-    Tile,
-)
+from raster_data import ecoregion_tile, boundingbox_from_tile, Tile, RowCol
 from database import db
-from ecoregions import TC
-from earth import LAND, PLAND, BBOX, GEODESIC
+from earth import LAND, GEODESIC, LonLat
+from by_river import process_rivers as by_river
+from by_sea import distance_by_sea
 
 DATABASE, TABLES = db()
 RESOLUTION = 5
 
+
 # ============
 # Type aliases
 # ============
-
-RowCol = t.Tuple[int, int]
-LonLat = t.Tuple[float, float]
 H3Index = int
+
 
 # =================================
 # General geometry helper functions
@@ -68,259 +59,25 @@ except (FileNotFoundError, json.JSONDecodeError):
     json.dump(list(COAST), open("COAST.json", "w"))
 
 
-# =========================
-# Travelling time functions
-# =========================
-def navigation_speed(slope: float) -> float:
-    """Using the slope in %, calculate the navigation speed in m/s
-
-    This function calculates the off-road navigation speed (for male cadets in
-    forested areas with navigational targets every 20 minutes) following
-    [@irmischer2018measuring]. Like their formula, slope is in % and speed in
-    m/s.
-
-    > [T]he fastest off-road navigation speed was 0.78 m/s for males […] with a
-    > peak at −2%.
-
-    >>> navigation_speed(-2.)
-    0.78
-    >>> navigation_speed(-2.) > navigation_speed(-1.5)
-    True
-    >>> navigation_speed(-2.) > navigation_speed(-2.5)
-    True
-
-    """
-    return 0.11 + 0.67 * numpy.exp(-((slope + 2.0) ** 2) / 1800.0)
+# ==========================
+# Distance raster operations
+# ==========================
 
 
-# =================
-# Raster operations
-# =================
-def prep_tile(tile: Tile) -> t.Tuple[numpy.ndarray, numpy.ndarray, rasterio.Affine]:
-    """Load ecology data.
-
-    Load the ecology metadata (elevations and ecoregions, in that order) of the
-    tile (30°×20°) surrounding `containing`, plus a 500 pixel overlapping
-    boundary region on each side, giving a (8200×5800) numpy array for the
-    elevations (in m) and the ecoregions (integer categories)
-
-    Returns
-    =======
-    Elevation: numpy.array
-    Ecoregions: numpy.array
-    transform: rasterio.Affine
-
-    """
-    print(f"Preparing rasters around for tile {tile}:")
-    elevation_file = gmted_tile(tile)
-    m_trafo = elevation_file.transform
-    height, width = elevation_file.shape
-    elevation = numpy.full((height + 1000, width + 1000), -100, int)
-    ecoregions = numpy.full((height + 1000, width + 1000), 999, int)
-    elevation[500:-500, 500:-500] = elevation_file.read(1)
-    ecoregions[500:-500, 500:-500] = ecoregion_tile(tile).read(1)
-    print("Loading margins of adjacent tiles…")
-    west, south, east, north = boundingbox_from_tile(tile)
-    try:
-        nw = tile_from_geocoordinates(west - 15, north + 10)
-        elevation[:500, :500] = gmted_tile(nw).read(1)[-500:, -500:]
-        ecoregions[:500, :500] = ecoregion_tile(nw).read(1)[-500:, -500:]
-    except rasterio.RasterioIOError:
-        pass
-    try:
-        n = tile_from_geocoordinates(west + 15, north + 10)
-        elevation[:500, 500:-500] = gmted_tile(n).read(1)[-500:, :]
-        ecoregions[:500, 500:-500] = ecoregion_tile(n).read(1)[-500:, :]
-    except rasterio.RasterioIOError:
-        pass
-    try:
-        ne = tile_from_geocoordinates(east + 15, north + 10)
-        elevation[:500, -500:] = gmted_tile(ne).read(1)[-500:, :500]
-        ecoregions[:500, -500:] = ecoregion_tile(ne).read(1)[-500:, :500]
-    except rasterio.RasterioIOError:
-        pass
-    try:
-        w = tile_from_geocoordinates(west - 15, south + 10)
-        elevation[500:-500, :500] = gmted_tile(w).read(1)[:, -500:]
-        ecoregions[500:-500, :500] = ecoregion_tile(w).read(1)[:, -500:]
-    except rasterio.RasterioIOError:
-        pass
-    try:
-        e = tile_from_geocoordinates(east + 15, south + 10)
-        elevation[500:-500, -500:] = gmted_tile(e).read(1)[:, :500]
-        ecoregions[500:-500, -500:] = ecoregion_tile(e).read(1)[:, :500]
-    except rasterio.RasterioIOError:
-        pass
-    try:
-        sw = tile_from_geocoordinates(west - 15, south - 10)
-        elevation[-500:, :500] = gmted_tile(sw).read(1)[:500, -500:]
-        ecoregions[-500:, :500] = ecoregion_tile(sw).read(1)[:500, -500:]
-    except rasterio.RasterioIOError:
-        pass
-    try:
-        s = tile_from_geocoordinates(west + 15, south - 10)
-        elevation[-500:, 500:-500] = gmted_tile(s).read(1)[:500, :]
-        ecoregions[-500:, 500:-500] = ecoregion_tile(s).read(1)[:500, :]
-    except rasterio.RasterioIOError:
-        pass
-    try:
-        se = tile_from_geocoordinates(east + 15, south - 10)
-        elevation[-500:, -500:] = gmted_tile(se).read(1)[:500, :500]
-        ecoregions[-500:, -500:] = ecoregion_tile(se).read(1)[:500, :500]
-    except rasterio.RasterioIOError:
-        pass
-
-    transform = rasterio.Affine(
-        m_trafo.a,
-        0,
-        m_trafo.c - 500 * m_trafo.a,
-        0,
-        m_trafo.e,
-        m_trafo.f - 500 * m_trafo.e,
-    )
-    print("Data loaded")
-    return elevation, ecoregions, transform
-
-
-def all_moore_neighbor_distances(
-    elevation: numpy.array,
-    transform: rasterio.Affine,
-    terrain_coefficients: numpy.array,
-) -> t.Dict[RowCol, numpy.array]:
-    """Calculate the arrays of distances in all 8 neighbor directions.
-
-    From an elevation raster and a terrain coefficient raster (higher
-    coefficient = higher walking speed), localized using an affine
-    transformation, compute the walking times 1 pixel into each direction (N,
-    NE, E, …, NW).
-
-    Return the resulting arrays inside a dictionary with index manipulations:
-
-        {
-         (-1, 0): distance to north,
-         (-1, 1): distance to north east,
-         (0, 1): distance to east,
-         ...
-         (-1, -1): distance to north west,
-        }
-
-    """
-    # Compute the geodesic distances. They are constant for each row, which
-    # corresponds to a constant latitude.
-    d_n, d_e, d_ne = [], [], []
-    for y in range(1, len(elevation) + 1):
-        (lon0, lat0) = transform * (0, y)
-        (lon1, lat1) = transform * (1, y - 1)
-
-        d = GEODESIC.inverse((lon0, lat0), [(lon0, lat1), (lon1, lat0), (lon1, lat1)])
-        d_n.append(d[0, 0])
-        d_e.append(d[1, 0])
-        d_ne.append(d[2, 0])
-    distance_to_north = numpy.array(d_n)[:-1]
-    slope_to_north = (
-        100 * (elevation[1:, :] - elevation[:-1, :]) / distance_to_north[:, None]
-    )
-    tc_to_north = (terrain_coefficients[1:, :] + terrain_coefficients[:-1, :]) / 2
-    north = distance_to_north[:, None] / (
-        navigation_speed(slope_to_north) * tc_to_north
-    )
-    south = distance_to_north[:, None] / (
-        navigation_speed(-slope_to_north) * tc_to_north
-    )
-    del distance_to_north, slope_to_north, tc_to_north
-
-    distance_to_east = numpy.array(d_e)
-    slope_to_east = (
-        100 * (elevation[:, 1:] - elevation[:, :-1]) / distance_to_east[:, None]
-    )
-    tc_to_east = (terrain_coefficients[:, 1:] + terrain_coefficients[:, :-1]) / 2
-    east = distance_to_east[:, None] / (navigation_speed(slope_to_east) * tc_to_east)
-    west = distance_to_east[:, None] / (navigation_speed(-slope_to_east) * tc_to_east)
-    del distance_to_east, slope_to_east, tc_to_east
-
-    distance_to_northeast = numpy.array(d_ne)[:-1]
-    slope_to_northeast = (
-        100 * (elevation[1:, 1:] - elevation[:-1, :-1]) / distance_to_northeast[:, None]
-    )
-    tc_to_northeast = (
-        terrain_coefficients[1:, 1:] + terrain_coefficients[:-1, :-1]
-    ) / 2
-    northeast = distance_to_northeast[:, None] / (
-        navigation_speed(slope_to_northeast) * tc_to_northeast
-    )
-    southwest = distance_to_northeast[:, None] / (
-        navigation_speed(-slope_to_northeast) * tc_to_northeast
-    )
-    del distance_to_northeast, slope_to_northeast, tc_to_northeast
-    distance_to_northwest = numpy.array(d_ne)[:-1]
-    slope_to_northwest = (
-        100 * (elevation[1:, :-1] - elevation[:-1, 1:]) / distance_to_northwest[:, None]
-    )
-
-    tc_to_northwest = (
-        terrain_coefficients[1:, :-1] + terrain_coefficients[:-1, 1:]
-    ) / 2
-
-    southeast = distance_to_northwest[:, None] / (
-        navigation_speed(-slope_to_northwest) * tc_to_northwest
-    )
-    northwest = distance_to_northwest[:, None] / (
-        navigation_speed(slope_to_northwest) * tc_to_northwest
-    )
-    del distance_to_northwest, slope_to_northwest, tc_to_northwest
-
-    return {
-        (-1, 0): north,
-        (-1, 1): northeast,
-        (0, 1): east,
-        (1, 1): southeast,
-        (1, 0): south,
-        (1, -1): southwest,
-        (0, -1): west,
-        (-1, -1): northwest,
-    }
-
-
-def distances_and_cache(tile: Tile):
+def load_distances(tile: Tile):
     fname = "distances-{:s}{:d}{:s}{:d}.tif".format(*tile)
 
-    try:
-        distance_raster = rasterio.open(fname)
-        return {
-            (-1, 0): distance_raster.read(1),
-            (-1, 1): distance_raster.read(2),
-            (0, 1): distance_raster.read(3),
-            (1, 1): distance_raster.read(4),
-            (1, 0): distance_raster.read(5),
-            (1, -1): distance_raster.read(6),
-            (0, -1): distance_raster.read(7),
-            (-1, -1): distance_raster.read(8),
-        }, distance_raster.transform
-    except rasterio.errors.RasterioIOError:
-        print("Cache miss")
-
-    elevation, ecoregions, transform = prep_tile(tile)
-
-    terrain_coefficient_raster = TC[ecoregions]
-    distance_by_direction = all_moore_neighbor_distances(
-        elevation, transform, terrain_coefficient_raster
-    )
-    profile = rasterio.profiles.DefaultGTiffProfile()
-    profile["height"] = elevation.shape[0]
-    profile["width"] = elevation.shape[1]
-    profile["transform"] = transform
-    profile["dtype"] = rasterio.float64
-    profile["count"] = 8
-    del elevation, ecoregions, terrain_coefficient_raster
-
-    with rasterio.open(
-        fname,
-        "w",
-        **profile,
-    ) as dst:
-        for i, band in enumerate(distance_by_direction.values(), 1):
-            dst.write(band.astype(rasterio.float64), i)
-    return distance_by_direction, transform
+    distance_raster = rasterio.open(fname)
+    return {
+        (-1, 0): distance_raster.read(1),
+        (-1, 1): distance_raster.read(2),
+        (0, 1): distance_raster.read(3),
+        (1, 1): distance_raster.read(4),
+        (1, 0): distance_raster.read(5),
+        (1, -1): distance_raster.read(6),
+        (0, -1): distance_raster.read(7),
+        (-1, -1): distance_raster.read(8),
+    }, distance_raster.transform
 
 
 def distances_from_focus(
@@ -344,10 +101,8 @@ def distances_from_focus(
     ) -> t.Iterable[t.Tuple[t.Tuple[int, int], float]]:
         for (r, c), d in distance_by_direction.items():
             r1, c1 = r0 + r, c0 + c
-            r = min(r0, r1)
-            c = min(c0, c1)
             if 0 <= r < d.shape[0] and 0 <= c < d.shape[1]:
-                yield (r1, c1), d[r, c]
+                yield (r1, c1), d[r1, c1]
 
     while fringe:
         (d, _, spot) = pop(fringe)
@@ -480,7 +235,7 @@ def tile_core_points(tile: Tile, skip_existing=True, n=0):
             )
         }
 
-    distance_by_direction, transform = distances_and_cache(tile)
+    distance_by_direction, transform = load_distances(tile)
 
     try:
         values = []
@@ -502,7 +257,9 @@ def tile_core_points(tile: Tile, skip_existing=True, n=0):
             )
     finally:
         if values:
-            DATABASE.execute(insert(TABLES["nodes"]).values(values).on_conflict_do_nothing())
+            DATABASE.execute(
+                insert(TABLES["nodes"]).values(values).on_conflict_do_nothing()
+            )
     return n
 
 
@@ -525,7 +282,7 @@ def voronoi_and_neighbor_distances(tile, skip_existing=True):
         )
     ]
 
-    distance_by_direction, transform = distances_and_cache(tile)
+    distance_by_direction, transform = load_distances(tile)
     fname_v = "voronoi-{:s}{:d}{:s}{:d}.tif".format(*tile)
     fname_d = "min_distances-{:s}{:d}{:s}{:d}.tif".format(*tile)
     try:
@@ -703,12 +460,10 @@ def measure_ecoregions(tile: Tile):
 
 if __name__ == "__main__":
     if "rivers" in sys.argv:
-        # Separate module, which imports this one! It creates the distances
-        # caches, too.
-        ...
+        by_river()
 
     if "core" in sys.argv:
-        n, = DATABASE.execute(select(func.max(TABLES["nodes"].c.short))).fetchone()
+        (n,) = DATABASE.execute(select(func.max(TABLES["nodes"].c.short))).fetchone()
         if n is None:
             n = 0
         else:
@@ -747,7 +502,7 @@ if __name__ == "__main__":
     if "stitch" in sys.argv:
         # Separate module, and quite fast. You could run it on every Voronoi
         # tile whose neighbors have been computed.
-        ...
+        distance_by_sea(LAND.buffer(-0.04))
 
     if "areas" in sys.argv:
         # The other steps can be run per tile (with some artefacts on the tile
@@ -755,14 +510,16 @@ if __name__ == "__main__":
         # step), but this one really needs all voronoi computations to have
         # finished.
         values = t.DefaultDict(t.Counter)
-        node_from_short = dict(list(
-            DATABASE.execute(
-                select(
-                    TABLES["nodes"].c.short,
-                    TABLES["nodes"].c.node_id,
-                ).where(TABLES["nodes"].c.short != None)
+        node_from_short = dict(
+            list(
+                DATABASE.execute(
+                    select(
+                        TABLES["nodes"].c.short,
+                        TABLES["nodes"].c.node_id,
+                    ).where(TABLES["nodes"].c.short != None)
+                )
             )
-        ))
+        )
         for tile in itertools.product(
             ["N", "S"], [10, 30, 50, 70], ["E", "W"], [0, 30, 60, 90, 120, 150, 180]
         ):
@@ -802,5 +559,5 @@ if __name__ == "__main__":
                     & (TABLES["ecology"].c.ecoregion == ecoregion)
                 )
             )
-TODO: change caching behaviour
-TODO: change borders for distances
+# TODO: change caching behaviour
+# TODO: change borders for distances

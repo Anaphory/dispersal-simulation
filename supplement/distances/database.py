@@ -5,8 +5,6 @@ from sqlalchemy import event
 from sqlalchemy.schema import PrimaryKeyConstraint
 from sqlalchemy.engine import Engine
 
-from h3.api import basic_int as h3
-
 
 @event.listens_for(Engine, "connect")
 def set_sqlite_pragma(
@@ -57,8 +55,7 @@ def db(
         sqlalchemy.Column("travel_time", sqlalchemy.Float),  # in seconds
         sqlalchemy.Column("flat_distance", sqlalchemy.Float),  # in meters
         sqlalchemy.Column("source", sqlalchemy.String),
-        PrimaryKeyConstraint("node1", "node2", "source", sqlite_on_conflict='REPLACE')
-
+        PrimaryKeyConstraint("node1", "node2", "source", sqlite_on_conflict="REPLACE"),
     )
 
     ecology = sqlalchemy.Table(
@@ -71,9 +68,9 @@ def db(
             primary_key=True,
         ),
         sqlalchemy.Column("ecoregion", sqlalchemy.Integer(), primary_key=True),
-        sqlalchemy.Column("area", sqlalchemy.Float), # in km^2
+        sqlalchemy.Column("area", sqlalchemy.Float),  # in km^2
         sqlalchemy.Column("population_capacity", sqlalchemy.Float),
-        PrimaryKeyConstraint("node", "ecoregion", sqlite_on_conflict='REPLACE')
+        PrimaryKeyConstraint("node", "ecoregion", sqlite_on_conflict="REPLACE"),
     )
 
     metadata.create_all(engine)

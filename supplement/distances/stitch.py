@@ -1,4 +1,3 @@
-import itertools
 import rasterio
 
 from raster_data import tile_from_geocoordinates

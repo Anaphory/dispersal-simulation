@@ -1,8 +1,12 @@
+import typing as t
+
 import cartopy.geodesic as geodesic
 import shapely.geometry as sgeom
 from shapely.ops import unary_union
 import cartopy.io.shapereader as shpreader
 from shapely.prepared import prep
+
+LonLat = t.Tuple[float, float]
 
 # Define some constants
 GEODESIC: geodesic.Geodesic = geodesic.Geodesic()
@@ -30,4 +34,3 @@ ALL_LAND = unary_union(
 )
 LAND = BBOX.intersection(ALL_LAND)
 PLAND = prep(LAND)
-
