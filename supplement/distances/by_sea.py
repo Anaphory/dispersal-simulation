@@ -68,4 +68,5 @@ def distance_by_sea(definitely_inland, skip: bool = True) -> None:
                     "flat_distance": d,
                 }
             )
-        DATABASE.execute(insert(TABLES["edges"]).values(values))
+        if values:
+            DATABASE.execute(insert(TABLES["edges"]).values(values))

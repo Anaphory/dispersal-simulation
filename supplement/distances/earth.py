@@ -34,3 +34,4 @@ ALL_LAND = unary_union(
 )
 LAND = BBOX.intersection(ALL_LAND)
 PLAND = prep(LAND)
+DEFINITELY_INLAND = prep(LAND.buffer(0.03))

@@ -191,6 +191,40 @@ def estimate_flow_speed(discharge, slope):
 RIVERS = RiverNetwork()
 
 
+def draw_line(x1, y1, x2, y2):
+    """Draw a line from (x1, y1) to (x2, y2).
+
+    Give all the integer coordinate that a line from (x1, y1) to (x2, y2)
+    passes through, using a modification of Bresenham's line drawing algorithm,
+    where no diagonal connections are allowed, so diagonal steps cannot skip
+    the drawn line.
+
+    """
+    # Swap parameters such that x1<x2, y1<y2, and the slope m<1.
+    if y2 < y1:
+        for x, y in draw_line(x1, -y1, x2, -y2):
+            yield x, -y
+    elif x2 < x1:
+        for x, y in draw_line(-x1, y1, -x2, y2):
+            yield -x, y
+    elif (y2 - y1) > (x2 - x1):
+        for y, x in draw_line(y1, x1, y2, x2):
+            yield x, y
+    else:
+        m_adj = 2 * (y2 - y1)
+        slope_error_adj = m_adj - (x2 - x1)
+
+        y = y1
+        for x in range(x1, x2 + 1):
+            yield x, y
+            slope_error_adj = slope_error_adj + m_adj
+            if slope_error_adj >= 0:
+                if y <= y2:
+                    yield x, y + 1
+                y = y + 1
+                slope_error_adj = slope_error_adj - 2 * (x2 - x1)
+
+
 def process_rivers(tile):
     engine, tables = db()
     t_node = tables["nodes"]
@@ -200,8 +234,6 @@ def process_rivers(tile):
 
     rasters, transform = moore_distances(tile)
 
-    if Path("rivers-{:s}{:d}{:s}{:d}.tif".format(*tile)).exists():
-            continue
     # For checking afterwards, but also to prevent adding penalties multiple
     # times:
     is_river = numpy.zeros(rasters[1, 1].shape, dtype=bool)
@@ -231,6 +263,8 @@ def process_rivers(tile):
             else:
                 crossing_penalty = 1800.0
 
+            col1, row1 = ~transform * points[-1]
+            old_cell = set()
             for (lon0, lat0), (lon1, lat1) in windowed(points, 2):
                 if not (
                     (west < lon0 < east or west < lon1 < east)
@@ -241,46 +275,45 @@ def process_rivers(tile):
 
                 col0, row0 = ~transform * (lon0, lat0)
                 col1, row1 = ~transform * (lon1, lat1)
-                cells = [
-                    (
-                        # The river network shows artefacts of being
-                        # derived from a GEM with compatible resolution (I
-                        # think 15" instead of 30"), which show up as NE-SW
-                        # running river reaches crossing exactly through
-                        # the pixel corners. Shifting them a tiny bit to
-                        # SE – taking care that it won't be precisely
-                        # diagonal, to avoid introducing other artefact –
-                        # should help with that.
-                        int(round(along * row0 + (1 - along) * row1 + 0.05)),
-                        int(round(along * col0 + (1 - along) * col1 + 0.04)),
-                    )
-                    for along in numpy.linspace(
-                        0, 1, 4 * int(abs(row1 - row0) + abs(col1 - col0)) + 1
-                    )
-                ]
+                # The river network shows artefacts of being derived from a GEM
+                # with compatible resolution (I think 15" instead of 30"),
+                # which show up as NE-SW running river reaches crossing exactly
+                # through the pixel corners. Shifting them a tiny bit to SE –
+                # taking care that it won't be precisely diagonal, to avoid
+                # introducing other artefact – should help with that.
+
+                cells = draw_line(round(row0), round(col0), round(row1), round(col1))
                 # Filter down to the cells that are part of this tile
                 cells = [
                     c
                     for c in cells
                     if 0 <= c[0] < is_river.shape[0]
-                    if 0 < c[1] < is_river.shape[1]
-                    if not is_river[c]
+                    if 0 <= c[1] < is_river.shape[1]
                 ]
                 # Leaving a river pixel costs time, unless it's in the
                 # direction of river flow. Because we don't track on which side
                 # of the river we are walking, we need to assume that crossing
                 # happens at every point where river reaches meet.
-                old_cell = None
-                for cell in cells:
-                    if old_cell == cell:
+                for cell in cells[:-1]:
+                    if cell in old_cell:
                         continue
                     for (r, c), travel_time in rasters.items():
-                        if (r + cell[0], c + cell[1]) == old_cell:
+                        if (r + cell[0], c + cell[1]) in old_cell:
                             # Undo the adding of penalty in this direction
-                            rasters[-r, -c][old_cell] -= crossing_penalty
+                            rasters[-r, -c][(r + cell[0], c + cell[1])] -= crossing_penalty
                         else:
                             travel_time[cell] += crossing_penalty
-                    old_cell = cell
+                    is_river[cell] = True
+                    old_cell.add(cell)
+            cell = (int(row1), int(col1))
+            if cell not in old_cell and 0 <= cell[0] < is_river.shape[0] and 0 <= cell[1] < is_river.shape[1]:
+                for (r, c), travel_time in rasters.items():
+                    if (r + cell[0], c + cell[1]) in old_cell:
+                        # Undo the adding of penalty in this direction
+                        rasters[-r, -c][(r + cell[0], c + cell[1])] -= crossing_penalty
+                    else:
+                        travel_time[cell] += crossing_penalty
+                    is_river[cell] = True
         if not inside_tile:
             continue
 

@@ -19,8 +19,8 @@ from h3.api import basic_int as h3
 import rasterio
 from raster_data import ecoregion_tile, boundingbox_from_tile, Tile, RowCol
 from database import db
-from earth import LAND, GEODESIC, LonLat
-from by_river import process_rivers as by_river
+from earth import LAND, GEODESIC, LonLat, DEFINITELY_INLAND
+from by_river import process_rivers
 from by_sea import distance_by_sea
 
 DATABASE, TABLES = db()
@@ -101,7 +101,7 @@ def distances_from_focus(
     ) -> t.Iterable[t.Tuple[t.Tuple[int, int], float]]:
         for (r, c), d in distance_by_direction.items():
             r1, c1 = r0 + r, c0 + c
-            if 0 <= r < d.shape[0] and 0 <= c < d.shape[1]:
+            if 0 <= r1 < d.shape[0] and 0 <= c1 < d.shape[1]:
                 yield (r1, c1), d[r1, c1]
 
     while fringe:
@@ -460,7 +460,16 @@ def measure_ecoregions(tile: Tile):
 
 if __name__ == "__main__":
     if "rivers" in sys.argv:
-        by_river()
+        for tile in itertools.product(
+            ["N", "S"],
+            [10, 30, 50, 70],
+            ["E", "W"],
+            [0, 30, 60, 90, 120, 150, 180],
+        ):
+            try:
+                process_rivers(tile)
+            except rasterio.errors.RasterioIOError:
+                print("Tile {:s}{:d}{:s}{:d} not found.".format(*tile))
 
     if "core" in sys.argv:
         (n,) = DATABASE.execute(select(func.max(TABLES["nodes"].c.short))).fetchone()
@@ -480,14 +489,16 @@ if __name__ == "__main__":
                 print("Tile {:s}{:d}{:s}{:d} not found.".format(*tile))
 
     if "popdense" in sys.argv:
-        # A modification of Tallavaara's R Markdown script.
+        # A modification of Tallavaara's R Markdown script. This can be run at
+        # this point or later, it needs to be finished *and merged* before the
+        # `populations` step.
         ...
 
     if "sea" in sys.argv:
         # Separate module. This can run in parallel to the following steps, it
         # only needs all core points to be defined, but does not interfere with
         # voronoi cells or grid distances.
-        ...
+        distance_by_sea(DEFINITELY_INLAND)
 
     if "voronoi" in sys.argv or "distances" in sys.argv:
         for tile in itertools.product(
@@ -559,5 +570,3 @@ if __name__ == "__main__":
                     & (TABLES["ecology"].c.ecoregion == ecoregion)
                 )
             )
-# TODO: change caching behaviour
-# TODO: change borders for distances
