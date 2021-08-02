@@ -1,6 +1,6 @@
 [package]
 name = "dispersal_model_rust"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Gereon A. Kaiping <gkaiping@geo.uzh.ch>"]
 edition = "2018"
 
