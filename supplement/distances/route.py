@@ -16,7 +16,7 @@ import shapely.wkb
 import cartopy.crs as ccrs
 from matplotlib import pyplot as plt
 from matplotlib.colors import ListedColormap
-
+from matplotlib import cm
 
 from database import db
 from earth import GEODESIC
@@ -28,6 +28,7 @@ def distances_from_focus(
     source,
     destination,
     filter_sources: t.Optional[t.Set[str]] = None,
+    filter_nodes: bool = False,
     pred: t.Optional = None,
 ) -> numpy.array:
     # Dijkstra's algorithm, adapted for our purposes from
@@ -60,8 +61,13 @@ def distances_from_focus(
 
     if filter_sources:
         filter = TABLES["edges"].c.source.in_(filter_sources)
+        if filter_nodes:
+            filter &= TABLES["nodes"].c.node_id > 100000000
     else:
-        filter = True
+        if filter_nodes:
+            filter = TABLES["nodes"].c.node_id > 100000000
+        else:
+            filter = True
 
     dist = t.DefaultDict(lambda: inf)
 
@@ -90,11 +96,16 @@ def distances_from_focus(
                 )
             )
             .where(
-                (TABLES["edges"].c.node1 == spot)
+                (((TABLES["edges"].c.node1 == spot) & (TABLES["edges"].c.node2 != spot))
                 if filter is True
-                else filter & (TABLES["edges"].c.node1 == spot)
+                else filter)
+                & (TABLES["edges"].c.node1 == spot)
+                & (TABLES["edges"].c.node2 != spot)
             )
         ):
+            # Moving onto a river is costly
+            if u < 100000000:
+                cost += 72000
             vu_dist = dist[spot] + cost
             if u in dist and vu_dist < dist[u]:
                 raise ValueError(
@@ -147,8 +158,10 @@ def find_node(lon, lat, rivers=False):
     return best
 
 
-nashville = find_node(-86.9759, 36.0346)
-natchez = find_node(-91.36892, 31.54543)
+nashville_lonlat = (-86.9759, 36.0346)
+natchez_lonlat = (-91.36892, 31.54543)
+nashville = find_node(*nashville_lonlat)
+natchez = find_node(*natchez_lonlat)
 print(nashville, natchez)
 
 # Plotting
@@ -169,11 +182,13 @@ ax.add_geometries(
 
 print("Nashville to Natchez…")
 pred = {nashville: (None, "self-loop")}
-d = distances_from_focus(nashville, natchez, pred=pred, filter_sources={"grid"})
+d = distances_from_focus(
+    nashville, natchez, pred=pred, filter_nodes=True, filter_sources={"grid"}
+)
 print(d[natchez])
 backtrack = natchez
-lons = [-91.36892]
-lats = [31.54543]
+lons = [natchez_lonlat[0]]
+lats = [natchez_lonlat[1]]
 sources = []
 print("Backtrack…")
 while pred.get(backtrack):
@@ -200,25 +215,30 @@ rpred = {natchez: (None, "self-loop")}
 rd = distances_from_focus(natchez, nashville, pred=rpred)
 print(rd[nashville])
 rbacktrack = nashville
-rlons = [-86.9759]
-rlats = [36.0346]
+rlons = [nashville_lonlat[0]]
+rlats = [nashville_lonlat[1]]
 rsources = []
 print("Backtrack…")
-while pred.get(rbacktrack):
-    backtrack, source = pred[rbacktrack]
+while rpred.get(rbacktrack):
+    rbacktrack, source = rpred[rbacktrack]
     lonlat = DATABASE.execute(
         select(
             [
                 TABLES["nodes"].c.longitude,
                 TABLES["nodes"].c.latitude,
             ]
-        ).where(TABLES["nodes"].c.node_id == backtrack)
+        ).where(TABLES["nodes"].c.node_id == rbacktrack)
     ).fetchone()
     if lonlat is None:
+        break
+    if len(rsources) >= 100:
+        print(rbacktrack)
+        breakpoint()
         break
     rlons.append(lonlat[0])
     rlats.append(lonlat[1])
     rsources.append(source)
+
 
 print("Set up plot…")
 bbox = (
@@ -238,9 +258,11 @@ random = ListedColormap(
 
 print("Plot voronoi…")
 for tile in tqdm(itertools.product(["N"], [10, 30], ["W"], [90, 120])):
-    fname_v = "voronoi-{:s}{:d}{:s}{:d}.tif".format(*tile)
+    # fname_v = "voronoi-{:s}{:d}{:s}{:d}.tif".format(*tile)
+    fname_d = "distances-{:s}{:d}{:s}{:d}.tif".format(*tile)
     try:
-        data = rasterio.open(fname_v, "r").read(1)[500:-500, 500:-500]
+        # data = rasterio.open(fname_v, "r").read(1)[500:-500, 500:-500]
+        data = rasterio.open(fname_d, "r").read(1)[500:-500, 500:-500]
     except rasterio.errors.RasterioIOError:
         continue
     west = (-1 if tile[2] == "W" else 1) * tile[3]
@@ -250,7 +272,8 @@ for tile in tqdm(itertools.product(["N"], [10, 30], ["W"], [90, 120])):
         transform=proj,
         extent=(west, west + 30, south, south + 20),
         interpolation="nearest",
-        cmap=random,
+        # cmap=random,
+        cmap=cm.viridis,
         vmin=0,
         vmax=2 ** 16 - 1,
     )

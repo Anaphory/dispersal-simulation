@@ -188,9 +188,10 @@ def merge_tile(lon: float, lat: float):
         dst.write(voronoi_allocation, 1)
 
 
-for lon in [-15, -45, -75, -105, -135, -165]:
-    for lat in [0, 20, 40, 60, 80, -20, -40, -60, -80]:
-        try:
-            merge_tile(lon, lat)
-        except rasterio.errors.RasterioIOError:
-            print("Tile around {:d}, {:d} not found.".format(lon, lat))
+if __name__ == "__main__":
+    for lon in [-15, -45, -75, -105, -135, -165]:
+        for lat in [0, 20, 40, 60, 80, -20, -40, -60, -80]:
+            try:
+                merge_tile(lon, lat)
+            except rasterio.errors.RasterioIOError:
+                print("Tile around {:d}, {:d} not found.".format(lon, lat))

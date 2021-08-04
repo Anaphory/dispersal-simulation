@@ -163,7 +163,7 @@ def find_hexes_crossed(
 KAYAK_SPEED = 1.5433333
 
 
-def estimate_flow_speed(discharge, slope):
+def estimate_flow_speed(width, depth, slope, discharge):
     """Estimate the flow speed, in m/s from discharge (m³/s) and slope (m/m)
 
     This is a very rough estimate, following [@schulze2005simulating]. They
@@ -180,12 +180,10 @@ def estimate_flow_speed(discharge, slope):
 
     """
     n = 0.044
-    w = 2.71 * discharge ** 0.557
-    d = 0.349 * discharge ** 0.341
-    r = d * w / (2 * d + w)
+    r = depth * width / (2 * depth + width)
     # Manning-Strickler formula
     v = 1 / n * r ** (2 / 3) * slope ** 0.5
-    return v
+    return max(v, discharge / (width * depth))
 
 
 RIVERS = RiverNetwork()
@@ -225,14 +223,80 @@ def draw_line(x1, y1, x2, y2):
                 slope_error_adj = slope_error_adj - 2 * (x2 - x1)
 
 
-def process_rivers(tile):
+def wading_time(depth, width, velocity):
+    """Calculate the time to wade/swim across a river of
+
+    depth D [m], width W [m], velocity V [m/s]
+
+    Judging from [@davenport2017wading], analysed in a supplementary
+    spreadsheet (rough data extracted using WebPlotDigitizer), it seems that
+    swim speed S [m/s] is roughly a lower bound for wading speed X [m/s], which
+    otherwise depends on the depth of the body of water D [m] as roughly
+
+    X = 1/(0.63 D + 1/X0)
+
+    where X0 is walking speed, so X0 = 1.4454683853418 for the beach walking
+    speed of men in their measurements. These data were however measured on a
+    beach, where even running through deep water was possible.
+
+    For treacherous terrain, such as inside a river, both stride length and
+    stride frequency will be much lower. Waders are advised to shuffle
+    carefully and not cross their legs, and measure each step carefully. Our
+    base navigation speed is already around 1km/h instead of the more than
+    5km/h of [@davenport2017wading]. With the additional safety measures for
+    river crossings, an X0 = 0.14454683853418 seems appropriate.
+
+    General advice is to wade across a deeper river roughly at an angle, ending
+    up further downstream than the start, while a shallow river can be crossed
+    orthogonally. By linear interpolation, we take the effective distance
+    across as
+
+    A = √(W² + (D W)²) = W × √(1+D²)
+
+    [@jonkmann2008human] cite three studies reporting the critical product DV
+    (hv_c in their notation) at which human wading becomes unstable, and
+    compute their own estimate. For a 1.7 m tall person with a weight of 68.25
+    kg, these numbers are 1.32 m²/s, 1.27 m²/s, 0.664 m²/s, and 0.5 m²/s. We
+    pick 1.27 m²/s as a compromise, because the model is for an experienced and
+    prepared explorer. Above this critical product, swimming is necessary.
+
+    """
+    S = 0.5788666326641
+    X0 = 1.4454683853418 / 10
+    if depth * velocity > 1.27:
+        # Wading is unstable
+        return numpy.inf
+    if depth > 1.5:
+        # Too deep for wading
+        return numpy.inf
+    X = 1 / (0.63 * depth + 1 / X0)
+
+    A = width * numpy.sqrt(1 + depth ** 2)
+    return A / X  # Can be infinity
+
+
+maxest = {
+    "width": 0,
+    "depth": 0,
+    "discharge": 0,
+    "wading": 0,
+    "v": 0,
+    "slope": 0,
+}
+
+
+def process_rivers(tile, may_follow_river=False):
+
     engine, tables = db()
     t_node = tables["nodes"]
     t_dist = tables["edges"]
 
-    west, south, east, north = boundingbox_from_tile(tile)
-
     rasters, transform = moore_distances(tile)
+
+    west, north = transform * (-0.5, -0.5)
+    east, south = transform * (rasters[1, 1].shape[1] + 0.5, rasters[1, 1].shape[0] + 0.5)
+
+    print(f"Working between boundaries S{south}W{west}N{north}E{east}")
 
     # For checking afterwards, but also to prevent adding penalties multiple
     # times:
@@ -247,75 +311,119 @@ def process_rivers(tile):
 
         points: t.List[t.Tuple[float, float]] = reach.shape.points
 
-        inside_tile = False
-        # River crossing penalties following [@livingood2012no] – his river
-        # flows are measured in cubic feet per second, GloRiC has log_10 of
-        # cubic meters per second.
-        if data[3] < -0.5479551057398296:
-            continue
+        for (lon0, lat0), (lon1, lat1) in windowed(points, 2):
+            if not (
+                (west < lon0 < east or west < lon1 < east)
+                and (south < lat0 < north or south < lat1 < north)
+            ):
+                continue
+            break
         else:
-            if data[3] < 0.4520448942601702:
-                crossing_penalty = 3.0
-            elif data[3] < 1.4520448942601702:
-                crossing_penalty = 300.0
-            elif data[3] < 2.4520448942601702:
-                crossing_penalty = 600.0
-            else:
-                crossing_penalty = 1800.0
-
-            col1, row1 = ~transform * points[-1]
-            old_cell = set()
-            for (lon0, lat0), (lon1, lat1) in windowed(points, 2):
-                if not (
-                    (west < lon0 < east or west < lon1 < east)
-                    and (south < lat0 < north or south < lat1 < north)
-                ):
-                    continue
-                inside_tile = True
-
-                col0, row0 = ~transform * (lon0, lat0)
-                col1, row1 = ~transform * (lon1, lat1)
-                # The river network shows artefacts of being derived from a GEM
-                # with compatible resolution (I think 15" instead of 30"),
-                # which show up as NE-SW running river reaches crossing exactly
-                # through the pixel corners. Shifting them a tiny bit to SE –
-                # taking care that it won't be precisely diagonal, to avoid
-                # introducing other artefact – should help with that.
-
-                cells = draw_line(round(row0), round(col0), round(row1), round(col1))
-                # Filter down to the cells that are part of this tile
-                cells = [
-                    c
-                    for c in cells
-                    if 0 <= c[0] < is_river.shape[0]
-                    if 0 <= c[1] < is_river.shape[1]
-                ]
-                # Leaving a river pixel costs time, unless it's in the
-                # direction of river flow. Because we don't track on which side
-                # of the river we are walking, we need to assume that crossing
-                # happens at every point where river reaches meet.
-                for cell in cells[:-1]:
-                    if cell in old_cell:
-                        continue
-                    for (r, c), travel_time in rasters.items():
-                        if (r + cell[0], c + cell[1]) in old_cell:
-                            # Undo the adding of penalty in this direction
-                            rasters[-r, -c][(r + cell[0], c + cell[1])] -= crossing_penalty
-                        else:
-                            travel_time[cell] += crossing_penalty
-                    is_river[cell] = True
-                    old_cell.add(cell)
-            cell = (int(row1), int(col1))
-            if cell not in old_cell and 0 <= cell[0] < is_river.shape[0] and 0 <= cell[1] < is_river.shape[1]:
-                for (r, c), travel_time in rasters.items():
-                    if (r + cell[0], c + cell[1]) in old_cell:
-                        # Undo the adding of penalty in this direction
-                        rasters[-r, -c][(r + cell[0], c + cell[1])] -= crossing_penalty
-                    else:
-                        travel_time[cell] += crossing_penalty
-                    is_river[cell] = True
-        if not inside_tile:
             continue
+
+        discharge = 10 ** data[3]
+
+        # This is a very rough estimate, following [@schulze2005simulating].
+        width = 2.71 * discharge ** 0.557
+        depth = 0.349 * discharge ** 0.341
+
+        # Slope is not directly available in the data, but the stream power is
+        # directly proportional to the product of discharge and gradient, so we
+        # can reverse-engineer it: Stream power [kg m/s³] = water density
+        # [kg/m³] * gravity [m/s²] * discharge [m³/s] * slope [m/m]; so Slope =
+        # stream power / (discharge * water density * gravity). GloRiC bases
+        # its slope (used for calculating stream power) on maximum elevation
+        # minus mean elevation of the reach, so this may still be off by a
+        # factor of 2.
+        slope = data[11] / (10 ** data[3] * 9810)
+
+        v = estimate_flow_speed(
+            width=width, depth=depth, slope=slope, discharge=discharge
+        )
+        if v > 40.0:
+            raise RuntimeError(
+                "Found a reach flowing faster than 40 m/s, something is clearly wrong."
+            )
+
+        wading = wading_time(width=width, depth=depth, velocity=v)
+
+        if wading < 2:
+            continue
+
+        if data[3] < 0.4520448942601702:
+            livingood = 3.0
+        elif data[3] < 1.4520448942601702:
+            livingood = 300.0
+        elif data[3] < 2.4520448942601702:
+            livingood = 600.0
+        else:
+            livingood = 1800.0
+
+        xest = ""
+        if width > maxest["width"]:
+            maxest["width"] = width
+            xest += "widest "
+        if depth > maxest["depth"]:
+            maxest["depth"] = depth
+            xest += "deepest "
+        if discharge > maxest["discharge"]:
+            maxest["discharge"] = discharge
+            xest += "biggest "
+        if wading > maxest["wading"]:
+            maxest["wading"] = wading
+            xest += "most difficult to cross "
+        if v > maxest["v"]:
+            maxest["v"] = v
+            xest += "fastest "
+        if slope > maxest["slope"]:
+            maxest["slope"] = slope
+            xest += "steepest "
+        if xest:
+            print(
+                f"Found new {xest}river reach:",
+                f" Reach starting at {points[0]}",
+                f"Width: {width}",
+                f"Depth: {depth}",
+                f"Discharge: {discharge}",
+                f"Wading time: {wading}",
+                f"Flow speed: {v}",
+                "Effective flow: {}".format(
+                    discharge / (depth * width * v) if v > 0 else "inf"
+                ),
+                f"Slope: {slope}",
+                f"Livingood penalty: {livingood}",
+                sep="\n  ",
+            )
+
+        for (lon0, lat0), (lon1, lat1) in windowed(points, 2):
+            if not (
+                (west < lon0 < east or west < lon1 < east)
+                and (south < lat0 < north or south < lat1 < north)
+            ):
+                continue
+
+            col0, row0 = ~transform * (lon0, lat0)
+            col1, row1 = ~transform * (lon1, lat1)
+            # The river network shows artefacts of being derived from a GEM
+            # with compatible resolution (I think 15" instead of 30"),
+            # which show up as NE-SW running river reaches crossing exactly
+            # through the pixel corners. Shifting them a tiny bit to SE –
+            # taking care that it won't be precisely diagonal, to avoid
+            # introducing other artefact – should help with that.
+
+            cells = draw_line(round(row0), round(col0), round(row1), round(col1))
+            # Filter down to the cells that are part of this tile
+            cells = [
+                c
+                for c in cells
+                if 0 <= c[0] < is_river.shape[0]
+                if 0 <= c[1] < is_river.shape[1]
+            ]
+            # Leaving a river pixel costs time.
+            for cell in cells:
+                for (r, c), dist in rasters.items():
+                    is_river[cell] = True
+                    dist[cell] += wading
 
         # Is this reach navigable by Kayak/Canoe? From
         # [@rood2006instream,@zinke2018comparing] it seems that reaches with a
@@ -325,28 +433,13 @@ def process_rivers(tile):
         #
         # [@zinke2018comparing] further plots wild water kayaking run slopes
         # vs. difficulty. All of these are below 10%, so we assume that reaches
-        # above 10% are not navigable. Gradient is not directly available in
-        # the data, but the stream power is directly proportional to the
-        # product of discharge and gradient, so we can reverse-engineer it:
-        # Stream Power [kg m/s³]
-        # = Water Density [kg/m³] * gravity [m/s²] * discharge [m³/s] * slope [m/m]
-        # so
-        if (
-            data[3] < 0.9030899869919434
-            or data[11] / (10 ** data[3]) > 981.0  # log(8.)/log(10.)
-        ):
+        # above 10% are not navigable.
+        if data[3] < 0.9030899869919434 or slope > 0.1:
             continue
 
         with engine.begin() as conn:
             # slope = stream power / discharge / (1000 * 9.81) > 10% = 0.1
-            v = estimate_flow_speed(
-                discharge=10 ** data[3], slope=data[11] / 10 ** data[3] / (9810)
-            )
             print(data[0], KAYAK_SPEED + v, KAYAK_SPEED + v)
-            if v > 40.0:
-                raise RuntimeError(
-                    "Found a reach flowing faster than 40 m/s, something is clearly wrong."
-                )
 
             downstream = data[1]
             conn.execute(
@@ -436,4 +529,4 @@ def process_rivers(tile):
         "w",
         **profile,
     ) as dst:
-        dst.write(is_river.astype(numpy.uint8), 1)
+        dst.write(is_river.astype(numpy.float64), 1)

@@ -7,6 +7,7 @@ from itertools import count
 from heapq import heappush as push, heappop as pop
 
 import numpy
+from more_itertools import windowed
 from tqdm import tqdm
 from sqlalchemy import func
 from sqlalchemy import select
@@ -22,6 +23,7 @@ from database import db
 from earth import LAND, GEODESIC, LonLat, DEFINITELY_INLAND
 from by_river import process_rivers
 from by_sea import distance_by_sea
+from stitch import merge_tile
 
 DATABASE, TABLES = db()
 RESOLUTION = 5
@@ -89,7 +91,7 @@ def distances_from_focus(
     # Dijkstra's algorithm, adapted for our purposes from
     # networkx/algorithms/shortest_paths/weighted.html
     d = distance_by_direction[0, 1]
-    dist: numpy.array = numpy.full((d.shape[0], d.shape[1] + 1), numpy.inf, dtype=float)
+    dist: numpy.array = numpy.full(d.shape, numpy.inf, dtype=float)
     seen: t.Dict[t.Tuple[int, int], float] = {source: 0.0}
     c = count()
     # use heapq with (distance, label) tuples
@@ -102,7 +104,18 @@ def distances_from_focus(
         for (r, c), d in distance_by_direction.items():
             r1, c1 = r0 + r, c0 + c
             if 0 <= r1 < d.shape[0] and 0 <= c1 < d.shape[1]:
-                yield (r1, c1), d[r1, c1]
+                yield (r1, c1), d[r0, c0]
+
+    for u, cost in moore_neighbors(*source):
+        if not numpy.isfinite(cost):
+            r0, c0 = source[0] - u[0], source[1] - u[1]
+            # We don't have the actual distance away from the river, so we
+            # assume the terrain is somewhat homogenous around it.
+            cost = max(
+                distance_by_direction[r0, c0][u], distance_by_direction[-r0, -c0][u]
+            )
+            if numpy.isfinite(cost):
+                push(fringe, (cost, next(c), u))
 
     while fringe:
         (d, _, spot) = pop(fringe)
@@ -139,10 +152,7 @@ def distances_trimmed(source, points, distance_by_direction, transform):
     r0, c0 = source[0] - rmin, source[1] - cmin
 
     dist = {
-        (n, e): d[
-            rmin - min(n, 0) : rmax - max(0, n), cmin - min(e, 0) : cmax - max(0, e)
-        ]
-        for (n, e), d in distance_by_direction.items()
+        (n, e): d[rmin:rmax, cmin:cmax] for (n, e), d in distance_by_direction.items()
     }
 
     return rmin, cmin, distances_from_focus((r0, c0), points, dist, pred=None)
@@ -185,10 +195,10 @@ def core_point(hexbin, distance_by_direction, transform):
     points = [(r - rmin, c - cmin) for r, c in points]
 
     dist = {
-        (n, e): d[
-            rmin - min(n, 0) : rmax - max(0, n), cmin - min(e, 0) : cmax - max(0, e)
-        ]
-        for (n, e), d in distance_by_direction.items()
+        # For the purposes of finding central locations, we cannot have so so
+        # many locations each with the same infinite centrality, so assume a
+        # maximum pixel distance of 8 hours.
+        (n, e): numpy.minimum(d[rmin:rmax, cmin:cmax], 8*3600) for (n, e), d in distance_by_direction.items()
     }
     dist[0, -1] = dist[0, 1] = dist[0, 1] + dist[0, -1]
     dist[-1, -1] = dist[1, 1] = dist[1, 1] + dist[-1, -1]
@@ -377,8 +387,13 @@ def voronoi_and_neighbor_distances(tile, skip_existing=True):
                 print(already_known - to_be_known, to_be_known - already_known)
 
             for nnode, nlon, nlat in neighbors:
-                nrowcol.append(rowcol((nlon, nlat)))
-                nnodes.append(nnode)
+                row, col = rowcol((nlon, nlat))
+                if (
+                    0 < row < distance_by_direction[1, 1].shape[0]
+                    and 0 < col < distance_by_direction[1, 1].shape[1]
+                ):
+                    nrowcol.append((row, col))
+                    nnodes.append(nnode)
 
             rmin, cmin, array = distances_trimmed(
                 source, nrowcol, distance_by_direction, transform
@@ -454,7 +469,6 @@ def measure_ecoregions(tile: Tile):
         for v, e in zip(voronoi, eco):
             if e != 999 and v != 0:
                 values[int(v)][int(e)] += area
-    print(values)
     return values
 
 
@@ -477,12 +491,12 @@ if __name__ == "__main__":
             n = 0
         else:
             n = (n // 140000 + 1) * 140000
-        for tile in itertools.product(
+        for tile in reversed(list(itertools.product(
             ["N", "S"],
             [10, 30, 50, 70],
             ["E", "W"],
             [0, 30, 60, 90, 120, 150, 180],
-        ):
+        ))):
             try:
                 n = tile_core_points(tile, n=n)
             except rasterio.errors.RasterioIOError:
@@ -513,7 +527,12 @@ if __name__ == "__main__":
     if "stitch" in sys.argv:
         # Separate module, and quite fast. You could run it on every Voronoi
         # tile whose neighbors have been computed.
-        distance_by_sea(LAND.buffer(-0.04))
+        for lon in [-15, -45, -75, -105, -135, -165]:
+            for lat in [0, 20, 40, 60, 80, -20, -40, -60, -80]:
+                try:
+                    merge_tile(lon, lat)
+                except rasterio.errors.RasterioIOError:
+                    print("Stitching: tile for {:d}, {:d} not found.".format(lon, lat))
 
     if "areas" in sys.argv:
         # The other steps can be run per tile (with some artefacts on the tile
@@ -541,15 +560,13 @@ if __name__ == "__main__":
             except rasterio.errors.RasterioIOError:
                 print("Tile {:s}{:d}{:s}{:d} not found.".format(*tile))
             json.dump(values, open("areas.json", "w"), indent=2)
-        DATABASE.execute(
-            insert(TABLES["ecology"]).values(
-                [
-                    {"node": node, "ecoregion": ecoregion, "area": area / 1000000}
-                    for node, areas in values.items()
-                    for ecoregion, area in areas.items()
-                ]
-            )
-        )
+        all_data = [
+            {"node": node, "ecoregion": ecoregion, "area": area / 1000000}
+            for node, areas in values.items()
+            for ecoregion, area in areas.items()
+        ]
+        for window in windowed(all_data, 300, 300):
+            DATABASE.execute(insert(TABLES["ecology"]).values(window))
 
     if "populations" in sys.argv:
         # Needs `popdense` and `areas`.
