@@ -54,10 +54,11 @@ def distances_from_focus(
             ]
         ).where(TABLES["nodes"].c.node_id == destination)
     ).fetchone()
-    # Speeds faster than 2m/s are really rare, even on rivers, so use geodesic
-    # distance with a speed of 2m/s as heuristic
-    heuristic = GEODESIC.inverse(source_lonlat, dest_lonlat)[0, 0] / 2
-    push(fringe, (heuristic, next(c), source))
+    # Speeds faster than 3m/s are really rare, even on rivers, so use geodesic
+    # distance with a speed of 3m/s as heuristic
+    # heuristic = GEODESIC.inverse(source_lonlat, dest_lonlat)[0, 0] / 3
+    heuristic = 0
+    push(fringe, (heuristic, 0, next(c), source))
 
     if filter_sources:
         filter = TABLES["edges"].c.source.in_(filter_sources)
@@ -72,8 +73,8 @@ def distances_from_focus(
     dist = t.DefaultDict(lambda: inf)
 
     while fringe:
-        (d, _, spot) = pop(fringe)
-        if dist.get(spot) is not None:
+        (_, d, _, spot) = pop(fringe)
+        if dist.get(spot, numpy.inf) < d:
             continue  # already found this node, faster, through another path
         dist[spot] = d
         if spot == destination:
@@ -104,17 +105,15 @@ def distances_from_focus(
             )
         ):
             # Moving onto a river is costly
-            if u < 100000000:
-                cost += 72000
             vu_dist = dist[spot] + cost
             if u in dist and vu_dist < dist[u]:
-                raise ValueError(
-                    "Contradictory paths found. Do you have negative weights?"
+                print(
+                        f"Contradictory paths found: Already reached u={u} at distance {dist[u]} via {pred[u]} [{dist[pred[u]]}], but now finding a shorter connection {vu_dist} via {spot} [{dist[spot]}]. Do you have negative weights, or a bad heuristic?"
                 )
             elif u not in seen or vu_dist < seen[u]:
                 seen[u] = vu_dist
-                heuristic = GEODESIC.inverse((lon, lat), dest_lonlat)[0, 0] / 2
-                push(fringe, (vu_dist + heuristic, next(c), u))
+                # heuristic = GEODESIC.inverse((lon, lat), dest_lonlat)[0, 0] / 3
+                push(fringe, (vu_dist + heuristic, vu_dist, next(c), u))
                 if pred is not None:
                     pred[u] = spot, source
     return dist
@@ -335,7 +334,7 @@ ax.scatter(
     marker=".",
     facecolors="none",
     edgecolors=[{False: [0, 0, 0, 1], True: [0.5, 0.5, 0.5, 0.9]}[c] for c in coast],
-    zorder=3,
+    zorder=33,
 )
 node_id, x, y, coast = zip(
     *DATABASE.execute(

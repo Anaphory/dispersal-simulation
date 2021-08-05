@@ -189,9 +189,9 @@ def core_point(hexbin, distance_by_direction, transform):
 
     points = [rowcol(latlon) for latlon in h3.h3_to_geo_boundary(hexbin)]
     rmin = min(r for r, c in points) - 1
-    rmax = max(r for r, c in points) + 1
+    rmax = max(r for r, c in points) + 2
     cmin = min(c for r, c in points) - 1
-    cmax = max(c for r, c in points) + 1
+    cmax = max(c for r, c in points) + 2
     points = [(r - rmin, c - cmin) for r, c in points]
 
     dist = {
@@ -218,9 +218,9 @@ def core_point(hexbin, distance_by_direction, transform):
 
     all_dist = 0
     for r0, c0 in border:
-        all_dist = all_dist + distances_from_focus((r0, c0), set(border), dist)
+        all_dist = all_dist + 1 / distances_from_focus((r0, c0), dist)
 
-    (r0, c0) = numpy.unravel_index(numpy.argmin(all_dist), all_dist.shape)
+    (r0, c0) = numpy.unravel_index(numpy.argmax(all_dist), all_dist.shape)
     return (r0 + rmin, c0 + cmin)
 
 
@@ -491,12 +491,12 @@ if __name__ == "__main__":
             n = 0
         else:
             n = (n // 140000 + 1) * 140000
-        for tile in reversed(list(itertools.product(
+        for tile in itertools.product(
             ["N", "S"],
             [10, 30, 50, 70],
             ["E", "W"],
             [0, 30, 60, 90, 120, 150, 180],
-        ))):
+        ):
             try:
                 n = tile_core_points(tile, n=n)
             except rasterio.errors.RasterioIOError:

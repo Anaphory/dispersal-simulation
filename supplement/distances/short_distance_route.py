@@ -44,10 +44,10 @@ def distances_from_focus(
     # Speeds faster than 2m/s are really rare, even on rivers, so use geodesic
     # distance with a speed of 2m/s as heuristic
     heuristic = (
-        GEODESIC.inverse(trafo * source[::-1], trafo * destination[::-1])[0, 0] / 2
+        GEODESIC.inverse(trafo * source[::-1], trafo * destination[::-1])[0, 0] / 4
     )
     fringe: t.List[t.Tuple[float, int, t.Tuple[int, int]]] = []
-    push(fringe, (heuristic, next(c), source))
+    push(fringe, (heuristic, 0, next(c), source))
 
     def moore_neighbors(
         r0: int, c0: int
@@ -58,28 +58,26 @@ def distances_from_focus(
                 yield (r1, c1), min(max_time, d[r1, c1])
 
     while fringe:
-        (d, _, spot) = pop(fringe)
-        if numpy.isfinite(dist[spot]):
+        (_, d, _, spot) = pop(fringe)
+        if dist[spot] < d:
             continue  # already searched this node.
         dist[spot] = d
         if spot == destination:
             break
 
         for u, cost in moore_neighbors(*spot):
-            print(cost)
             vu_dist = dist[spot] + cost
-            if numpy.isfinite(dist[u]):
-                if vu_dist < dist[u]:
-                    raise ValueError(
-                        "Contradictory paths found. Do you have negative weights?"
+            if numpy.isfinite(dist[u]) and vu_dist < dist[u]:
+                print(
+                        f"Contradictory paths found: Already reached u={u} at distance {dist[u]} via {pred[u]} [{dist[pred[u]]}], but now finding a shorter connection {vu_dist} via {spot} [{dist[spot]}]. Do you have negative weights, or a bad heuristic?"
                     )
-            elif u not in seen or vu_dist < seen[u]:
+            if u not in seen or vu_dist < seen[u]:
                 seen[u] = vu_dist
                 heuristic = (
-                    GEODESIC.inverse(trafo * u[::-1], trafo * destination[::-1])[0, 0]
-                    / 2
+                    GEODESIC.inverse(trafo * (u[::-1]), trafo * (destination[::-1]))[0, 0]
+                    / 4
                 )
-                push(fringe, (vu_dist + heuristic, next(c), u))
+                push(fringe, (vu_dist + heuristic, vu_dist, next(c), u))
                 if pred is not None:
                     pred[u] = spot
     return dist
@@ -91,9 +89,6 @@ def pixel(lon, lat) -> RowCol:
 
 
 distances, trafo = load_distances(("N", 30, "W", 90))
-
-plt.imshow(distances[1,1])
-plt.show()
 
 nashville: RowCol = pixel(-86.9759, 36.0346)
 natchez: RowCol = pixel(-91.36892, 31.54543)
@@ -108,9 +103,6 @@ ax = plt.axes()
 print("Nashville to Natchez…")
 pred = {}
 d = distances_from_focus(nashville, natchez, trafo, distances, pred=pred)
-
-plt.imshow(d)
-plt.show()
 
 backtrack = natchez
 rows = [natchez[0]]
