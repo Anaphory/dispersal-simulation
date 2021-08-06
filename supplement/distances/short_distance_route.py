@@ -32,7 +32,7 @@ def distances_from_focus(
     trafo: rasterio.Affine,
     distance_by_direction: t.Dict[RowCol, numpy.array],
     pred: t.Optional = None,
-    max_time: float = 3.0 * 3600,
+    max_time: float = 5. * 24 * 3600,
 ) -> numpy.array:
     # Dijkstra's algorithm, adapted for our purposes from
     # networkx/algorithms/shortest_paths/weighted.html
@@ -93,8 +93,6 @@ distances, trafo = load_distances(("N", 30, "W", 90))
 nashville: RowCol = pixel(-86.9759, 36.0346)
 natchez: RowCol = pixel(-91.36892, 31.54543)
 
-# nashville: RowCol = (3872, 1248)
-# natchez: RowCol = (3872, 983)
 print(nashville, natchez)
 
 # Plotting
@@ -103,6 +101,7 @@ ax = plt.axes()
 print("Nashville to Natchez…")
 pred = {}
 d = distances_from_focus(nashville, natchez, trafo, distances, pred=pred)
+print(d[natchez])
 
 backtrack = natchez
 rows = [natchez[0]]

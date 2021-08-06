@@ -97,18 +97,22 @@ def distances_from_focus(
                 )
             )
             .where(
-                (((TABLES["edges"].c.node1 == spot) & (TABLES["edges"].c.node2 != spot))
-                if filter is True
-                else filter)
+                (
+                    (
+                        (TABLES["edges"].c.node1 == spot)
+                        & (TABLES["edges"].c.node2 != spot)
+                    )
+                    if filter is True
+                    else filter
+                )
                 & (TABLES["edges"].c.node1 == spot)
                 & (TABLES["edges"].c.node2 != spot)
             )
         ):
-            # Moving onto a river is costly
             vu_dist = dist[spot] + cost
             if u in dist and vu_dist < dist[u]:
                 print(
-                        f"Contradictory paths found: Already reached u={u} at distance {dist[u]} via {pred[u]} [{dist[pred[u]]}], but now finding a shorter connection {vu_dist} via {spot} [{dist[spot]}]. Do you have negative weights, or a bad heuristic?"
+                    f"Contradictory paths found: Already reached u={u} at distance {dist[u]} via {pred[u]} [{dist[pred[u]]}], but now finding a shorter connection {vu_dist} via {spot} [{dist[spot]}]. Do you have negative weights, or a bad heuristic?"
                 )
             elif u not in seen or vu_dist < seen[u]:
                 seen[u] = vu_dist
@@ -159,6 +163,7 @@ def find_node(lon, lat, rivers=False):
 
 nashville_lonlat = (-86.9759, 36.0346)
 natchez_lonlat = (-91.36892, 31.54543)
+# natchez_lonlat = (-89.36892, 33.31543)
 nashville = find_node(*nashville_lonlat)
 natchez = find_node(*natchez_lonlat)
 print(nashville, natchez)
@@ -216,10 +221,12 @@ print(rd[nashville])
 rbacktrack = nashville
 rlons = [nashville_lonlat[0]]
 rlats = [nashville_lonlat[1]]
+rvisited = []
 rsources = []
 print("Backtrack…")
 while rpred.get(rbacktrack):
     rbacktrack, source = rpred[rbacktrack]
+    rvisited.append(rbacktrack)
     lonlat = DATABASE.execute(
         select(
             [
@@ -257,11 +264,16 @@ random = ListedColormap(
 
 print("Plot voronoi…")
 for tile in tqdm(itertools.product(["N"], [10, 30], ["W"], [90, 120])):
-    # fname_v = "voronoi-{:s}{:d}{:s}{:d}.tif".format(*tile)
+    fname_v = "voronoi-{:s}{:d}{:s}{:d}.tif".format(*tile)
     fname_d = "distances-{:s}{:d}{:s}{:d}.tif".format(*tile)
     try:
-        # data = rasterio.open(fname_v, "r").read(1)[500:-500, 500:-500]
-        data = rasterio.open(fname_d, "r").read(1)[500:-500, 500:-500]
+        data = rasterio.open(fname_v, "r").read(1)[500:-500, 500:-500]
+    except rasterio.errors.RasterioIOError:
+        continue
+    try:
+        hs = 0
+        for i in range(1, 9):
+            hs = rasterio.open(fname_d, "r").read(i)[500:-500, 500:-500] + hs
     except rasterio.errors.RasterioIOError:
         continue
     west = (-1 if tile[2] == "W" else 1) * tile[3]
@@ -271,13 +283,21 @@ for tile in tqdm(itertools.product(["N"], [10, 30], ["W"], [90, 120])):
         transform=proj,
         extent=(west, west + 30, south, south + 20),
         interpolation="nearest",
-        # cmap=random,
-        cmap=cm.viridis,
+        cmap=random,
         vmin=0,
         vmax=2 ** 16 - 1,
     )
     v.set_zorder(1)
-    # TODO: we tend to run out of memory otherwise, but at least test!
+    h = ax.imshow(
+        numpy.minimum(hs, 7200),
+        transform=proj,
+        extent=(west, west + 30, south, south + 20),
+        interpolation="nearest",
+        cmap=cm.gist_yarg,
+        alpha=0.4,
+        vmax=7200,
+    )
+    h.set_zorder(2)
 
 print("Background of plot…")
 # shape_feature = ShapelyFeature(LAND, ccrs.PlateCarree(), facecolor="none", edgecolor="blue", lw=1)
@@ -286,10 +306,10 @@ ax.add_geometries(
         shpreader.natural_earth(resolution="10m", category="physical", name="lakes")
     ).geometries(),
     ccrs.PlateCarree(),
-    facecolor="white",
+    facecolor="cyan",
     alpha=0.8,
     edgecolor="none",
-    zorder=2,
+    zorder=4,
 )
 
 ax.add_geometries(
@@ -297,9 +317,9 @@ ax.add_geometries(
         shpreader.natural_earth(resolution="10m", category="physical", name="ocean")
     ).geometries(),
     ccrs.PlateCarree(),
-    facecolor="white",
+    facecolor="cyan",
     edgecolor="none",
-    zorder=2,
+    zorder=4,
 )
 
 hexagon_id, x, y, hx, hy, coast = zip(
@@ -317,6 +337,8 @@ hexagon_id, x, y, hx, hy, coast = zip(
     ).fetchall()
 )
 
+encountered = [(h in d, h in rd) for h in hexagon_id]
+
 
 print("Nodes…")
 ax.scatter(
@@ -324,16 +346,24 @@ ax.scatter(
     hy,
     marker=".",
     edgecolors="none",
-    facecolors=[{False: [0, 0, 0, 1], True: [0.5, 0.5, 0.5, 0.9]}[c] for c in coast],
+    facecolors=[
+        {
+            (False, False): [0, 0, 0, 1],
+            (False, True): [0, 0, 1, 1],
+            (True, True): [1, 0, 1, 1],
+            (True, False): [1, 0, 0, 1],
+        }[c]
+        for c in encountered
+    ],
     s=7,
     zorder=3,
 )
 ax.scatter(
     x,
     y,
-    marker=".",
-    facecolors="none",
-    edgecolors=[{False: [0, 0, 0, 1], True: [0.5, 0.5, 0.5, 0.9]}[c] for c in coast],
+    marker="*",
+    facecolors="k",
+    s=18,
     zorder=33,
 )
 node_id, x, y, coast = zip(
@@ -345,7 +375,10 @@ node_id, x, y, coast = zip(
                 TABLES["nodes"].c.latitude,
                 TABLES["nodes"].c.coastal,
             ]
-        ).where(TABLES["nodes"].c.node_id <= 100000000)
+        ).where(
+            (TABLES["nodes"].c.node_id <= 100000000)
+            & (TABLES["nodes"].c.node_id.in_(rvisited))
+        )
     ).fetchall(),
 )
 ax.scatter(
@@ -354,8 +387,95 @@ ax.scatter(
     c="teal",
     marker="+",
     s=25,
-    zorder=4,
+    zorder=34,
 )
+ax.gridlines(draw_labels=True)
+
+
+def utm_from_lon(lon):
+    """
+    utm_from_lon - UTM zone for a longitude
+
+    Not right for some polar regions (Norway, Svalbard, Antartica)
+
+    :param float lon: longitude
+    :return: UTM zone number
+    :rtype: int
+    """
+    return int((lon + 180) / 6) + 1
+
+
+from matplotlib import patheffects
+
+
+def scale_bar(
+    ax, proj, length, location=(0.5, 0.05), linewidth=3, units="km", m_per_unit=1000
+):
+    """
+
+    http://stackoverflow.com/a/35705477/1072212
+    ax is the axes to draw the scalebar on.
+    proj is the projection the axes are in
+    location is center of the scalebar in axis coordinates ie. 0.5 is the middle of the plot
+    length is the length of the scalebar in km.
+    linewidth is the thickness of the scalebar.
+    units is the name of the unit
+    m_per_unit is the number of meters in a unit
+    """
+    # find lat/lon center to find best UTM zone
+    x0, x1, y0, y1 = ax.get_extent(proj.as_geodetic())
+    # Projection in metres
+    utm = ccrs.UTM(utm_from_lon((x0 + x1) / 2))
+    # Get the extent of the plotted area in coordinates in metres
+    x0, x1, y0, y1 = ax.get_extent(utm)
+    # Turn the specified scalebar location into coordinates in metres
+    sbcx, sbcy = x0 + (x1 - x0) * location[0], y0 + (y1 - y0) * location[1]
+    # Generate the x coordinate for the ends of the scalebar
+    bar_xs = [sbcx - length * m_per_unit / 2, sbcx + length * m_per_unit / 2]
+    # buffer for scalebar
+    buffer = [patheffects.withStroke(linewidth=5, foreground="w")]
+    # Plot the scalebar with buffer
+    ax.plot(
+        bar_xs,
+        [sbcy, sbcy],
+        transform=utm,
+        color="k",
+        linewidth=linewidth,
+        path_effects=buffer,
+    )
+    # buffer for text
+    buffer = [patheffects.withStroke(linewidth=3, foreground="w")]
+    # Plot the scalebar label
+    t0 = ax.text(
+        sbcx,
+        sbcy,
+        str(length) + " " + units,
+        transform=utm,
+        horizontalalignment="center",
+        verticalalignment="bottom",
+        path_effects=buffer,
+        zorder=200,
+    )
+    right = x0 + (x1 - x0) * 0.95
+    # Plot the N arrow
+    t1 = ax.text(
+        right,
+        sbcy,
+        "\u25B2\nN",
+        transform=utm,
+        horizontalalignment="center",
+        verticalalignment="bottom",
+        path_effects=buffer,
+        zorder=200,
+    )
+    # Plot the scalebar without buffer, in case covered by text buffer
+    ax.plot(
+        bar_xs, [sbcy, sbcy], transform=utm, color="k", linewidth=linewidth, zorder=3
+    )
+
+
+print("Add scale bar…")
+scale_bar(ax, ccrs.Mercator(), 100)  # 100 km scale bar
 
 print("Show…")
 plt.show()

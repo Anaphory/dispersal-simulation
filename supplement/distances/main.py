@@ -85,9 +85,9 @@ def load_distances(tile: Tile):
 def distances_from_focus(
     source: t.Tuple[int, int],
     destinations: t.Optional[t.Set[RowCol]],
-    distance_by_direction: t.Dict[RowCol, numpy.array],
-    pred: t.Optional = None,
-) -> numpy.array:
+    distance_by_direction: t.Dict[RowCol, numpy.ndarray],
+    pred: t.Optional[t.Dict[RowCol, RowCol]] = None,
+) -> numpy.ndarray:
     # Dijkstra's algorithm, adapted for our purposes from
     # networkx/algorithms/shortest_paths/weighted.html
     d = distance_by_direction[0, 1]
@@ -176,7 +176,7 @@ except (FileNotFoundError, json.JSONDecodeError):
     json.dump(list(ALL), open("ALL.json", "w"))
 
 
-def core_point(hexbin, distance_by_direction, transform):
+def core_point(hexbin, distance_by_direction, is_river, transform):
     def rowcol(latlon):
         lat, lon = latlon
         if lon > 170:
@@ -218,9 +218,11 @@ def core_point(hexbin, distance_by_direction, transform):
 
     all_dist = 0
     for r0, c0 in border:
-        all_dist = all_dist + 1 / distances_from_focus((r0, c0), dist)
+        all_dist = all_dist + distances_from_focus((r0, c0), None, dist)
 
-    (r0, c0) = numpy.unravel_index(numpy.argmax(all_dist), all_dist.shape)
+    all_dist[is_river[rmin:rmax, cmin:cmax]] = numpy.inf
+
+    (r0, c0) = numpy.unravel_index(numpy.argmin(all_dist), all_dist.shape)
     return (r0 + rmin, c0 + cmin)
 
 
@@ -246,12 +248,14 @@ def tile_core_points(tile: Tile, skip_existing=True, n=0):
         }
 
     distance_by_direction, transform = load_distances(tile)
+    rivers = rasterio.open( "rivers-{:s}{:d}{:s}{:d}.tif".format(*tile))
+    is_river = rivers.read(1)
 
     try:
         values = []
         for hexagon in tqdm(hexes_by_tile):
             hlat, hlon = h3.h3_to_geo(hexagon)
-            row, col = core_point(hexagon, distance_by_direction, transform)
+            row, col = core_point(hexagon, distance_by_direction, is_river, transform)
             lon, lat = transform * (col, row)
             n += 1
             values.append(
@@ -313,7 +317,7 @@ def voronoi_and_neighbor_distances(tile, skip_existing=True):
             # difficult.
             nlon = nlon - 360
         ncol, nrow = ~transform * (nlon, nlat)
-        return (int(nrow), int(ncol))
+        return (round(nrow), round(ncol))
 
     try:
         for node, short, (lon, lat) in tqdm(nodes):
@@ -473,13 +477,30 @@ def measure_ecoregions(tile: Tile):
 
 
 if __name__ == "__main__":
+    if "reversed" in sys.argv and "from-mid" in sys.argv:
+        def order(x):
+            x = list(reversed(list(x)))
+            m = len(x) // 2
+            return x[m:] + x[:m]
+    elif "reversed" in sys.argv:
+        def order(x):
+            return reversed(list(x))
+    elif "from-mid" in sys.argv:
+        def order(x):
+            x = list(x)
+            m = len(x) // 2
+            return x[m:] + x[:m]
+    else:
+        def order(x):
+            return list(x)
+
     if "rivers" in sys.argv:
-        for tile in itertools.product(
+        for tile in order(itertools.product(
             ["N", "S"],
             [10, 30, 50, 70],
             ["E", "W"],
             [0, 30, 60, 90, 120, 150, 180],
-        ):
+        )):
             try:
                 process_rivers(tile)
             except rasterio.errors.RasterioIOError:
@@ -491,12 +512,12 @@ if __name__ == "__main__":
             n = 0
         else:
             n = (n // 140000 + 1) * 140000
-        for tile in itertools.product(
+        for tile in order(itertools.product(
             ["N", "S"],
             [10, 30, 50, 70],
             ["E", "W"],
             [0, 30, 60, 90, 120, 150, 180],
-        ):
+        )):
             try:
                 n = tile_core_points(tile, n=n)
             except rasterio.errors.RasterioIOError:
@@ -515,9 +536,9 @@ if __name__ == "__main__":
         distance_by_sea(DEFINITELY_INLAND)
 
     if "voronoi" in sys.argv or "distances" in sys.argv:
-        for tile in itertools.product(
+        for tile in order(itertools.product(
             ["N", "S"], [10, 30, 50, 70], ["E", "W"], [0, 30, 60, 90, 120, 150, 180]
-        ):
+        )):
             print("Working on tile {:s}{:d}{:s}{:d}…".format(*tile))
             try:
                 voronoi_and_neighbor_distances(tile)
@@ -527,8 +548,8 @@ if __name__ == "__main__":
     if "stitch" in sys.argv:
         # Separate module, and quite fast. You could run it on every Voronoi
         # tile whose neighbors have been computed.
-        for lon in [-15, -45, -75, -105, -135, -165]:
-            for lat in [0, 20, 40, 60, 80, -20, -40, -60, -80]:
+        for lon in order([-15, -45, -75, -105, -135, -165]):
+            for lat in order([0, 20, 40, 60, 80, -20, -40, -60, -80]):
                 try:
                     merge_tile(lon, lat)
                 except rasterio.errors.RasterioIOError:
@@ -550,9 +571,9 @@ if __name__ == "__main__":
                 )
             )
         )
-        for tile in itertools.product(
+        for tile in order(itertools.product(
             ["N", "S"], [10, 30, 50, 70], ["E", "W"], [0, 30, 60, 90, 120, 150, 180]
-        ):
+        )):
             print("Working on tile {:s}{:d}{:s}{:d}…".format(*tile))
             try:
                 for short, counter in measure_ecoregions(tile).items():

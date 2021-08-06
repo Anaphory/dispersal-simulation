@@ -298,8 +298,7 @@ def process_rivers(tile, may_follow_river=False):
 
     print(f"Working between boundaries S{south}W{west}N{north}E{east}")
 
-    # For checking afterwards, but also to prevent adding penalties multiple
-    # times:
+    # For checking afterwards whether a core location is on the river
     is_river = numpy.zeros(rasters[1, 1].shape, dtype=bool)
 
     for r, reach in tqdm(enumerate(RIVERS.shp.iterShapeRecords())):
