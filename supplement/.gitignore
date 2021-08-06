@@ -15,3 +15,6 @@ supplement/worldclim/readme.txt
 
 # Output images
 supplement/gavin2017processbased/output*.png
+
+# Too many tifs
+*.tif
