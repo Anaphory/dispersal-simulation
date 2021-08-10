@@ -85,7 +85,7 @@ def distances_from_focus(
 
 def pixel(lon, lat) -> RowCol:
     col, row = ~trafo * (lon, lat)
-    return int(row + 0.5), int(col + 0.5)
+    return round(row), round(col)
 
 
 distances, trafo = load_distances(("N", 30, "W", 90))

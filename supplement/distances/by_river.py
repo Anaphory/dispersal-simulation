@@ -500,8 +500,8 @@ def process_rivers(tile, may_follow_river=False):
                 )
 
     profile = rasterio.profiles.DefaultGTiffProfile()
-    profile["height"] = rasters[1, 1].shape[0] + 1
-    profile["width"] = rasters[1, 1].shape[1] + 1
+    profile["height"] = rasters[1, 1].shape[0]
+    profile["width"] = rasters[1, 1].shape[1]
     profile["transform"] = transform
     profile["dtype"] = rasterio.float64
     profile["count"] = 8

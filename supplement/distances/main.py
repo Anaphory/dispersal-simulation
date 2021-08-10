@@ -307,9 +307,9 @@ def voronoi_and_neighbor_distances(tile, skip_existing=True):
         min_distances = rasterio.open(fname_d).read(1)
     except rasterio.errors.RasterioIOError:
         height, width = distance_by_direction[1, 1].shape
-        voronoi_allocation = numpy.zeros((height + 1, width + 1), dtype=numpy.uint32)
+        voronoi_allocation = numpy.zeros((height, width), dtype=numpy.uint32)
         min_distances = numpy.full(
-            (height + 1, width + 1), numpy.inf, dtype=numpy.float32
+            (height, width), numpy.inf, dtype=numpy.float32
         )
 
     def rowcol(lonlat: LonLat):
@@ -396,8 +396,8 @@ def voronoi_and_neighbor_distances(tile, skip_existing=True):
             for nnode, nlon, nlat in neighbors:
                 row, col = rowcol((nlon, nlat))
                 if (
-                    0 < row < distance_by_direction[1, 1].shape[0]
-                    and 0 < col < distance_by_direction[1, 1].shape[1]
+                    0 <= row < distance_by_direction[1, 1].shape[0]
+                    and 0 <= col < distance_by_direction[1, 1].shape[1]
                 ):
                     nrowcol.append((row, col))
                     nnodes.append(nnode)

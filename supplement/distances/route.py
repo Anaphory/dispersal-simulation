@@ -109,6 +109,8 @@ def distances_from_focus(
                 & (TABLES["edges"].c.node2 != spot)
             )
         ):
+            if u < 100000000:
+                cost += 3*3600
             vu_dist = dist[spot] + cost
             if u in dist and vu_dist < dist[u]:
                 print(
@@ -183,8 +185,37 @@ ax.add_geometries(
     zorder=32,
     linewidth=4,
 )
-
 print("Nashville to Natchez…")
+pred = {nashville: (None, "self-loop")}
+d = distances_from_focus(
+    nashville, natchez, pred=pred, filter_sources={"grid"}
+)
+print(d[natchez])
+backtrack = natchez
+lons = [natchez_lonlat[0]]
+lats = [natchez_lonlat[1]]
+sources = []
+print("Backtrack…")
+while pred.get(backtrack):
+    backtrack, source = pred[backtrack]
+    lonlat = DATABASE.execute(
+        select(
+            [
+                TABLES["nodes"].c.longitude,
+                TABLES["nodes"].c.latitude,
+            ]
+        ).where(TABLES["nodes"].c.node_id == backtrack)
+    ).fetchone()
+    if lonlat is None:
+        break
+    lons.append(lonlat[0])
+    lats.append(lonlat[1])
+    sources.append(source)
+
+bbox = (min(lons), max(lons), min(lats), max(lats))
+ax.plot(lons, lats, zorder=30, linewidth=4, c="blue")
+
+print("Nashville to Natchez, no rivers…")
 pred = {nashville: (None, "self-loop")}
 d = distances_from_focus(
     nashville, natchez, pred=pred, filter_nodes=True, filter_sources={"grid"}
@@ -212,7 +243,9 @@ while pred.get(backtrack):
     sources.append(source)
 
 bbox = (min(lons), max(lons), min(lats), max(lats))
-ax.plot(lons, lats, zorder=30, linewidth=4, c="blue")
+ax.plot(lons, lats, zorder=30, linewidth=4, c="blue", linestyle=":")
+
+
 
 print("Natchez to Nashville…")
 rpred = {natchez: (None, "self-loop")}
