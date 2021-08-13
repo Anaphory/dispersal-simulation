@@ -10,7 +10,7 @@ import numpy
 from more_itertools import windowed
 from tqdm import tqdm
 from sqlalchemy import func
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.dialects.sqlite import insert
 
 import shapely
@@ -549,6 +549,13 @@ if __name__ == "__main__":
         # voronoi cells or grid distances.
         distance_by_sea(DEFINITELY_INLAND)
 
+    if "merge" in sys.argv:
+        # In a small number of cases, two adjacent H3 hexagons get the same
+        # pixel as core location. These should be merged.
+        for node, in DATABASE.execute(
+        "SELECT nodes.node_id FROM nodes JOIN nodes AS node2 ON node2.latitude = nodes.latitude AND node2.longitude = nodes.longitude WHERE nodes.node_id > node2.node_id AND nodes.node_id > 100000000;").all():
+            DATABASE.execute(delete(TABLES["nodes"]).where(TABLES["nodes"].c.node_id == node))
+
     if "voronoi" in sys.argv or "distances" in sys.argv:
         for tile in order(
             itertools.product(
@@ -630,3 +637,10 @@ if __name__ == "__main__":
                     & (TABLES["ecology"].c.ecoregion == ecoregion)
                 )
             )
+
+    if "build-boats" in sys.argv:
+        # As it is now, the time to cross a river via a river reach end point,
+        # i.e. a point on the boat network, is 0. We need to add a fixed
+        # penalty for every grid edge to a river node, and probably find a way
+        # to penalize the shift from land to sea, as well.
+        ...

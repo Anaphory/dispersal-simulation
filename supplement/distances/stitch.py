@@ -29,9 +29,7 @@ def merge_tile(lon: float, lat: float):
         other_is_better = n_min_distances < min_distances[:1000, 1000:-1000]
         if other_is_better.any():
             print("Updating from the north ({})".format(n_fname_v))
-        voronoi_allocation[:1000, 1000:-1000][other_is_better] = n_voronoi_allocation[
-            other_is_better
-        ]
+        voronoi_allocation[:1000, 1000:-1000][other_is_better] = 0
     except rasterio.RasterioIOError:
         pass
 
@@ -49,9 +47,7 @@ def merge_tile(lon: float, lat: float):
         other_is_better = n_min_distances < min_distances[:1000, -1000:]
         if other_is_better.any():
             print("Updating from the north-east ({})".format(n_fname_v))
-        voronoi_allocation[:1000, -1000:][other_is_better] = n_voronoi_allocation[
-            other_is_better
-        ]
+        voronoi_allocation[:1000, -1000:][other_is_better] = 0
     except rasterio.RasterioIOError:
         pass
 
@@ -69,9 +65,7 @@ def merge_tile(lon: float, lat: float):
         other_is_better = n_min_distances < min_distances[1000:-1000, -1000:]
         if other_is_better.any():
             print("Updating from the east ({})".format(n_fname_v))
-        voronoi_allocation[1000:-1000, -1000:][other_is_better] = n_voronoi_allocation[
-            other_is_better
-        ]
+        voronoi_allocation[1000:-1000, -1000:][other_is_better] = 0
     except rasterio.RasterioIOError:
         pass
 
@@ -87,9 +81,7 @@ def merge_tile(lon: float, lat: float):
         other_is_better = n_min_distances < min_distances[-1000:, -1000:]
         if other_is_better.any():
             print("Updating from the south-east ({})".format(n_fname_v))
-        voronoi_allocation[-1000:, -1000:][other_is_better] = n_voronoi_allocation[
-            other_is_better
-        ]
+        voronoi_allocation[-1000:, -1000:][other_is_better] = 0
     except rasterio.RasterioIOError:
         pass
 
@@ -107,9 +99,7 @@ def merge_tile(lon: float, lat: float):
         other_is_better = n_min_distances < min_distances[-1000:, 1000:-1000]
         if other_is_better.any():
             print("Updating from the south ({})".format(n_fname_v))
-        voronoi_allocation[-1000:, 1000:-1000][other_is_better] = n_voronoi_allocation[
-            other_is_better
-        ]
+        voronoi_allocation[-1000:, 1000:-1000][other_is_better] = 0
     except rasterio.RasterioIOError:
         pass
 
@@ -127,9 +117,7 @@ def merge_tile(lon: float, lat: float):
         other_is_better = n_min_distances < min_distances[-1000:, :1000]
         if other_is_better.any():
             print("Updating from the south-west ({})".format(n_fname_v))
-        voronoi_allocation[-1000:, :1000][other_is_better] = n_voronoi_allocation[
-            other_is_better
-        ]
+        voronoi_allocation[-1000:, :1000][other_is_better] = 0
     except rasterio.RasterioIOError:
         pass
 
@@ -147,9 +135,7 @@ def merge_tile(lon: float, lat: float):
         other_is_better = n_min_distances < min_distances[1000:-1000, :1000]
         if other_is_better.any():
             print("Updating from the west ({})".format(n_fname_v))
-        voronoi_allocation[1000:-1000, :1000][other_is_better] = n_voronoi_allocation[
-            other_is_better
-        ]
+        voronoi_allocation[1000:-1000, :1000][other_is_better] = 0
     except rasterio.RasterioIOError:
         pass
 
@@ -167,9 +153,7 @@ def merge_tile(lon: float, lat: float):
         other_is_better = n_min_distances < min_distances[:1000, :1000]
         if other_is_better.any():
             print("Updating from the north-west ({})".format(n_fname_v))
-        voronoi_allocation[:1000, :1000][other_is_better] = n_voronoi_allocation[
-            other_is_better
-        ]
+        voronoi_allocation[:1000, :1000][other_is_better] = 0
     except rasterio.RasterioIOError:
         pass
 
