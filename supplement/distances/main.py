@@ -595,7 +595,10 @@ if __name__ == "__main__":
             print("Working on tile {:s}{:d}{:s}{:d}…".format(*tile))
             try:
                 for short, counter in measure_ecoregions(tile).items():
-                    values[node_from_short.get(short, -short)].update(counter)
+                    node = node_from_short.get(short, -short)
+                    if node<0:
+                        print("Could not find the node corresponding to the short Voronoi cell ID {:}".format(node))
+                    values[node].update(counter)
             except rasterio.errors.RasterioIOError:
                 print("Tile {:s}{:d}{:s}{:d} not found.".format(*tile))
             json.dump(values, open("areas.json", "w"), indent=2)
@@ -603,6 +606,7 @@ if __name__ == "__main__":
             {"node": node, "ecoregion": ecoregion, "area": area / 1000000}
             for node, areas in values.items()
             for ecoregion, area in areas.items()
+            if node > 0
         ]
         for window in windowed(all_data, 300, 300):
             DATABASE.execute(insert(TABLES["ecology"]).values(window))
@@ -616,7 +620,7 @@ if __name__ == "__main__":
                 TABLES["ecology"].c.area,
                 TABLES["nodes"].c.popdensity,
             ).select_from(TABLES["ecology"].join(TABLES["nodes"]))
-        ):
+        ).all():
             DATABASE.execute(
                 TABLES["ecology"]
                 .update()

@@ -305,6 +305,7 @@ xlab="observed", ylab="Interpolated-Observed")
 axis(side=2, at=c(-0.6,-0.4,-0.2,0,0.2, 0.4, 0.6), las=2)
 abline(h=0, col="red", lwd=2)
 ```
+
 ```{r}
 # Alternately, if the Dataset S4 is in the working directory, it can be loaded using
 # following code (remove hash mark):
@@ -1145,7 +1146,7 @@ writeRaster(lpdensity, "lpdensity.tif", overwrite=T)
 
 ```{r}
 library(DBI)
-con <- dbConnect(RSQLite::SQLite(), "../distances/with-eco.sqlite")
+con <- dbConnect(RSQLite::SQLite(), "../compute_distances/migration-network.sqlite")
 
 res <- dbSendQuery(con, "SELECT node_id, latitude, longitude FROM nodes WHERE latitude IS NOT NULL AND longitude IS NOT NULL AND h3latitude IS NOT NULL AND h3longitude IS NOT NULL")
 coords <- dbFetch(res)

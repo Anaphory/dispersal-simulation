@@ -177,7 +177,7 @@ def merge_tile(lon: float, lat: float):
     profile["height"] = 5800
     profile["width"] = 8200
     profile["transform"] = transform
-    profile["dtype"] = rasterio.uint16
+    profile["dtype"] = rasterio.uint32
     profile["count"] = 1
 
     with rasterio.open(
