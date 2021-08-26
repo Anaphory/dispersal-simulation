@@ -18,7 +18,13 @@ import shapely.geometry as sgeom
 from h3.api import basic_int as h3
 
 import rasterio
-from raster_data import ecoregion_tile, boundingbox_from_tile, Tile, RowCol
+from raster_data import (
+    ecoregion_tile,
+    boundingbox_from_tile,
+    Tile,
+    RowCol,
+    tile_from_geocoordinates,
+)
 from database import db
 from earth import LAND, GEODESIC, LonLat, DEFINITELY_INLAND
 from by_river import process_rivers
@@ -308,9 +314,7 @@ def voronoi_and_neighbor_distances(tile, skip_existing=True):
     except rasterio.errors.RasterioIOError:
         height, width = distance_by_direction[1, 1].shape
         voronoi_allocation = numpy.zeros((height, width), dtype=numpy.uint32)
-        min_distances = numpy.full(
-            (height, width), numpy.inf, dtype=numpy.float32
-        )
+        min_distances = numpy.full((height, width), numpy.inf, dtype=numpy.float32)
 
     def rowcol(lonlat: LonLat):
         nlon, nlat = lonlat
@@ -453,15 +457,93 @@ def voronoi_and_neighbor_distances(tile, skip_existing=True):
             dst.write(min_distances, 1)
 
 
-def measure_ecoregions(tile: Tile):
-    fname_v = "voronoi-{:s}{:d}{:s}{:d}.tif".format(*tile)
-    # Only read the non-overlapping part
-    voronoi_allocation = rasterio.open(fname_v).read(
-        1, window=((500, 5800 - 500), (500, 8200 - 500))
-    )
+def ecoregion_with_neighbors(lon, lat):
+    tile = tile_from_geocoordinates(lon, lat)
     ecoregion_data = ecoregion_tile(tile)
-    ecoregions = ecoregion_data.read(1)
+
+    ecoregions = numpy.zeros((5800, 8200), dtype=numpy.uint16)
+    ecoregions[500:-500, 500:-500] = ecoregion_data.read(1)
     transform = ecoregion_data.transform
+
+    print("Loading adjacent ecoregion data…")
+
+    try:
+        n_tile = tile_from_geocoordinates(lon - 30, lat + 20)
+        n_ecoregion_data = ecoregion_tile(n_tile).read(
+            1, window=((4800 - 500, 4800), (7200 - 500, 7200))
+        )
+        ecoregions[:500, :500] = n_ecoregion_data
+    except rasterio.RasterioIOError:
+        pass
+
+    try:
+        n_tile = tile_from_geocoordinates(lon, lat + 20)
+        n_ecoregion_data = ecoregion_tile(n_tile).read(
+            1, window=((4800 - 500, 4800), (0, 7200))
+        )
+        ecoregions[:500, 500:-500] = n_ecoregion_data
+    except rasterio.RasterioIOError:
+        pass
+
+    try:
+        n_tile = tile_from_geocoordinates(lon + 30, lat + 20)
+        n_ecoregion_data = ecoregion_tile(n_tile).read(
+            1, window=((4800 - 500, 4800), (0, 500))
+        )
+        ecoregions[:500, -500:] = n_ecoregion_data
+    except rasterio.RasterioIOError:
+        pass
+
+    try:
+        n_tile = tile_from_geocoordinates(lon + 30, lat)
+        n_ecoregion_data = ecoregion_tile(n_tile).read(1, window=((0, 4800), (0, 500)))
+        ecoregions[500:-500, -500:] = n_ecoregion_data
+    except rasterio.RasterioIOError:
+        pass
+
+    try:
+        n_tile = tile_from_geocoordinates(lon + 30, lat - 20)
+        n_ecoregion_data = ecoregion_tile(n_tile).read(1, window=((0, 500), (0, 500)))
+        ecoregions[-500:, -500:] = n_ecoregion_data
+    except rasterio.RasterioIOError:
+        pass
+
+    try:
+        n_tile = tile_from_geocoordinates(lon, lat - 20)
+        n_ecoregion_data = ecoregion_tile(n_tile).read(1, window=((0, 500), (0, 7200)))
+        ecoregions[-500:, 500:-500] = n_ecoregion_data
+    except rasterio.RasterioIOError:
+        pass
+
+    try:
+        n_tile = tile_from_geocoordinates(lon - 30, lat - 20)
+        n_ecoregion_data = ecoregion_tile(n_tile).read(
+            1, window=((0, 500), (7200 - 500, 7200))
+        )
+        ecoregions[-500:, :500] = n_ecoregion_data
+    except rasterio.RasterioIOError:
+        pass
+
+    try:
+        n_tile = tile_from_geocoordinates(lon - 30, lat)
+        n_ecoregion_data = ecoregion_tile(n_tile).read(
+            1, window=((0, 4800), (7200 - 500, 7200))
+        )
+        ecoregions[500:-500, :500] = n_ecoregion_data
+    except rasterio.RasterioIOError:
+        pass
+
+    return ecoregions
+
+
+def measure_ecoregions(lon: float, lat: float):
+    tile = tile_from_geocoordinates(lon, lat)
+    fname_v = "voronoi-{:s}{:d}{:s}{:d}.tif".format(*tile)
+    voronoi = rasterio.open(fname_v)
+    voronoi_allocation = voronoi.read(1)
+    transform = voronoi.transform
+
+    ecoregions = ecoregion_with_neighbors(lon, lat)
     areas = numpy.zeros(len(ecoregions))
     for y, _ in tqdm(enumerate(areas)):
         # Approximate grid cells by rectangles.
@@ -469,7 +551,7 @@ def measure_ecoregions(tile: Tile):
         (lon1, lat1) = transform * (1, y + 1)
 
         d = GEODESIC.inverse((lon0, lat0), [(lon0, lat1), (lon1, lat0)])
-        areas[y] = d[0, 0] * d[0, 1]
+        areas[y] = d[0, 0] * d[1, 0]
 
     values = t.DefaultDict(t.Counter)
     for area, voronoi, eco in zip(areas, voronoi_allocation, ecoregions):
@@ -542,6 +624,8 @@ if __name__ == "__main__":
         # this point or later, it needs to be finished *and merged* before the
         # `populations` step.
         ...
+        # To merge:
+        # "UPDATE nodes SET popdensity = nodes_with_density.popdensity FROM nodes_with_density WHERE nodes.node_id = nodes_with_density.node_id;"
 
     if "sea" in sys.argv:
         # Separate module. This can run in parallel to the following steps, it
@@ -552,9 +636,12 @@ if __name__ == "__main__":
     if "merge" in sys.argv:
         # In a small number of cases, two adjacent H3 hexagons get the same
         # pixel as core location. These should be merged.
-        for node, in DATABASE.execute(
-        "SELECT nodes.node_id FROM nodes JOIN nodes AS node2 ON node2.latitude = nodes.latitude AND node2.longitude = nodes.longitude WHERE nodes.node_id > node2.node_id AND nodes.node_id > 100000000;").all():
-            DATABASE.execute(delete(TABLES["nodes"]).where(TABLES["nodes"].c.node_id == node))
+        for (node,) in DATABASE.execute(
+            "SELECT nodes.node_id FROM nodes JOIN nodes AS node2 ON node2.latitude = nodes.latitude AND node2.longitude = nodes.longitude WHERE nodes.node_id > node2.node_id AND nodes.node_id > 100000000;"
+        ).all():
+            DATABASE.execute(
+                delete(TABLES["nodes"]).where(TABLES["nodes"].c.node_id == node)
+            )
 
     if "voronoi" in sys.argv or "distances" in sys.argv:
         for tile in order(
@@ -594,27 +681,28 @@ if __name__ == "__main__":
                 )
             )
         )
-        for tile in order(
-            itertools.product(
-                ["N", "S"], [10, 30, 50, 70], ["E", "W"], [0, 30, 60, 90, 120, 150, 180]
-            )
-        ):
-            print("Working on tile {:s}{:d}{:s}{:d}…".format(*tile))
-            try:
-                for short, counter in measure_ecoregions(tile).items():
-                    node = node_from_short.get(short, -short)
-                    if node<0:
-                        print("Could not find the node corresponding to the short Voronoi cell ID {:}".format(node))
-                    values[node].update(counter)
-            except rasterio.errors.RasterioIOError:
-                print("Tile {:s}{:d}{:s}{:d} not found.".format(*tile))
-            json.dump(values, open("areas.json", "w"), indent=2)
+        for lon in order([-15, -45, -75, -105, -135, -165]):
+            for lat in order([0, 20, 40, 60, 80, -20, -40, -60, -80]):
+                print("Working on tile {:d} {:d}…".format(lon, lat))
+                try:
+                    for short, counter in measure_ecoregions(lon=lon, lat=lat).items():
+                        node = node_from_short.get(short, -short)
+                        if node < 0:
+                            print(
+                                "Could not find the node corresponding to the short Voronoi cell ID {:}".format(
+                                    node
+                                )
+                            )
+                        values[node].update(counter)
+                except rasterio.errors.RasterioIOError:
+                    print("Tile {:d} {:d} not found.".format(lon, lat))
+                    continue
         all_data = [
-            {"node": node, "ecoregion": ecoregion, "area": area / 1000000}
-            for node, areas in values.items()
-            for ecoregion, area in areas.items()
-            if node > 0
-        ]
+                {"node": node, "ecoregion": ecoregion, "area": area / 1000000}
+                for node, areas in values.items()
+                for ecoregion, area in areas.items()
+                if node > 0
+            ]
         for window in windowed(all_data, 300, 300):
             DATABASE.execute(insert(TABLES["ecology"]).values(window))
 
@@ -641,6 +729,15 @@ if __name__ == "__main__":
     if "build-boats" in sys.argv:
         # As it is now, the time to cross a river via a river reach end point,
         # i.e. a point on the boat network, is 0. We need to add a fixed
-        # penalty for every grid edge to a river node, and probably find a way
-        # to penalize the shift from land to sea, as well.
-        ...
+        # penalty for every grid edge to a river node.
+        DATABASE.execute(
+            "UPDATE edges SET travel_time = travel_time + 8*3600 WHERE node2 < 100000000 AND source = 'grid'"
+        )
+        # We also need to find a way to penalize the shift from land to sea.
+        DATABASE.execute(
+            "UPDATE edges SET travel_time = travel_time + 8*3600 WHERE node1 > 100000000 AND source = 'sea'"
+        )
+        # This is not perfect, because it incurs the penalty for every sea
+        # journey via a land node, but not via eg. a river mouth. Hopefully,
+        # the effect is limited.
+
