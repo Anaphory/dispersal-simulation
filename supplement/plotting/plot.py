@@ -204,7 +204,7 @@ def plot_content(content, ts, pop, subpops, cultures_by_location, persistence_by
         plt.scatter(
             xs,
             ys,
-            numpy.maximum(ns / 400, 4),
+            numpy.maximum(ns / 400, 0.25),
             c=[bitvec_to_color(c) for c in cs],
             alpha=0.5,
             linewidths=0.0,
@@ -287,7 +287,7 @@ for logfile in args.logfile:
     persistence_by_location = []
     last_reference = [[0, frozenset()] for _ in regions]
     family_path = collections.defaultdict(list)
-    for l, line in enumerate(logfile):
+    for l, line in tqdm(enumerate(logfile)):
         if line.startswith(" Parameters"):
             igraph = line.index("dispersal_graph:")
             bracket_level = 0
@@ -320,20 +320,14 @@ for logfile in args.logfile:
                 recent_contents = [
                     None for _ in range(int(2 / season_length_in_years) + 1)
                 ]
-
-            edges = literal_eval(
-                re.findall(r"edges: ([(), 0-9]*),", line[igraph:end_graph])[0]
-            )
+            graph_string = line[igraph:end_graph]
             nodes = literal_eval(
                 re.findall(
                     r"node weights: *(\{([0-9]+: *\(.*\{[^}]*\} *\)[, ]*)+\})",
-                    line[igraph:end_graph],
+                    graph_string,
                 )[0][0]
             )
             nodes_from_coords = {(x, y): n for n, (h, x, y, p) in nodes.items()}
-            G = networkx.Graph()
-            G.add_edges_from(edges)
-            print(G)
             continue
         elif line.startswith("Resources"):
             try:
@@ -629,15 +623,7 @@ for logfile in args.logfile:
         edges = literal_eval(
             re.findall(r"edges: ([(), 0-9]*),", graph_string)[0]
         )
-        nodes = literal_eval(
-            re.findall(
-                r"node weights: *(\{([0-9]+: *\(.*\{[^}]*\} *\)[, ]*)+\})",
-                graph_string,
-            )[0][0]
-        )
-        nodes_from_coords = {(x, y): n for n, (h, x, y, p) in nodes.items()}
         G.add_edges_from(edges)
-        print(G)
 
         for node in G:
             try:
