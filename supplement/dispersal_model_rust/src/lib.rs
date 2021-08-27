@@ -1187,11 +1187,14 @@ all families' effective sizes), for each spot.
             "POPULATION: {:?}",
             cultures_by_location
                 .par_iter()
-                .map(|(k, v)| {
-                    let node = &p.dispersal_graph[*k];
-                    (node.1, node.2, v)
+                .map(|(location, cultures)| {
+                    let node = &p.dispersal_graph[*location];
+                    (node.1, node.2, cultures
+                     .iter().map(|(culture, &count)| {
+                     (format!("{:b}", culture), count)}).collect()
+                    )
                 })
-                .collect::<Vec<(f64, f64, _)>>()
+                .collect::<Vec<(f64, f64, FxHashMap<String, usize>)>>()
         );
     }
 
