@@ -61,6 +61,12 @@ parser.add_argument(
     help="First year where the whole continent is settled, so it works as a starting point",
 )
 parser.add_argument(
+    "--graph",
+    action="store_true",
+    default=False,
+    help="Parse the graph structure from the log file and use it to compute neighbor statistics",
+)
+parser.add_argument(
     "--all-steps",
     action="store_true",
     default=False,
@@ -198,7 +204,7 @@ def plot_content(content, ts, pop, subpops, cultures_by_location, persistence_by
         plt.scatter(
             xs,
             ys,
-            ns / 4,
+            numpy.maximum(ns / 400, 4),
             c=[bitvec_to_color(c) for c in cs],
             alpha=0.5,
             linewidths=0.0,
@@ -241,7 +247,7 @@ def plot_content(content, ts, pop, subpops, cultures_by_location, persistence_by
 
 
 CUTOFF = 30
-bitvec = re.compile("BitVec<bitvec::order::Lsb0, usize> { addr: 0x[0-9a-f]*, head: 000000, bits: [0-9]*, capacity: [0-9]* } \[([01]*)\]")
+bitvec = re.compile('"\[([01]*)\]"')
 
 for logfile in args.logfile:
     print("Starting {:} at {:}…".format(logfile, datetime.datetime.now()), file=sys.stderr)
@@ -576,37 +582,6 @@ for logfile in args.logfile:
         nodes_from_coords[loc]: mean_pop for loc, mean_pop in mean_actual_pops.items()
     }
     popcaps_n0 = {nodes_from_coords[loc]: mean_pop for loc, mean_pop in popcaps.items()}
-    mean_actual_pops_n1 = mean_actual_pops_n0.copy()
-    popcaps_n1 = popcaps_n0.copy()
-    mean_actual_pops_n2 = mean_actual_pops_n0.copy()
-    popcaps_n2 = popcaps_n0.copy()
-
-    for node in G:
-        try:
-            n2 = {node}
-            for neighbor in G[node]:
-                mean_actual_pops_n1[node] = mean_actual_pops_n1[
-                    node
-                ] + mean_actual_pops_n0.get(neighbor, 0)
-                popcaps_n1[node] = popcaps_n1[node] + popcaps_n0.get(neighbor, 0)
-                n2.add(neighbor)
-                mean_actual_pops_n2[node] = mean_actual_pops_n2[
-                    node
-                ] + mean_actual_pops_n0.get(neighbor, 0)
-                popcaps_n2[node] = popcaps_n2[node] + popcaps_n0.get(neighbor, 0)
-                for neighbor2 in G[neighbor]:
-                    if neighbor2 not in n2:
-                        n2.add(neighbor2)
-                        mean_actual_pops_n2[node] = mean_actual_pops_n2[
-                            node
-                        ] + mean_actual_pops_n0.get(neighbor2, 0)
-                        popcaps_n2[node] = popcaps_n2[node] + popcaps_n0.get(
-                            neighbor2, 0
-                        )
-            mean_actual_pops_n2[node] /= len(n2)
-            popcaps_n2[node] /= len(n2)
-        except KeyError:
-            continue
 
     print("Computing color representation of points…")
     lab = cspace_converter("CIELab", "sRGB1")
@@ -643,107 +618,155 @@ for logfile in args.logfile:
     )
     plt.close()
 
-    plt.gcf().set_size_inches((16, 9))
-    plt.scatter(
-        popcaps_n1.values(),
-        mean_actual_pops_n1.values(),
-        s=2,
-        alpha=0.4,
-        linewidths=0.0,
-        c=colors,
-    )
-    plt.xlim(0, 2000)
-    plt.ylim(0, 2000)
-    plt.plot((0, 2000), (0, 2000))
-    plt.savefig(
-        str(args.output_dir / "popcap_n1-{stem:}.png".format(stem=stem)),
-        bbox_inches="tight",
-    )
-    plt.close()
 
-    plt.gcf().set_size_inches((16, 9))
-    plt.scatter(
-        popcaps_n2.values(),
-        mean_actual_pops_n2.values(),
-        s=1,
-        alpha=0.8,
-        linewidths=0.0,
-        c=colors,
-    )
-    plt.xlim(0, 250)
-    plt.ylim(0, 250)
-    plt.plot((0, 500), (0, 500))
-    plt.savefig(
-        str(args.output_dir / "popcap_n2-{stem:}.png".format(stem=stem)),
-        bbox_inches="tight",
-    )
-    plt.close()
+    if args.graph:
+        mean_actual_pops_n1 = mean_actual_pops_n0.copy()
+        popcaps_n1 = popcaps_n0.copy()
+        mean_actual_pops_n2 = mean_actual_pops_n0.copy()
+        popcaps_n2 = popcaps_n0.copy()
 
-    if not args.gd_cd:
-        continue
+        G = networkx.Graph()
+        edges = literal_eval(
+            re.findall(r"edges: ([(), 0-9]*),", graph_string)[0]
+        )
+        nodes = literal_eval(
+            re.findall(
+                r"node weights: *(\{([0-9]+: *\(.*\{[^}]*\} *\)[, ]*)+\})",
+                graph_string,
+            )[0][0]
+        )
+        nodes_from_coords = {(x, y): n for n, (h, x, y, p) in nodes.items()}
+        G.add_edges_from(edges)
+        print(G)
 
-    print("Computing geographic distance vs. cultural distance…")
-    start = None
-    scatter = {}
-    scattere = {}
-    for i, ((x1, y1, p1, c1), (x2, y2, p2, c2)) in tqdm(
-        enumerate(itertools.combinations(content, 2)),
-        total=len(content) * (len(content) - 1) // 2,
-    ):
-        if i % 23 != 0:
+        for node in G:
+            try:
+                n2 = {node}
+                for neighbor in G[node]:
+                    mean_actual_pops_n1[node] = mean_actual_pops_n1[
+                        node
+                    ] + mean_actual_pops_n0.get(neighbor, 0)
+                    popcaps_n1[node] = popcaps_n1[node] + popcaps_n0.get(neighbor, 0)
+                    n2.add(neighbor)
+                    mean_actual_pops_n2[node] = mean_actual_pops_n2[
+                        node
+                    ] + mean_actual_pops_n0.get(neighbor, 0)
+                    popcaps_n2[node] = popcaps_n2[node] + popcaps_n0.get(neighbor, 0)
+                    for neighbor2 in G[neighbor]:
+                        if neighbor2 not in n2:
+                            n2.add(neighbor2)
+                            mean_actual_pops_n2[node] = mean_actual_pops_n2[
+                                node
+                            ] + mean_actual_pops_n0.get(neighbor2, 0)
+                            popcaps_n2[node] = popcaps_n2[node] + popcaps_n0.get(
+                                neighbor2, 0
+                            )
+                mean_actual_pops_n2[node] /= len(n2)
+                popcaps_n2[node] /= len(n2)
+            except KeyError:
+                continue
+
+        plt.gcf().set_size_inches((16, 9))
+        plt.scatter(
+            popcaps_n1.values(),
+            mean_actual_pops_n1.values(),
+            s=2,
+            alpha=0.4,
+            linewidths=0.0,
+            c=colors,
+        )
+        plt.xlim(0, 2000)
+        plt.ylim(0, 2000)
+        plt.plot((0, 2000), (0, 2000))
+        plt.savefig(
+            str(args.output_dir / "popcap_n1-{stem:}.png".format(stem=stem)),
+            bbox_inches="tight",
+        )
+        plt.close()
+
+        plt.gcf().set_size_inches((16, 9))
+        plt.scatter(
+            popcaps_n2.values(),
+            mean_actual_pops_n2.values(),
+            s=1,
+            alpha=0.8,
+            linewidths=0.0,
+            c=colors,
+        )
+        plt.xlim(0, 250)
+        plt.ylim(0, 250)
+        plt.plot((0, 500), (0, 500))
+        plt.savefig(
+            str(args.output_dir / "popcap_n2-{stem:}.png".format(stem=stem)),
+            bbox_inches="tight",
+        )
+        plt.close()
+
+        if not args.gd_cd:
             continue
-        if start != nodes_from_coords[x1, y1]:
-            start = nodes_from_coords[x1, y1]
-            edge_dists = networkx.single_source_shortest_path_length(
-                G, start, cutoff=CUTOFF
-            )
-        flat_dist = int(g.inverse((x1, y1), (x2, y2))[0, 0] / 1000 + 0.5)
-        edge_dist = edge_dists.get(nodes_from_coords[x2, y2], CUTOFF + 2)
-        cult_dist = cultural_distance(c1, c2)
-        scatter.setdefault((flat_dist, cult_dist), 0)
-        scatter[flat_dist, cult_dist] += p1 * p2
-        scattere.setdefault((edge_dist, cult_dist), 0)
-        scattere[edge_dist, cult_dist] += p1 * p2
 
-    print("Geodesic distance vs. cultural distance…")
-    try:
-        x, y, count = zip(*[(f, c, n) for (f, c), n in scatter.items()])
-        count = numpy.array(count, dtype=float)
-        count *= 25 / count.max()
-    except ValueError:
-        continue
-    plt.scatter(x, y, s=count)
-    plt.gcf().set_size_inches((12, 9))
-    plt.savefig(
-        str(args.output_dir / "corr{m:08d}-{stem:}.png".format(m=m, stem=stem)),
-        bbox_inches="tight",
-    )
-    plt.close()
+        print("Computing geographic distance vs. cultural distance…")
+        start = None
+        scatter = {}
+        scattere = {}
+        for i, ((x1, y1, p1, c1), (x2, y2, p2, c2)) in tqdm(
+            enumerate(itertools.combinations(content, 2)),
+            total=len(content) * (len(content) - 1) // 2,
+        ):
+            if i % 23 != 0:
+                continue
+            if start != nodes_from_coords[x1, y1]:
+                start = nodes_from_coords[x1, y1]
+                edge_dists = networkx.single_source_shortest_path_length(
+                    G, start, cutoff=CUTOFF
+                )
+            flat_dist = int(g.inverse((x1, y1), (x2, y2))[0, 0] / 1000 + 0.5)
+            edge_dist = edge_dists.get(nodes_from_coords[x2, y2], CUTOFF + 2)
+            cult_dist = cultural_distance(c1, c2)
+            scatter.setdefault((flat_dist, cult_dist), 0)
+            scatter[flat_dist, cult_dist] += p1 * p2
+            scattere.setdefault((edge_dist, cult_dist), 0)
+            scattere[edge_dist, cult_dist] += p1 * p2
 
-    print("Distribution of neighbor families")
-    y, count = zip(*[(c, n) for (f, c), n in scattere.items() if f == 1])
-    plt.bar(y, count)
-    plt.gcf().set_size_inches((12, 9))
-    plt.savefig(
-        str(args.output_dir / "neighb{m:08d}-{stem:}.png".format(m=m, stem=stem)),
-        bbox_inches="tight",
-    )
-    plt.close()
+        print("Geodesic distance vs. cultural distance…")
+        try:
+            x, y, count = zip(*[(f, c, n) for (f, c), n in scatter.items()])
+            count = numpy.array(count, dtype=float)
+            count *= 25 / count.max()
+        except ValueError:
+            continue
+        plt.scatter(x, y, s=count)
+        plt.gcf().set_size_inches((12, 9))
+        plt.savefig(
+            str(args.output_dir / "corr{m:08d}-{stem:}.png".format(m=m, stem=stem)),
+            bbox_inches="tight",
+        )
+        plt.close()
 
-    print("Edge count vs. cultural distance…")
-    try:
-        x, y, count = zip(*[(f, c, n) for (f, c), n in scattere.items()])
-        x = numpy.array(x)
-        count = numpy.array(count, dtype=float)
-        for x0 in set(x):
-            count[x == x0] *= 100 / count[x == x0].max()
-    except ValueError:
-        continue
-    plt.scatter(x, y, s=count)
-    plt.gcf().set_size_inches((12, 9))
-    plt.savefig(
-        str(args.output_dir / "corre{m:08d}-{stem:}.png".format(m=m, stem=stem)),
-        bbox_inches="tight",
-    )
-    plt.close()
-    print("Finished {:} at {:}.".format(logfile, datetime.datetime.now()), file=sys.stderr)
+        print("Distribution of neighbor families")
+        y, count = zip(*[(c, n) for (f, c), n in scattere.items() if f == 1])
+        plt.bar(y, count)
+        plt.gcf().set_size_inches((12, 9))
+        plt.savefig(
+            str(args.output_dir / "neighb{m:08d}-{stem:}.png".format(m=m, stem=stem)),
+            bbox_inches="tight",
+        )
+        plt.close()
+
+        print("Edge count vs. cultural distance…")
+        try:
+            x, y, count = zip(*[(f, c, n) for (f, c), n in scattere.items()])
+            x = numpy.array(x)
+            count = numpy.array(count, dtype=float)
+            for x0 in set(x):
+                count[x == x0] *= 100 / count[x == x0].max()
+        except ValueError:
+            continue
+        plt.scatter(x, y, s=count)
+        plt.gcf().set_size_inches((12, 9))
+        plt.savefig(
+            str(args.output_dir / "corre{m:08d}-{stem:}.png".format(m=m, stem=stem)),
+            bbox_inches="tight",
+        )
+        plt.close()
+        print("Finished {:} at {:}.".format(logfile, datetime.datetime.now()), file=sys.stderr)
