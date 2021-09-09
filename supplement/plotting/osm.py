@@ -29,10 +29,9 @@ shapes = {}
 
 for area, id in areas.items():
     # Load and cache all prerequested areas
+    fname = (Path(__file__).parent / "{:s}.wkb".format(area))
     try:
-        shapes[area] = load(
-            (Path(__file__).parent / "{:s}.wkb".format(area)).open("rb")
-        )
+        shapes[area] = load(fname.open("rb"))
     except FileNotFoundError:
         print(u"Area {:s} not found in cache.".format(area))
         query = """[out:json][timeout:25];
@@ -61,7 +60,7 @@ for area, id in areas.items():
         borders = unary_union(merged)  # linestrings to a MultiLineString
         polygons = list(polygonize(borders))
         shapes[area] = geometry.MultiPolygon(polygons)
-        dump(shapes[area], open("{:s}.wkb".format(area), "wb"))
+        dump(shapes[area], fname.open("wb"))
         # FIXME: What is the canonical location for cached program supplement
         # data? Should I download it at install-time, when I'm copied somewhere
         # with write access that might never come back?
