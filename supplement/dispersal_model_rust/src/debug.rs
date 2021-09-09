@@ -22,6 +22,6 @@ impl std::fmt::Debug for crate::Family {
 
 impl std::fmt::Debug for crate::Culture {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-        self.binary_representation.fmt(f)
+        self.in_memory.fmt(f)
     }
 }

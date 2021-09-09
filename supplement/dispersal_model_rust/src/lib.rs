@@ -60,7 +60,6 @@ project we set out here, we need the following ingedients.
 
 #![allow(clippy::redundant_field_names, clippy::implicit_hasher)]
 
-use bitvec::prelude::*;
 use dashmap::DashMap;
 use serde_derive::{Deserialize, Serialize};
 
@@ -261,12 +260,18 @@ in [Submodel: Culture].
  */
 #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Clone, Serialize, Deserialize)]
 pub struct Culture {
-    binary_representation: BitVec,
+    in_memory: Vec<usize>
 }
 
 impl std::fmt::Binary for Culture {
-    fn fmt<'a>(&self, f: &mut std::fmt::Formatter<'a>) -> Result<(), std::fmt::Error> {
-        self.binary_representation.fmt(f)
+    fn fmt<'a>(&self, f: &mut std::fmt::Formatter<'a>) -> std::fmt::Result {
+        write!(f, "{}", self.in_memory.iter().map(|i| format!("{:b}", i)).collect::<Vec<String>>().join(""))
+    }
+}
+
+impl std::fmt::LowerHex for Culture {
+    fn fmt<'a>(&self, f: &mut std::fmt::Formatter<'a>) -> std::fmt::Result {
+        write!(f, "{}", self.in_memory.iter().map(|i| format!("{:x}", i)).collect::<Vec<String>>().join(""))
     }
 }
 
@@ -600,7 +605,7 @@ determined by the linguistic distance between them.
 
 */
 
-    pub fn will_cooperate(c1: &Culture, c2: &Culture, cooperation_threshold: usize) -> bool {
+    pub fn will_cooperate(c1: &Culture, c2: &Culture, cooperation_threshold: u32) -> bool {
         submodels::culture::distance(c1, c2) < cooperation_threshold
     }
 }
@@ -1007,7 +1012,7 @@ smaller band get an over-proportional part of the total extracted.
 */
 pub mod stochasticity{
     use rand::prelude::*;
-    use bitvec::prelude::*;
+    use crate::Culture;
 /**
 
 A core random component is the evolution of languages. Our model abstracts away
@@ -1023,11 +1028,13 @@ happen with a constant rate
 to random features in ‘linguistic genome’, which is just represented as a binary vector.
 
 */
-    pub fn change_random_bitvec_component(bv: &mut BitSlice) {
-        let i = rand::thread_rng().gen_range(0.. bv.len());
-        match bv.get_mut(i) {
+    pub fn change_random_bitvec_component(c: &mut Culture) {
+        let i = rand::thread_rng().gen_range(0.. c.in_memory.len());
+        let j = rand::thread_rng().gen_range(0.. usize::BITS);
+        let flip_j = 1 << j;
+        match c.in_memory.get_mut(i) {
             None => {},
-            Some(mut x) => {*x ^= true}
+            Some(x) => {*x ^= flip_j}
         };
     }
 /**
@@ -1191,7 +1198,7 @@ all families' effective sizes), for each spot.
                     let node = &p.dispersal_graph[*location];
                     (node.1, node.2, cultures
                      .iter().map(|(culture, &count)| {
-                     (format!("{:b}", culture), count)}).collect()
+                     (format!("{:x}", culture), count)}).collect()
                     )
                 })
                 .collect::<Vec<(f64, f64, FxHashMap<String, usize>)>>()
@@ -1321,6 +1328,10 @@ pub fn initialization(p: Parameters, scale: f64) -> State {
         }
     }
 
+    if (p.culture_dimensionality != 1) && (p.culture_dimensionality != 64) {
+        panic!("Currently, culture dimensionalities that are not 1 usize/64 bit are not implemented.")
+    }
+
     State {
         patches: patches
             .drain().filter_map(|(i, p)| p.map(|q| (i, q)))
@@ -1332,7 +1343,7 @@ pub fn initialization(p: Parameters, scale: f64) -> State {
                 history: vec![],
                 seasons_till_next_adult: 4,
                 culture: Culture {
-                    binary_representation: bitvec![0; 16],
+                    in_memory: vec![0xffff],
                 },
 
                 effective_size: 5,
@@ -1347,7 +1358,7 @@ pub fn initialization(p: Parameters, scale: f64) -> State {
                 history: vec![],
                 seasons_till_next_adult: 4,
                 culture: Culture {
-                    binary_representation: bitvec![1; 16],
+                    in_memory: vec![0],
                 },
 
                 effective_size: 5,
@@ -1455,8 +1466,12 @@ an unweighted Hamming distance.
         use crate::stochasticity;
 
         /** Compute the Hamming distance between two culture vectors */
-        pub fn distance(c1: &Culture, c2: &Culture) -> usize {
-            (c1.binary_representation.clone() ^ c2.binary_representation.clone()).count_ones()
+        pub fn distance(c1: &Culture, c2: &Culture) -> u32 {
+            c1.in_memory
+                .iter()
+                .zip(c2.in_memory.iter())
+                .map(|(bits1, bits2)| (bits1 ^ bits2).count_ones())
+                .sum()
         }
 
         /** At a given low rate, mutate a random feature of a language.
@@ -1485,7 +1500,7 @@ an unweighted Hamming distance.
                     );
                 }
                 Some(0) => {
-                    stochasticity::change_random_bitvec_component(&mut family_culture.binary_representation);
+                    stochasticity::change_random_bitvec_component(family_culture);
                     *family_seasons_till_next_mutation = Some(stochasticity::time_till_next_mutation(culture_mutation_rate));
                 }
                 Some(k) => {
@@ -1814,7 +1829,7 @@ size, weighted with how well they know the ecoregion.
             pub resource_recovery_per_season: f64,
             pub culture_mutation_rate: f64,
             pub culture_dimensionality: usize,
-            pub cooperation_threshold: usize,
+            pub cooperation_threshold: u32,
             pub maximum_resources_one_adult_can_harvest: OneYearResources,
             pub evidence_needed: f64,
             pub payoff_std: f64,
