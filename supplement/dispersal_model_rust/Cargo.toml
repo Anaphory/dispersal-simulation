@@ -21,6 +21,9 @@ path = "src/main.rs"
 name = "resume"
 path = "src/resume.rs"
 
+[[bin]]
+name = "make-graph"
+path = "src/serialize_graph.rs"
 
 [dependencies]
 rustc-hash = ">=0.0.0"
@@ -39,3 +42,4 @@ bincode = ">=0.0.0"
 rusqlite = ">=0.0.0"
 dashmap = { version = ">=3.0.0", features = ["serde"] }
 bitvec = { version = ">=0.20.0", features = ["serde"] }
+itertools = ">=0.0.0"

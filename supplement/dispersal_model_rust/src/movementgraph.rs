@@ -6,7 +6,7 @@ use std::collections::{BinaryHeap, HashMap};
 use std::hash::Hash;
 
 pub type NodeData = (u64, f64, f64, HashMap<usize, f64>);
-pub type MovementGraph = petgraph::graph::Graph<NodeData, f64, petgraph::Undirected, usize>;
+pub type MovementGraph = petgraph::graph::Graph<NodeData, f64, petgraph::Directed, usize>;
 
 // From petgraph
 
