@@ -1,5 +1,5 @@
 use ::argparse;
-use model::{State, observation, run};
+use model::{observation, run, State};
 use std::fs;
 
 fn main() -> Result<(), String> {

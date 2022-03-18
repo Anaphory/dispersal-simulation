@@ -1,13 +1,13 @@
 use crate::observation::Settings;
 use crate::{Parameters, Seasons};
-use std::str::FromStr;
-use argparse::action::TypedAction;
-use std::rc::Rc;
-use std::cell::RefCell;
-use argparse::action::{Action,IArgAction};
-use argparse::action::ParseResult;
-use argparse::action::ParseResult::{Parsed, Error};
 use argparse::action::Action::Single;
+use argparse::action::ParseResult;
+use argparse::action::ParseResult::{Error, Parsed};
+use argparse::action::TypedAction;
+use argparse::action::{Action, IArgAction};
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::str::FromStr;
 
 pub struct StorePAsU32Action<'a> {
     pub cell: Rc<RefCell<&'a mut u32>>,
@@ -17,12 +17,10 @@ impl<'a> IArgAction for StorePAsU32Action<'a> {
     fn parse_arg(&self, arg: &str) -> ParseResult {
         match FromStr::from_str(arg) {
             Ok::<f64, _>(x) => {
-                **self.cell.borrow_mut() = (x * ((1_u64<<32) as f64)) as u32;
+                **self.cell.borrow_mut() = (x * ((1_u64 << 32) as f64)) as u32;
                 Parsed
             }
-            Err(_) => {
-                Error(format!("Bad value {}", arg))
-            }
+            Err(_) => Error(format!("Bad value {}", arg)),
         }
     }
 }

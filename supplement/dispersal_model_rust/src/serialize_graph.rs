@@ -42,7 +42,9 @@ fn read_graph_from_db(
     }
 
     let mut eco_stmt;
-    match conn.prepare("SELECT ecoregion, population_capacity FROM ecology WHERE node = ? AND ecoregion != 999") {
+    match conn.prepare(
+        "SELECT ecoregion, population_capacity FROM ecology WHERE node = ? AND ecoregion != 999",
+    ) {
         Err(e) => {
             return Err(e.to_string());
         }

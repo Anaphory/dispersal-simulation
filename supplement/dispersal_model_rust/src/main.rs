@@ -1,6 +1,6 @@
 use model::argparse::parse_args;
 use model::movementgraph::MovementGraph;
-use model::{Seasons, initialization, observation, run};
+use model::{initialization, observation, run, Seasons};
 use std::fs;
 
 fn main() -> Result<(), String> {

@@ -351,7 +351,7 @@ for logfile in args.logfile:
             try:
                 line = bitvec.sub("0b\\1", line)
                 content = [
-                    (x, y, n, c)
+                    (x, y, n, int(c, 16))
                     for x, y, p in literal_eval(line[len("POPULATION: ") :])
                     for c, n in p.items()
                 ]
