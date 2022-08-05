@@ -1,9 +1,9 @@
 // IDEAS:
-// every agent stores past interactions, plays tit-for-tat
+// every agent stores past interactions, plays tit-for-tat (C→D→L→C)
 // Start at “cooperate with self”
 // (choose to play cooperator/defector/loner in public goods game to extract resources)
 // Store a base strategy, starting L
-// Base strategy changes HOW?
+// Base strategy changes HOW? Random mutation? Or maybe to some function of history?
 /*!
 
 Model Description
