@@ -1,24 +1,46 @@
 [package]
 name = "dispersal_model_rust"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Gereon A. Kaiping <gkaiping@geo.uzh.ch>"]
 edition = "2018"
-debug = true
 
 [profile.release]
-debug = true
+debug = false
+lto = true
+codegen-units = 1
+panic = "abort"
 
 [lib]
 name = "model"
 
+[[bin]]
+name = "simulation"
+path = "src/main.rs"
+
+[[bin]]
+name = "resume"
+path = "src/resume.rs"
+
+[[bin]]
+name = "make-graph"
+path = "src/serialize_graph.rs"
+
 [dependencies]
-rand = ">=0.0.0"
+rustc-hash = ">=0.0.0"
+rand = ">=0.8.0"
 rand_distr = ">=0.0.0"
 rayon = ">=0.0.0"
 libh3 = ">=0.0.0"
-tiff = ">=0.5.0"
+tiff = ">=0.6.0"
 argparse = ">=0.0.0"
 lazy_static = ">=0.0.0"
-petgraph = ">=0.0.0"
+petgraph = { version = ">=0.0.0", features = ["serde-1"] }
+serde = { version = ">=0.0.0", features = ["serde_derive"] }
+serde_derive = ">=0.0.0"
+serde_json = ">=0.0.0"
+bincode = ">=0.0.0"
 rusqlite = ">=0.0.0"
-dashmap = ">=3.0.0"
+dashmap = { version = ">=5.0.0", features = ["serde", "rayon"] }
+bitvec = { version = ">=0.20.0", features = ["serde"] }
+itertools = { version = ">=0.0.0" }
+fastrand = ">=0.0.0"

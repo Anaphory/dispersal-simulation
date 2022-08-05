@@ -1,20 +1,29 @@
+import itertools
 import zipfile
 import typing as t
 from pathlib import Path
 
-import sqlalchemy
+import numpy
+from tqdm import tqdm
+
+from sqlalchemy.dialects.sqlite import insert
+
 from more_itertools import windowed
 
+import rasterio.errors
 import shapefile
 import shapely.geometry as sgeom
-from shapely.prepared import prep
 
-from h3 import h3
+from h3.api import basic_int as h3
 
+from raster_data import boundingbox_from_tile
+from distance_tiles import moore_distances
 from database import db
+
 
 class RiverNetwork:
     cache = None
+
     @classmethod
     def reaches(cls):
         """
@@ -28,13 +37,13 @@ class RiverNetwork:
         if cls.cache is not None:
             return cls.cache
         zipshape = zipfile.ZipFile(
-            (Path(__file__).parent /
-             "../rivers/GloRiC_v10_shapefile.zip").open("rb"))
+            (Path(__file__).parent / "../rivers/GloRiC_v10_shapefile.zip").open("rb")
+        )
         shape = shapefile.Reader(
             shp=zipshape.open("GloRiC_v10_shapefile/GloRiC_v10.shp"),
             shx=zipshape.open("GloRiC_v10_shapefile/GloRiC_v10.shx"),
             dbf=zipshape.open("GloRiC_v10_shapefile/GloRiC_v10.dbf"),
-            encoding='utf-8'
+            encoding="utf-8",
         )
         cls.cache = shape
         return shape
@@ -53,7 +62,7 @@ class RiverNetwork:
 RESOLUTION = 5
 
 
-def neighbors(hex: h3.H3Index) -> t.Set[h3.H3Index]:
+def neighbors(hex) -> t.Set:
     this, neighbors = h3.k_ring_distances(hex, 1)
     return neighbors
 
@@ -67,25 +76,28 @@ def intersection(xa, ya, xb, yb, xl, yl, xr, yr):
 
     if xl != xr:
         t = (xl * (ya - yb) + xa * (yb - yl) + xb * (yl - ya)) / (
-            (xl - xr) * (ya - yb) + xa * (yr - yl) + xb * (yl - yr))
+            (xl - xr) * (ya - yb) + xa * (yr - yl) + xb * (yl - yr)
+        )
     else:
         t = (yl * (xa - xb) + ya * (xb - xl) + yb * (xl - xa)) / (
-            (yl - yr) * (xa - xb) + ya * (xr - xl) + yb * (xl - xr))
+            (yl - yr) * (xa - xb) + ya * (xr - xl) + yb * (xl - xr)
+        )
 
     if xb != xa:
         u = (xb * (yl - yr) + xl * (yr - yb) + xr * (yb - yl)) / (
-            (xb - xa) * (yl - yr) + xl * (ya - yb) + xr * (yb - ya))
+            (xb - xa) * (yl - yr) + xl * (ya - yb) + xr * (yb - ya)
+        )
     else:
         u = (yb * (xl - xr) + yl * (xr - xb) + yr * (xb - xl)) / (
-            (yb - ya) * (xl - xr) + yl * (xa - xb) + yr * (xb - xa))
+            (yb - ya) * (xl - xr) + yl * (xa - xb) + yr * (xb - xa)
+        )
 
     return t, u
 
 
 def find_hexes_crossed(
-        x0: float, y0: float, x1: float, y1: float,
-        length_start: float, length_end:float
-) -> t.List[t.Tuple[h3.H3Index, float, float]]:
+    x0: float, y0: float, x1: float, y1: float, length_start: float, length_end: float
+) -> t.List[t.Tuple]:
     """Find all hexes that a line segment crosses.
 
     By bisecting the line segment from (x0, y0) to (x1, y1), find all h3 hexes
@@ -95,10 +107,10 @@ def find_hexes_crossed(
     ...
 
     """
-    start_hex: h3.H3Index = h3.geo_to_h3(y0, x0, RESOLUTION)
-    end_hex: h3.H3Index = h3.geo_to_h3(y1, x1, RESOLUTION)
+    start_hex = h3.geo_to_h3(y0, x0, RESOLUTION)
+    end_hex = h3.geo_to_h3(y1, x1, RESOLUTION)
     if start_hex == end_hex:
-        # Hexes are covex, so the line segment must run entirely within.
+        # Hexes are convex, so the line segment must run entirely within.
         return [(start_hex, length_start, length_end)]
     elif end_hex in neighbors(start_hex):
         # Check whether the line segment runs through the left neighbor,
@@ -112,41 +124,47 @@ def find_hexes_crossed(
 
         # strange things can happen when wrapping the date line.
         t, u = intersection(xa, ya, xb, yb, xl, yl, xr, yr)
-        assert 1./6. < t < 5./6.
+        assert 1.0 / 6.0 < t < 5.0 / 6.0
 
         if u < 1e-10:
             # The line practially runs completely on the side of the end hex
             return [(end_hex, length_start, length_end)]
-        if u > 1-1e-10:
+        if u > 1 - 1e-10:
             # The line practially runs completely on the side of the start hex
             return [(start_hex, length_start, length_end)]
 
         crossing_point = length_start + u * (length_end - length_start)
 
-        if t < 1./3.:
+        if t < 1.0 / 3.0:
             x_m, y_m = xa + u * (xb - xa), yb + u * (yb - ya)
-            return find_hexes_crossed(x0, y0, x_m, y_m, length_start, crossing_point) + find_hexes_crossed(x_m, y_m, x1, y1, crossing_point, length_end)
-        elif t > 2./3.:
+            return find_hexes_crossed(
+                x0, y0, x_m, y_m, length_start, crossing_point
+            ) + find_hexes_crossed(x_m, y_m, x1, y1, crossing_point, length_end)
+        elif t > 2.0 / 3.0:
             x_m, y_m = xa + u * (xb - xa), yb + u * (yb - ya)
-            return find_hexes_crossed(x0, y0, x_m, y_m, length_start, crossing_point) + find_hexes_crossed(x_m, y_m, x1, y1, crossing_point, length_end)
+            return find_hexes_crossed(
+                x0, y0, x_m, y_m, length_start, crossing_point
+            ) + find_hexes_crossed(x_m, y_m, x1, y1, crossing_point, length_end)
         else:
-            return [(start_hex, length_start, crossing_point), (end_hex, crossing_point, length_end)]
+            return [
+                (start_hex, length_start, crossing_point),
+                (end_hex, crossing_point, length_end),
+            ]
     else:
-        xmid = (x0 + x1) / 2.
-        ymid = (y0 + y1) / 2.
+        xmid = (x0 + x1) / 2.0
+        ymid = (y0 + y1) / 2.0
         length_mid = length_start + 0.5 * (length_end - length_start)
-        return find_hexes_crossed(x0, y0, xmid, ymid, length_start, length_mid) + find_hexes_crossed(xmid, ymid, x1, y1, length_mid, length_end)
+        return find_hexes_crossed(
+            x0, y0, xmid, ymid, length_start, length_mid
+        ) + find_hexes_crossed(xmid, ymid, x1, y1, length_mid, length_end)
 
 
+# 3 knots is about 1.5433333 m/s
+KAYAK_SPEED = 1.5433333
 
 
-downstream_from_navigable = set()
-
-# Somewhere, I found speeds of 4.5 knots for kayak cruising. That's 8.334 km/h, but the database stores data in seconds.
-KAYAK_SPEED = 8.334 / 3600
-
-def estimate_flow_speed(discharge, slope):
-    """Estimate the flow speed, in km/s from discharge and slope
+def estimate_flow_speed(width, depth, slope, discharge):
+    """Estimate the flow speed, in m/s from discharge (m³/s) and slope (m/m)
 
     This is a very rough estimate, following [@schulze2005simulating]. They
     suggest to at least estimate the widely varying river roughness n, but we
@@ -156,97 +174,358 @@ def estimate_flow_speed(discharge, slope):
     D = 0.349 · Q^0.341
     R = D · W / (2 D + W)
     n = 0.044
+
+    # Manning-Strickler formula
     v = 1/n · R^2/3 · S^1/2
 
     """
     n = 0.044
-    w = 2.71 * discharge ** 0.557
-    d = 0.349 * discharge ** 0.341
-    r = d * w / (2 * d + w)
-    v = 1/n * r ** (2/3) * slope ** 0.5
-    return v / 1000
+    r = depth * width / (2 * depth + width)
+    # Manning-Strickler formula
+    v = 1 / n * r ** (2 / 3) * slope ** 0.5
+    return max(v, discharge / (width * depth))
 
-if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument("database")
-    parser.add_argument("--start", type=int)
-    args = parser.parse_args()
-    engine, tables = db(args.database)
-    t_hex = tables["hex"]
-    t_reach = tables["reach"]
-    t_flows = tables["flows"]
-    t_dist = tables["dist"]
 
-    RIVERS = RiverNetwork()
+RIVERS = RiverNetwork()
 
-    for r, reach in enumerate(RIVERS.shp.iterShapeRecords()):
+
+def draw_line(x1, y1, x2, y2):
+    """Draw a line from (x1, y1) to (x2, y2).
+
+    Give all the integer coordinate that a line from (x1, y1) to (x2, y2)
+    passes through, using a modification of Bresenham's line drawing algorithm,
+    where no diagonal connections are allowed, so diagonal steps cannot skip
+    the drawn line.
+
+    """
+    # Swap parameters such that x1<x2, y1<y2, and the slope m<1.
+    if y2 < y1:
+        for x, y in draw_line(x1, -y1, x2, -y2):
+            yield x, -y
+    elif x2 < x1:
+        for x, y in draw_line(-x1, y1, -x2, y2):
+            yield -x, y
+    elif (y2 - y1) > (x2 - x1):
+        for y, x in draw_line(y1, x1, y2, x2):
+            yield x, y
+    else:
+        m_adj = 2 * (y2 - y1)
+        slope_error_adj = m_adj - (x2 - x1)
+
+        y = y1
+        for x in range(x1, x2 + 1):
+            yield x, y
+            slope_error_adj = slope_error_adj + m_adj
+            if slope_error_adj >= 0:
+                if y <= y2:
+                    yield x, y + 1
+                y = y + 1
+                slope_error_adj = slope_error_adj - 2 * (x2 - x1)
+
+
+def wading_time(depth, width, velocity):
+    """Calculate the time to wade/swim across a river of
+
+    depth D [m], width W [m], velocity V [m/s]
+
+    Judging from [@davenport2017wading], analysed in a supplementary
+    spreadsheet (rough data extracted using WebPlotDigitizer), it seems that
+    swim speed S [m/s] is roughly a lower bound for wading speed X [m/s], which
+    otherwise depends on the depth of the body of water D [m] as roughly
+
+    X = 1/(0.63 D + 1/X0)
+
+    where X0 is walking speed, so X0 = 1.4454683853418 for the beach walking
+    speed of men in their measurements. These data were however measured on a
+    beach, where even running through deep water was possible.
+
+    For treacherous terrain, such as inside a river, both stride length and
+    stride frequency will be much lower. Waders are advised to shuffle
+    carefully and not cross their legs, and measure each step carefully. Our
+    base navigation speed is already around 1km/h instead of the more than
+    5km/h of [@davenport2017wading]. With the additional safety measures for
+    river crossings, an X0 = 0.14454683853418 seems appropriate.
+
+    General advice is to wade across a deeper river roughly at an angle, ending
+    up further downstream than the start, while a shallow river can be crossed
+    orthogonally. By linear interpolation, we take the effective distance
+    across as
+
+    A = √(W² + (D W)²) = W × √(1+D²)
+
+    [@jonkmann2008human] cite three studies reporting the critical product DV
+    (hv_c in their notation) at which human wading becomes unstable, and
+    compute their own estimate. For a 1.7 m tall person with a weight of 68.25
+    kg, these numbers are 1.32 m²/s, 1.27 m²/s, 0.664 m²/s, and 0.5 m²/s. We
+    pick 1.27 m²/s as a compromise, because the model is for an experienced and
+    prepared explorer. Above this critical product, swimming is necessary.
+
+    """
+    S = 0.5788666326641
+    X0 = 1.4454683853418 / 10
+    if depth * velocity > 1.27:
+        # Wading is unstable
+        return numpy.inf
+    if depth > 1.5:
+        # Too deep for wading
+        return numpy.inf
+    X = 1 / (0.63 * depth + 1 / X0)
+
+    A = width * numpy.sqrt(1 + depth ** 2)
+    return A / X  # Can be infinity
+
+
+maxest = {
+    "width": 0,
+    "depth": 0,
+    "discharge": 0,
+    "wading": 0,
+    "v": 0,
+    "slope": 0,
+}
+
+
+def process_rivers(tile, may_follow_river=False):
+
+    engine, tables = db()
+    t_node = tables["nodes"]
+    t_dist = tables["edges"]
+
+    rasters, transform = moore_distances(tile)
+
+    west, north = transform * (-0.5, -0.5)
+    east, south = transform * (rasters[1, 1].shape[1] + 0.5, rasters[1, 1].shape[0] + 0.5)
+
+    print(f"Working between boundaries S{south}W{west}N{north}E{east}")
+
+    # For checking afterwards whether a core location is on the river
+    is_river = numpy.zeros(rasters[1, 1].shape, dtype=bool)
+
+    for r, reach in tqdm(enumerate(RIVERS.shp.iterShapeRecords())):
         data = reach.record
         reach_id = int(data[0])
-        if args.start and reach_id < args.start:
+        if reach_id < 60000000:
             # The Americas have SA 6, NA 7, American Arctic 8, Greenland 9
             continue
 
         points: t.List[t.Tuple[float, float]] = reach.shape.points
 
-        with engine.begin() as conn:
-            # Is this reach navigable by Kayak? From
-            # [@rood2006instream,@zinke2018comparing] it seems that reaches with a flow
-            # lower than 5m³/s are not navigable even by professional extreme sport
-            # athletes, and generally even that number seems to be an outlier with
-            # opinions starting at 8m³/s, so we take that as the cutoff.
-            #
-            # [@zinke2018comparing] further plots wild water kayaking run slopes vs.
-            # difficulty. All of these are below 10%, so we assume that reaches above
-            # 10% are not navigable. Gradient is not directly available in the data,
-            # but the stream power is directly proportional to the product of discharge
-            # and gradient, so we can reverse-engineer it:
-            # Stream Power [kg m/s³]
-            # = Water Density [kg/m³] * gravity [m/s²] * discharge [m³/s] * slope [m/m]
-            # so
-            # slope = stream power / discharge / (1000 * 9.81) > 10% = 0.1
-            if reach_id not in downstream_from_navigable and (
-                    data[3] < 0.9030899869919434 or # log(8.)/log(10.)
-                    data[11] / (10 ** data[3]) > 981.0):
+        for (lon0, lat0), (lon1, lat1) in windowed(points, 2):
+            if not (
+                (west < lon0 < east or west < lon1 < east)
+                and (south < lat0 < north or south < lat1 < north)
+            ):
                 continue
-            downstream_from_navigable.add(data[1])
-            downstream_from_navigable.discard(reach_id)
-            v = estimate_flow_speed(discharge = 10 ** data[3], slope = data[11] / 10 ** data[3] / (9810))
-            print(data[0], v)
-            if v > 0.1:
-                breakpoint()
+            break
+        else:
+            continue
+
+        discharge = 10 ** data[3]
+
+        # This is a very rough estimate, following [@schulze2005simulating].
+        width = 2.71 * discharge ** 0.557
+        depth = 0.349 * discharge ** 0.341
+
+        # Slope is not directly available in the data, but the stream power is
+        # directly proportional to the product of discharge and gradient, so we
+        # can reverse-engineer it: Stream power [kg m/s³] = water density
+        # [kg/m³] * gravity [m/s²] * discharge [m³/s] * slope [m/m]; so Slope =
+        # stream power / (discharge * water density * gravity). GloRiC bases
+        # its slope (used for calculating stream power) on maximum elevation
+        # minus mean elevation of the reach, so this may still be off by a
+        # factor of 2.
+        slope = data[11] / (10 ** data[3] * 9810)
+
+        v = estimate_flow_speed(
+            width=width, depth=depth, slope=slope, discharge=discharge
+        )
+        if v > 40.0:
+            raise RuntimeError(
+                "Found a reach flowing faster than 40 m/s, something is clearly wrong."
+            )
+
+        wading = wading_time(width=width, depth=depth, velocity=v)
+
+        if wading < 2:
+            continue
+
+        if data[3] < 0.4520448942601702:
+            livingood = 3.0
+        elif data[3] < 1.4520448942601702:
+            livingood = 300.0
+        elif data[3] < 2.4520448942601702:
+            livingood = 600.0
+        else:
+            livingood = 1800.0
+
+        xest = ""
+        if width > maxest["width"]:
+            maxest["width"] = width
+            xest += "widest "
+        if depth > maxest["depth"]:
+            maxest["depth"] = depth
+            xest += "deepest "
+        if discharge > maxest["discharge"]:
+            maxest["discharge"] = discharge
+            xest += "biggest "
+        if wading > maxest["wading"]:
+            maxest["wading"] = wading
+            xest += "most difficult to cross "
+        if v > maxest["v"]:
+            maxest["v"] = v
+            xest += "fastest "
+        if slope > maxest["slope"]:
+            maxest["slope"] = slope
+            xest += "steepest "
+        if xest:
+            print(
+                f"Found new {xest}river reach:",
+                f" Reach starting at {points[0]}",
+                f"Width: {width}",
+                f"Depth: {depth}",
+                f"Discharge: {discharge}",
+                f"Wading time: {wading}",
+                f"Flow speed: {v}",
+                "Effective flow: {}".format(
+                    discharge / (depth * width * v) if v > 0 else "inf"
+                ),
+                f"Slope: {slope}",
+                f"Livingood penalty: {livingood}",
+                sep="\n  ",
+            )
+
+        for (lon0, lat0), (lon1, lat1) in windowed(points, 2):
+            if not (
+                (west < lon0 < east or west < lon1 < east)
+                and (south < lat0 < north or south < lat1 < north)
+            ):
+                continue
+
+            col0, row0 = ~transform * (lon0, lat0)
+            col1, row1 = ~transform * (lon1, lat1)
+            # The river network shows artefacts of being derived from a GEM
+            # with compatible resolution (I think 15" instead of 30"),
+            # which show up as NE-SW running river reaches crossing exactly
+            # through the pixel corners. Shifting them a tiny bit to SE –
+            # taking care that it won't be precisely diagonal, to avoid
+            # introducing other artefact – should help with that.
+
+            cells = draw_line(round(row0), round(col0), round(row1), round(col1))
+            # Filter down to the cells that are part of this tile
+            cells = [
+                c
+                for c in cells
+                if 0 <= c[0] < is_river.shape[0]
+                if 0 <= c[1] < is_river.shape[1]
+            ]
+            # Leaving a river pixel costs time.
+            for cell in cells:
+                for (r, c), dist in rasters.items():
+                    is_river[cell] = True
+                    dist[cell] += wading
+
+        # Is this reach navigable by Kayak/Canoe? From
+        # [@rood2006instream,@zinke2018comparing] it seems that reaches with a
+        # flow lower than 5m³/s are not navigable even by professional extreme
+        # sport athletes, and generally even that number seems to be an outlier
+        # with opinions starting at 8m³/s, so we take that as the cutoff.
+        #
+        # [@zinke2018comparing] further plots wild water kayaking run slopes
+        # vs. difficulty. All of these are below 10%, so we assume that reaches
+        # above 10% are not navigable.
+        if data[3] < 0.9030899869919434 or slope > 0.1:
+            continue
+
+        with engine.begin() as conn:
+            # slope = stream power / discharge / (1000 * 9.81) > 10% = 0.1
+            print(data[0], KAYAK_SPEED + v, KAYAK_SPEED + v)
 
             downstream = data[1]
-            try:
-                conn.execute(t_hex.insert(
-                    {"hexbin": reach_id,
-                    "vlongitude": points[0][0],
-                    "vlatitude": points[0][1],
-                    }))
-            except sqlalchemy.exc.IntegrityError:
-                pass
+            conn.execute(
+                insert(t_node)
+                .values(
+                    {
+                        "node_id": reach_id,
+                        "longitude": points[0][0],
+                        "latitude": points[0][1],
+                        "coastal": False,
+                    },
+                )
+                .on_conflict_do_nothing()
+            )
             if downstream == 0:
                 downstream = -reach_id
-                try:
-                    conn.execute(t_hex.insert(
-                        {"hexbin": downstream,
-                        "vlongitude": points[-1][0],
-                        "vlatitude": points[-1][1],
-                        }))
-                except sqlalchemy.exc.IntegrityError:
-                    pass
+                coastal = True
+            else:
+                coastal = False
+            conn.execute(
+                insert(t_node)
+                .values(
+                    {
+                        "node_id": downstream,
+                        "longitude": points[-1][0],
+                        "latitude": points[-1][1],
+                        "coastal": coastal,
+                    },
+                )
+                .on_conflict_do_nothing()
+            )
 
-            try:
-                conn.execute(t_dist.insert(
-                    {"hexbin1": reach_id, "hexbin2": downstream, "source": 2, "flat_distance": data[2] / 1000., "distance": data[2] / (KAYAK_SPEED + v)}))
-            except sqlalchemy.exc.IntegrityError:
-                conn.execute(t_dist.update().values(**
-                    {"flat_distance": data[2] / 1000.,
-                    "distance": data[2] / (KAYAK_SPEED + v)}).where((t_dist.c.hexbin1 == reach_id) & (t_dist.c.hexbin2 == downstream) & (t_dist.c.source == 9)))
-            try:
-                conn.execute(t_dist.insert(
-                    {"hexbin1": downstream, "hexbin2": reach_id, "source": 2, "flat_distance": data[2] / 1000., "distance": data[2] / max(KAYAK_SPEED - v, 0.3)}))
-            except sqlalchemy.exc.IntegrityError:
-                conn.execute(t_dist.update().values(**
-                    {"flat_distance": data[2] / 1000.,
-                    "distance": data[2] / max(KAYAK_SPEED - v, 0.3)}).where((t_dist.c.hexbin2 == reach_id) & (t_dist.c.hexbin1 == downstream) & (t_dist.c.source == 9)))
+            conn.execute(
+                insert(t_dist)
+                .values(
+                    {
+                        "node1": reach_id,
+                        "node2": downstream,
+                        "source": "river",
+                        "flat_distance": data[2] * 1000,
+                        "travel_time": data[2] * 1000 / (KAYAK_SPEED + v),
+                    },
+                )
+                .on_conflict_do_nothing()
+            )
+            if KAYAK_SPEED > v:
+                conn.execute(
+                    insert(t_dist)
+                    .values(
+                        {
+                            "node1": downstream,
+                            "node2": reach_id,
+                            "source": "river",
+                            "flat_distance": data[2] * 1000,
+                            "travel_time": data[2] * 1000 / (KAYAK_SPEED - v),
+                        },
+                    )
+                    .on_conflict_do_nothing()
+                )
+
+    profile = rasterio.profiles.DefaultGTiffProfile()
+    profile["height"] = rasters[1, 1].shape[0]
+    profile["width"] = rasters[1, 1].shape[1]
+    profile["transform"] = transform
+    profile["dtype"] = rasterio.float64
+    profile["count"] = 8
+
+    fname = "distances-{:s}{:d}{:s}{:d}.tif".format(*tile)
+    with rasterio.open(
+        fname,
+        "w",
+        **profile,
+    ) as dst:
+        for i, band in enumerate(rasters.values(), 1):
+            dst.write(band.astype(rasterio.float64), i)
+
+    profile = rasterio.profiles.DefaultGTiffProfile()
+    profile["height"] = is_river.shape[0]
+    profile["width"] = is_river.shape[1]
+    profile["transform"] = transform
+    profile["dtype"] = numpy.uint8
+    profile["count"] = 1
+
+    fname = "rivers-{:s}{:d}{:s}{:d}.tif".format(*tile)
+    with rasterio.open(
+        fname,
+        "w",
+        **profile,
+    ) as dst:
+        dst.write(is_river.astype(numpy.float64), 1)

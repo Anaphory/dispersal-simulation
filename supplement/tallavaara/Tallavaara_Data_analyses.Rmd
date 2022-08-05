@@ -5,23 +5,13 @@ output: pdf_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, root.dir = "./")
-```
 
-## R Markdown
-
-```{r}
-# packages <- c("ape", "car", "fossil", "gstat", "piecewiseSEM",
-#               "rgdal", "raster", "segmented", "sp", "XML", "plyr", "pbapply", "readxl",
-#               "jtools", "visreg", "e1071", "plot3D", "viridis", "interactions", "splancs")
-# install.packages(packages, dependencies = TRUE)
-```
-Next, load packages into workspace.
-```{r}
 library(gstat)
 library(rgdal)
 library(raster)
 library(ape)
-library(car)
+library(tidyr)
+library(dplyr)
 library(fossil)
 library(piecewiseSEM)
 library(segmented)
@@ -39,16 +29,20 @@ library(interactions)
 ```
 
 ```{r}
-URL <- "http://biogeo.ucdavis.edu/data/climate/worldclim/1_4/grid/cur/bio_10m_bil.zip"
+# PaleoClim.org links bioclimatic data for different time periods
+URL <- "http://sdmtoolbox.org/paleoclim.org/data/chelsa_cur/CHELSA_cur_V1_2B_r2_5m.zip"
 wd <- getwd()
-td <- tempdir()
+td <- paste(wd, "data", "", sep="/")
+dir.create(td)
 setwd(td)
-temp <- tempfile(fileext = ".zip")
-download.file(URL, temp)
+temp <- "CHELSA_cur_V1_2B_r2_5m.zip"
+if (!file.exists(temp)) {
+  download.file(URL, temp)
+}
 unzip(temp)
-tempRast <- raster("bio1.bil")/10
-precipRast <- raster("bio12.bil")/1
-unlink(dir(td))
+list.files(paste(td, "2_5min", sep="/"))
+tempRast <- raster("2_5min/bio_1.tif")/10
+precipRast <- raster("2_5min/bio_12.tif")/1
 setwd(wd)
 ```
 
@@ -57,13 +51,20 @@ setwd(wd)
 npp.mia.t <- 3000/(1+exp(1.315-0.119*tempRast))
 npp.mia.p <- 3000*(1-exp(-0.000664*precipRast))
 nppRast<-min(stack(npp.mia.t,npp.mia.p))
+writeRaster(nppRast, "npp.tif", overwrite=T)
+
+tempRast <- NULL
+precipRast <- NULL
+npp.mia.t <- NULL
+npp.mia.p <- NULL
+
 plot(nppRast, main="NPP", col=viridis(100))
 ```
 
 ```{r}
 # Alternately, if the Dataset S2 is in the working directory, it can be loaded using
 # following code (remove hash mark):
-# nppRast <- raster("Tallavaara_Dataset_1.tif")
+# nppRast <- raster("npp.tif")
 ```
 
 ### Biodiversity
@@ -71,24 +72,21 @@ Biodiversity variable is based on global mammal, bird, and vascular plant richne
 richness values to vary between 0 an 1 and finally averaged them to form a single biodiversity variable.
 
 #### Mammal and bird richness
-We downloaded mammal and bird richness data from Biodiversitymapping.org (http://biodiversitymapping.
-org/wordpress/index.php/home/).
+We downloaded mammal and bird richness data from Biodiversitymapping.org (http://biodiversitymapping.org/wordpress/index.php/home/).
 ```{r}
 URL <- paste("http://biodiversitymapping.org/","wordpress/wp-content/uploads/2016/11/",
-"biodiversitymapping_TIFFs_20Dec2016.zip", sep="") # Use paste just to avoid problems
+"biodiversitymapping_TIFFs_20Dec2016.zip", sep="")
 URL <- paste("https://biodiversitymapping.org", "wp-content/uploads/2020/02",
              "BiodiversityMapping_TIFFs_2019_03d14_revised.zip", sep="/")
-# to RMarkdown output caused by
-# long strings
 wd <- getwd()
-td <- tempdir()
 setwd(td)
-temp <- tempfile(fileext = ".zip")
-download.file(URL, temp)
+temp <- "BiodiversityMapping_TIFFs.zip"
+if (!file.exists(temp)) {
+  download.file(URL, temp)
+}
 unzip(temp)
 birDRast <- raster("BiodiversityMapping_TIFFs_2019_03d14/Birds/Richness_10km_Birds_v7_EckertIV_no_seabirds.tif")
 mamDRast <- raster("BiodiversityMapping_TIFFs_2019_03d14/Mammals/Richness_10km_MAMMALS_mar2018_EckertIV.tif")
-unlink(dir(td))
 setwd(wd)
 # Use the projection of the NPP raster as a template projection for mammal and bird
 # diversity rasters, combine them into 'animal' diversity, and scale animal diversity
@@ -97,6 +95,13 @@ birDRast<-projectRaster(birDRast, nppRast)
 mamDRast<-projectRaster(mamDRast, nppRast)
 animDRast <- birDRast + mamDRast
 animDRast.scal <- animDRast/cellStats(animDRast,'max')
+
+birDRast <- NULL
+mamDRast <- NULL
+
+plot(animDRast, main="animal diversity", col=viridis(100))
+
+animDRast <- NULL
 ```
 #### Plant richness
 Our plant richness data are based on Kreft and Jetz (2007) and are part of the Ellis et al. (2012) data
@@ -105,55 +110,70 @@ biodiversity/plants/data/). We interpolated these global data over the same glob
 diversity (see above) using inverse distance weighting (IDW) interpolation. Below, we will also eveluate the
 interpolation by comparing interpolated richness to original (model-based) richness data.
 ```{r}
-URL <- "http://ecotope.org/files/ellis_2012/ellis_2012_shapefile.zip"
-wd <- getwd()
-td <- tempdir()
-setwd(td)
-temp <- tempfile(fileext = ".zip")
-download.file(URL, temp)
-unzip(temp)
-dsn <- dir(tempdir(), "*.shp$")
-layer <- sub(".shp$", "", dsn)
-plants <- readOGR(dsn=dsn, layer=layer)
-unlink(dir(td))
-setwd(wd)
-# Transform Spatial Polygons Data into a normal data frame, subset, and transform it into
-# a Spatial Points Data Frame and change projection to the global Mercator projection.
-plants <- as.data.frame(plants)
-plants <- data.frame(plants$X, plants$Y, plants$N)
-names(plants) <- c("x","y","N")
-plants2 <- plants # This data will be used later, when comparing interpolation
-# to original data
-coordinates(plants) <- ~x+y
-proj4string(plants) = CRS("+proj=longlat +datum=WGS84")
-plantsM <- spTransform(plants, CRS("+init=epsg:3395"))
-# Create a global grid with the same extent and resolution as NPP raster and change the
-# projection of global grid to the global Mercator projection. This grid is used when
-# interpolating the plant richness data to cover the same area as other environmental
-# variables.
-globalGrid <- as.data.frame(expand.grid(x=seq(-180,180, by=0.1666667),
-y=seq(-80,84, by=0.1666667)))
-coordinates(globalGrid) <- ~x+y
-proj4string(globalGrid) = CRS("+proj=longlat +datum=WGS84")
-globalGridM <- spTransform(globalGrid, CRS("+init=epsg:3395"))
-# IDW-interpolation to the plant richness data using krige-function (without any model)
-# of the gstat package
-plantsIDW <- krige(N ~ 1, plantsM, globalGridM, NULL, nmax=10)
-# Change projection of the interpolated data to lon-lat, make a raster out of the data
-# with NPP raster as a template, and scale the plant diversity.
-plantsIDWLL <- spTransform(plantsIDW, CRS("+proj=longlat +datum=WGS84"))
-plantsDataIDW <- as.data.frame(plantsIDWLL)
-plantsDataIDW <- data.frame(plantsDataIDW$x, plantsDataIDW$y, plantsDataIDW$var1.pred)
-plantDRast <- rasterFromXYZ(plantsDataIDW)
-crs(plantDRast) <- "+proj=longlat +datum=WGS84"
-plantDRast<-projectRaster(plantDRast, nppRast)
-plantDRast<-mask(plantDRast, nppRast)
+# if (!file.exists("plantsDRast.tif")) {
+  URL <- "http://ecotope.org/files/ellis_2012/ellis_2012_shapefile.zip"
+  wd <- getwd()
+  setwd(td)
+  temp <- "ellis_2012_shapefile.zip"
+  if (!file.exists(temp)) {
+    download.file(URL, temp)
+  }
+  unzip(temp)
+  dsn <- "ellis_2012_l8_dataset_2012_01_17.shp"
+  plants <- readOGR(dsn=dsn, layer="ellis_2012_l8_dataset_2012_01_17")
+  setwd(wd)
+  # Transform Spatial Polygons Data into a normal data frame, subset, and transform it into
+  # a Spatial Points Data Frame and change projection to the global Mercator projection.
+  plants <- as.data.frame(plants)
+  plants <- data.frame(plants$X, plants$Y, plants$N)
+  names(plants) <- c("x","y","N")
+  plants2 <- plants # This data will be used later, when comparing interpolation
+  # to original data
+  coordinates(plants) <- ~x+y
+  proj4string(plants) = CRS("+proj=longlat +datum=WGS84")
+  plantsM <- spTransform(plants, CRS("+init=epsg:3395"))
+  # Create a global grid with the same extent and resolution as NPP raster and change the
+  # projection of global grid to the global Mercator projection. This grid is used when
+  # interpolating the plant richness data to cover the same area as other environmental
+  # variables.
+  globalGrid <- as.data.frame(
+    expand.grid(x=seq(-180,180, by=0.1666667),
+                y=seq(-80,84, by=0.1666667)))
+  coordinates(globalGrid) <- ~x+y
+  proj4string(globalGrid) = CRS("+proj=longlat +datum=WGS84")
+  globalGridM <- spTransform(globalGrid, CRS("+init=epsg:3395"))
+  globalGrid <- NULL
+  # IDW-interpolation to the plant richness data using krige-function (without any model)
+  # of the gstat package
+  plantsIDW <- krige(N ~ 1, plantsM, globalGridM, NULL, nmax=10)
+  # Change projection of the interpolated data to lon-lat, make a raster out of the data
+  # with NPP raster as a template, and scale the plant diversity.
+  plantsIDWLL <- spTransform(plantsIDW, CRS("+proj=longlat +datum=WGS84"))
+  plantsDataIDW <- as.data.frame(plantsIDWLL)
+  plantsDataIDW <- data.frame(plantsDataIDW$x, plantsDataIDW$y, plantsDataIDW$var1.pred)
+  plantDRast <- rasterFromXYZ(plantsDataIDW)
+  crs(plantDRast) <- "+proj=longlat +datum=WGS84"
+  plantDRast<-projectRaster(plantDRast, nppRast)
+  plantDRast<-mask(plantDRast, nppRast)
+  
+  writeRaster(plantDRast, "plantsDRast.tif", overwrite=T)
+# } else {
+#  plantDRast <- raster("plantsDRast.tif")
+# }
 plantDRast.scal <- plantDRast/cellStats(plantDRast,'max')
+
+plot(plantDRast, main="plant diversity", col=viridis(100))
+
+plantsM <- NULL
+plantsIDW <- NULL
+plantsIDWLL <- NULL
+plantsDataIDW <- NULL
+
 ```
 Comparison of the interpolated richness to the original model-based richness
 ```{r}
 # Extract interpolated values for original data points
-pointsRast <- extract(plantDRast, cbind(plants2$x,plants2$y))
+pointsRast <- raster::extract(plantDRast, cbind(plants2$x,plants2$y))
 plants2$rastpoints <- pointsRast # add to the data
 # Diff. between interpolated and original richness
 plants2$diffs <- plants2$rastpoints-plants2$N
@@ -174,6 +194,13 @@ richness values.
 ```{r}
 bioDRast <- (animDRast.scal + plantDRast.scal)/2
 plot(bioDRast, main="Biodiversity (combined plant, mammal, and bird richness)", col=viridis(100))
+
+animDRast.scal <- NULL
+plants <- NULL
+plants2 <- NULL
+plantDRast <- NULL
+plantDRast.scal <- NULL
+
 ```
 ```{r}
 # Alternately, if the Dataset S3 is in the working directory, it can be loaded using
@@ -195,7 +222,10 @@ Samoyed, Yukaghir, and Chukchee).Below, we will also evaluate interpolation of p
 interpolated and original pathogen stress values.
 ```{r}
 # Download the data.
-load(url("http://capone.mtsu.edu/eaeff/downloads/DEf01f.Rdata"))
+if (!file.exists("data/DEf01f.Rdata")) {
+  download.file("http://capone.mtsu.edu/eaeff/downloads/DEf01f.Rdata", "data/DEf01f.Rdata")
+}
+load("data/DEf01f.Rdata")
 pathogens1 <- SCCS[,c("ord", "socname", "long", "lati")]
 pathogens2 <- SCCS[,c("v2178")]
 pathogens <- as.data.frame(cbind(pathogens1,pathogens2))
@@ -234,14 +264,26 @@ plot(pathoSemivgm, pathoFitVgm, main="Empirical and model variogram", cex.main=0
 # Finally, kriging interpolation itself.
 pathoKrig<-krige(formula=pathoscore10 ~ 1, locations=pathogensM, newdata=globalGridM,
 model=pathoModVgm)
+
+rm(globalGridM)
+
 ## [using ordinary kriging]
 # Switch the projection of the interpolated data back to lon-lat.
 pathoKrigedLL <- spTransform(pathoKrig, CRS("+proj=longlat +datum=WGS84"))
+
+rm(pathoKrig)
+
 # Transform spatial data to 'normal' data frame.
 pathoData <- as.data.frame(pathoKrigedLL)
 pathoData <- data.frame(pathoKrigedLL$x, pathoKrigedLL$y, pathoKrigedLL$var1.pred)
+
+rm(pathoKrigedLL)
+
 # Create a raster.
 pathoRast <- rasterFromXYZ(pathoData)
+
+rm(pathoData)
+
 crs(pathoRast) <- "+proj=longlat +datum=WGS84"
 # Use NPP raster as a template.
 pathoRast<-projectRaster(pathoRast, nppRast)
@@ -251,7 +293,7 @@ plot(pathoRast, main="Pathogen stress", col=viridis(100))
 ```
 Comparison of the interpolated richness to the original model-based richness:
 ```{r}
-pointsRastPatho <- extract(pathoRast,cbind(pathogens2$lon,pathogens2$lat))
+pointsRastPatho <- raster::extract(pathoRast,cbind(pathogens2$lon,pathogens2$lat))
 pathogens2$rastpoints <- pointsRastPatho
 pathogens2$diffs <- pathogens2$rastpoints-pathogens2$pathoscore10
 par(mfrow=c(1,2), mar=c(4,4,1,1))
@@ -263,6 +305,7 @@ xlab="observed", ylab="Interpolated-Observed")
 axis(side=2, at=c(-0.6,-0.4,-0.2,0,0.2, 0.4, 0.6), las=2)
 abline(h=0, col="red", lwd=2)
 ```
+
 ```{r}
 # Alternately, if the Dataset S4 is in the working directory, it can be loaded using
 # following code (remove hash mark):
@@ -271,7 +314,50 @@ abline(h=0, col="red", lwd=2)
 ## Response variable
 ### Hunter-gatherer population density
 Our hunter-gatherer population density data is a combination of the datasets of Binford (2001) and Kelly
-(2013). If population is present in both sets, we used the **weighted geometric mean of the two sources**
+(2013).
+```{r}
+# Load hunter-gatherer dataset (assumes that it is in the working directory).
+# Use readxl package to read xls-file
+hgdata <- read_excel("Tallavaara_Dataset_4.xls")
+
+hgdata$densityB <- as.numeric(hgdata$densityB)
+hgdata$densityK <- as.numeric(hgdata$densityK)
+
+hgdata[337,]
+```
+```{r}
+# Remove suspicious "non-normal" hunter-gatherer cases.
+hgdata <- hgdata[hgdata$subpop == "n",]
+
+hgdata[replace_na(hgdata$densityK > 450, F),]
+hgdata[replace_na(hgdata$densityK > 450, F), "densityK"] <- NA
+```
+For the Chumash, Kelly (2013) cites Keeley (1988), who lists the corresponding entry (Table 1) as
+
+> 93. – Chumash – 21.60 – King 1969 (pop); Beals and Hester 1974 (area)
+
+and this density is a vast outlier in the population densities. (The next ones
+are Eastern Pomo (16.67) and Wiyot (11.0), all other densities are estimated
+at less than 10/100km².) The different sources
+for population count and area make it likely that this is a vast over-estimate,
+stemming from different decisions what to count as Chumash between King (1969)
+and Beals and Hester (1974). Because of this, we remove this entry from our
+dataset.
+
+```{r}
+# Extract coordinates from the data
+coords <- hgdata[,c("longitude","latitude")]
+```
+
+The relationship between Binford’s and Kelly’s data:
+```{r}
+par(mar=c(4,4,1,1))
+plot(hgdata$densityK, hgdata$densityB, ylim=c(0,450), xlim=c(0,450), las=1, pch=0,
+xlab="Kelly data", ylab="Binford data")
+abline(0,1, col="red", lwd=2)
+abline(lm(densityB~densityK, data=hgdata), lty=2)
+```
+If population is present in both sets, we used the **weighted geometric mean of the two sources**
 (Tallavaara used the unweighted arithmetic mean) for a given group. The weight for a density given by Kelly
 (2013) is triple the weight for a density given by Binford (2001), due to some specific distrust in
 Binford's quantitative skill (cf. eg.
@@ -282,51 +368,30 @@ where hunter-gatherer population is present only one of the datasets, we used th
 This (partly) combined variable is `densityC`. We used natural logarithm of population density (`ldensityC`)
 in our analyses.
 ```{r}
-# Load hunter-gatherer dataset (assumes that it is in the working directory).
-# Use readxl package to read xls-file
-hgdata <- read_excel("Tallavaara_Dataset_4.xls")
-hgdata$densityB <- as.numeric(hgdata$densityB)
-hgdata$densityK <- as.numeric(hgdata$densityK)
-hgdata$densityC <- as.numeric(hgdata$densityC)
+hgdata$densityC <- (hgdata$densityB * (hgdata$densityK ** 3)) ** 0.25
+hgdata[is.na(hgdata$densityC), "densityC"] <- hgdata[is.na(hgdata$densityC), "densityB"]
+hgdata[is.na(hgdata$densityC), "densityC"] <- hgdata[is.na(hgdata$densityC), "densityK"]
 
-hgdata[337,]
-```
-The relationship between Binford’s and Kelly’s data:
-```{r}
-par(mar=c(4,4,1,1))
-plot(hgdata$densityK, hgdata$densityB, ylim=c(0,450), xlim=c(0,450), las=1, pch=0,
-xlab="Kelly data", ylab="Binford data")
-abline(0,1, col="red", lwd=2)
-abline(lm(densityB~densityK, data=hgdata), lty=2)
-```
-```{r}
 # Add ln(population density) to the data.
 hgdata$ldensityC <- log(hgdata$densityC)
-# Remove suspicious "non-normal" hunter-gatherer cases.
-hgdata <- hgdata[hgdata$subpop == "n",]
 # Plot the distribution of hunter-gatherer population density.
 par(mar=c(4,4,3,1))
 hist(
   hgdata$densityC,
-  main="Distribution of hunter-gatherer/n population density",
+  main="Distribution of hunter-gatherer\n population density",
   nclass=31,
   xlab="Population density (#/100km2)", col="darkgrey", cex.main=0.8)
 ```
-```{r}
-# Remove clear outliers
-hgdata <- hgdata[hgdata$densityC < 300,]
-# Extract coordinates from the data
-coords <- hgdata[,c("longitude","latitude")]
-```
+
 ## Combined data of population density and environmental predictors.
 Here, we first extract values of the three environmental variables for locations of hunter-gatherer groups
-in the ethnographic data.Then, we combine population density with environmental variables to form the
+in the ethnographic data. Then, we combine population density with environmental variables to form the
 primary dataset used in the analyses.
 ```{r}
 # Make a raster stack of environmental variables
 predictors <- stack(nppRast, bioDRast, pathoRast)
 # Extract environmental information for hunter-gatherer populations
-predictordata <- as.data.frame(extract(predictors,coords,layer=1,nl=3))
+predictordata <- as.data.frame(raster::extract(predictors,coords,layer=1,nl=3))
 names(predictordata) <- c("npp", "biodiv", "pathos")
 # Combine hunter-gatherer and environmental data
 data <- cbind(hgdata, predictordata)
@@ -712,8 +777,7 @@ spatialCorrectL(modelList6,data.high$longitude,data.high$latitude)[[2]][[2]]
 # Effects on pathogen stress.
 spatialCorrectL(modelList6,data.high$longitude,data.high$latitude)[[3]][[2]]
 ```
-This last (m6) will our final model for high productivity, because analysis of spatial autocor-
-relation suggests that all paths are significant even when spatial autocorrelation is taken into account.
+This last (m6) will our final model for high productivity, because analysis of spatial autocorrelation suggests that all paths are significant even when spatial autocorrelation is taken into account.
 ```{r}
 plot(m6)
 ```
@@ -730,19 +794,20 @@ fit.dens.high2 <- lm(ldensityC ~ npp + biodiv + pathos, data=data[data$nrg=="hi"
 # Partial residual plots for models that include also non-significant predictors.
 # The same code can be applied to the models including only significant predictors
 par(mfrow=c(2,3), mar=c(4,4,3,0.5))
-visreg(fit.dens.low2, "npp", points=list(cex=0.8, pch=1, col="black"), xlab="",
-  ylab="ln(Pop. density)", ylim=c(-2,6), xlim=c(100,1500))
-visreg(fit.dens.low2, "biodiv", points=list(cex=0.8, pch=1, col="black"),
-  main="Low-productivity", xlab="", ylab="", ylim=c(-2,6), xlim=c(0,0.5), yaxt="n")
-visreg(fit.dens.low2, "pathos", points=list(cex=0.8, pch=1, col="black"),
-  xlab="", ylab="", ylim=c(-2,6), xlim=c(-1,1), yaxt="n")
-visreg(fit.dens.high2, "npp", points=list(cex=0.8, pch=1, col="black"),
-  xlab="NPP", ylab="ln(Pop. density)", ylim=c(0,6))
-visreg(fit.dens.high2, "biodiv", points=list(cex=0.8, pch=1, col="black"),
-  main="High-productivity", xlab="Biodiversity", ylab="", ylim=c(0,6),
-  xlim=c(0.1,0.7), yaxt="n")
-visreg(fit.dens.high2, "pathos", points=list(cex=0.8, pch=1, col="black"),
-  xlab="Pathogens", ylab="", ylim=c(0,6), xlim=c(-1,0.2), yaxt="n")
+## TODO: Is visreg compatible with R 4.1.0?? I get an error in the following lines.
+# visreg(fit.dens.low2, xvar="npp", points=list(cex=0.8, pch=1, col="black"), xlab="",
+#   ylab="ln(Pop. density)", ylim=c(-2,6), xlim=c(100,1500))
+# visreg(fit.dens.low2, "biodiv", points=list(cex=0.8, pch=1, col="black"),
+#   main="Low-productivity", xlab="", ylab="", ylim=c(-2,6), xlim=c(0,0.5), yaxt="n")
+# visreg(fit.dens.low2, "pathos", points=list(cex=0.8, pch=1, col="black"),
+#   xlab="", ylab="", ylim=c(-2,6), xlim=c(-1,1), yaxt="n")
+# visreg(fit.dens.high2, "npp", points=list(cex=0.8, pch=1, col="black"),
+#   xlab="NPP", ylab="ln(Pop. density)", ylim=c(0,6))
+# visreg(fit.dens.high2, "biodiv", points=list(cex=0.8, pch=1, col="black"),
+#   main="High-productivity", xlab="Biodiversity", ylab="", ylim=c(0,6),
+#   xlim=c(0.1,0.7), yaxt="n")
+# visreg(fit.dens.high2, "pathos", points=list(cex=0.8, pch=1, col="black"),
+#   xlab="Pathogens", ylab="", ylim=c(0,6), xlim=c(-1,0.2), yaxt="n")
 ```
 ```{r}
 # Predictive power
@@ -820,6 +885,7 @@ summ(linear.m, vifs=TRUE, center=TRUE)
 Model diagnostics and interactive effects show that the model performs reasonably well and that the
 relationships between variables resemble to that of the SEM results.
 ```{r}
+library(car)
 par(mfrow=c(1,2))
 qqPlot(linear.m, main="QQ Plot", col="black",pch=0,cex=2, col.lines="red",envelope=F,
 las=1,line="quartiles")
@@ -1018,19 +1084,28 @@ globalNA$ldensitylm <- NA
 globalNA$ldensitysvm <- NA
 # Subset all the non-NA:s as a separate dataset.
 global.data2 <- as.data.frame(global.data[complete.cases(global.data),])
+rm(global.data)
 row.names(global.data2) <- NULL
 # Predict h-g population density using the fitted model algorithms (see above)
 global.data2$ldensitylm <- predict(lm.mod, newdata=global.data2)
 global.data2$ldensitysvm <- predict(svm.mod, type="response", newdata=global.data2)
 # Combine predictions and NA:s
 global.preds <- rbind(global.data2,globalNA)
+rm(global.data2)
+rm(globalNA)
 # Calculate ensemble projection (mean of three predictions)
 global.preds$lensemble <- apply(global.preds[,6:7], 1, mean)
+library(ggplot2)
+ggplot(global.preds) + geom_raster(aes(x=x, y=y, fill=npp))
+```
+```{r}
 # Add variable indicating high population density areas (pop.dens. > 85th percentile)
 global.preds$hidens <- ifelse(global.preds$lensemble > quantile(global.preds$lensemble,
 0.85, na.rm=T),1,0)
 # Rasterize the global projection
-global.stack <- rasterFromXYZ(global.preds)
+global.stack <- rasterFromXYZ(global.preds[,c("x","y","lensemble")], crs="+proj=longlat +datum=WGS84")
+
+plot(global.stack)
 ```
 Next, the global map pf predicted population density. The same code can be used for creating maps of LM
 and SVR predictions individually.
@@ -1044,19 +1119,18 @@ URL <- paste(
   "https://www.naturalearthdata.com",
   "http//www.naturalearthdata.com",
   "download/50m/physical",
-  "ne_50m_glaciated_areas.zip?version=2.0.0",
-  # I had problems downloading the current version, but 2.0.0 I could get.
+  "ne_50m_glaciated_areas.zip",
+  # I had problems downloading the current version, but 2.0.0 I could get: ?version=2.0.0
   sep="/")
 wd <- getwd()
-td <- tempdir()
 setwd(td)
-temp <- tempfile(fileext = ".zip")
-download.file(URL, temp, mode = "wb")
+temp <- "ne_50m_glaciated_areas.zip"
+if (!file.exists(temp)) {
+  download.file(URL, temp, mode = "wb")
+}
 unzip(temp)
-shp <- dir(tempdir(), "*.shp$")
-lyr <- sub(".shp$", "", shp)
-glaciers <- readOGR(dsn = shp, layer = lyr)
-unlink(dir(td))
+lyr <- "ne_50m_glaciated_areas"
+glaciers <- readOGR(dsn = "ne_50m_glaciated_areas.shp", layer = lyr)
 setwd(wd)
 crs(glaciers) <- "+proj=longlat +datum=WGS84"
 ```
@@ -1065,7 +1139,38 @@ crs(glaciers) <- "+proj=longlat +datum=WGS84"
 steps = 12
 
 # Take ensemble projection as a separate layer
-lpdensity <- global.stack[[6]]
+lpdensity <- global.stack
+
+writeRaster(lpdensity, "lpdensity.tif", overwrite=T)
+```
+
+```{r}
+library(DBI)
+con <- dbConnect(RSQLite::SQLite(), "../compute_distances/migration-network.sqlite")
+
+res <- dbSendQuery(con, "SELECT node_id, latitude, longitude FROM nodes WHERE latitude IS NOT NULL AND longitude IS NOT NULL AND h3latitude IS NOT NULL AND h3longitude IS NOT NULL")
+coords <- dbFetch(res)
+coords <- SpatialPointsDataFrame(
+  coords = coords[,c("longitude", "latitude")],
+                                 data=coords, proj4string = CRS("+proj=longlat +datum=WGS84"))
+
+coords$popdensity <- raster::extract(lpdensity, coords, method="bilinear", na.rm=T)
+
+coords[is.na(coords$popdensity),"popdensity"] <- krige(
+  popdensity~1, coords[!is.na(coords$popdensity),], coords[is.na(coords$popdensity),]
+)$var1.pred
+
+coords$popdensity <- exp(coords$popdensity)
+
+dbWriteTable(con, "nodes_with_density", as.data.frame(coords),
+             overwrite=T)
+
+ggplot(as.data.frame(coords)) +
+  geom_point(aes(x=longitude, y=latitude, colour=popdensity), size=0.1) + 
+  scale_color_viridis_c(trans = "log")
+```
+
+```{r}
 # Define breaks in the ln(population density)
 t.steps <- 0:steps
 x.min <- cellStats(lpdensity, stat = "min")
@@ -1266,6 +1371,9 @@ bio.effectLABS <- abs(bio.effectL)
 #### Limiting effect of pathogens in the global dataset.
 ```{r}
 glb.data.opti.pat <- as.data.frame(predictors, xy=TRUE)
+
+rm(predictors)
+
 names(glb.data.opti.pat) <- c("x","y","npp","biodiv","pathos")
 glb.pat.opti.NA <- as.data.frame(glb.data.opti.pat[!complete.cases(glb.data.opti.pat),])
 row.names(glb.pat.opti.NA) <- NULL
@@ -1280,6 +1388,9 @@ newdata=glb.data2.opti.pat)
 glb.preds.pat.opti <- rbind(glb.data2.opti.pat,glb.pat.opti.NA)
 glb.preds.pat.opti$lensemble <- apply(glb.preds.pat.opti[,6:7], 1, mean)
 pat.effectL <- glb.preds.pat.opti$lensemble-global.preds$lensemble
+
+rm(global.preds)
+
 pat.effectLABS <- abs(pat.effectL)
 ```
 #### Scaling and plotting of the limiting effects
@@ -1408,13 +1519,14 @@ URL <- paste("https://storage.googleapis.com",
 wd <- getwd()
 td <- tempdir()
 setwd(td)
-temp <- tempfile(fileext = ".zip")
-download.file(URL, temp, mode="wb")
+temp <- "Ecoregions2017.zip"
+if (!file.exists(temp)) {
+  download.file(URL, temp, mode="wb")
+}
 unzip(temp)
 shp <- dir(tempdir(), "*.shp$")
 lyr <- sub(".shp$", "", shp)
 ecozon <- readOGR(dsn=shp, layer=lyr)
-unlink(dir(td))
 setwd(wd)
 ```
 ```{r}

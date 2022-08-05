@@ -12,10 +12,16 @@ impl std::fmt::Debug for crate::Family {
         f.debug_struct("Family")
             .field("descendence", &self.descendence)
             .field("size", &self.effective_size)
-            .field("seasons_till_next_child", &self.seasons_till_next_child)
             .field("location", &self.location)
             .field("culture", &format_args!("{:020b}", &self.culture))
             .field("stored_resources", &self.stored_resources)
+            .field("last_harvest", &self.last_harvest)
             .finish()
+    }
+}
+
+impl std::fmt::Debug for crate::Culture {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        self.in_memory.fmt(f)
     }
 }

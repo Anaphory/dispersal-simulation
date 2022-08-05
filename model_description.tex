@@ -60,10 +60,11 @@
 
 \title{An Agent-Based Simulation for emergent culture areas}
 \date{\today}
-\author[1]{Gereon A. Kaiping}
-%\author[1]{Peter Ranacher}
-%\author[2]{David Inman}
+\author[1,2]{Gereon A. Kaiping}
+%\author[1,2]{Peter Ranacher}
+%\author[3]{David Inman}
 \affil[1]{Geographic Information Science Center, Universität Zürich, CH}
+\affil[2]{NCCR Evolving Language}
 %\affil[2]{Institut für vergleichende Sprachwissenschaft, Universität Zürich, CH}
 
 \begin{document}
@@ -87,21 +88,21 @@ basis of small-scale human interactions, however, are not understood.
 Agent-Based Models (ABM) \parencite{} can be a useful tool for the investigation
 of complex systems not otherwise accessible to the researcher \parencite{}. One
 area of application for agent-based simulations is in theoretical biology and
-adjacent fielnds, where experiments cannot be conducted due to the scales
+adjacent fields, where experiments cannot be conducted due to the scales
 involved. ABMs have been fruitfully applied to study the evolution of
 cooperation \parencite{}, culture \parencite{}. In the wider historical
 sciences, ABMs can help archeologists and paleontolgists interpret scarce data
 \parencite{cegielski2016rethinking,barcelo2016simulating}.
 
 In historical linguistics, simulation and other highly computational methods
-have only become part of the toolbox, starting with the availability of big
-cross-linguistic databases and methods taken over from bioinformatics
+have only recently become part of the toolbox, starting with the availability of big
+cross-linguistic databases and methods taken from bioinformatics
 \parencite{}. In this field, Agent-Based Models have been applied to study very
 specific linguistic changes
 \cite{bloem2015agentbased,feltgen2017modeling,grim2011simulating,radulescu2016modelling,vantrijp2016evolution}
 or extremely abstract, focussing on evolutionary dynamics
 \cite{arita1998evolution,castello2013agentbased,javarone2014competitive}.
-However, the statistical methodology applied eg. by studies of language
+However, the statistical methodology applied eg.\ by studies of language
 phylogeny largely fall into two camps: Many models are taken over from
 biological evolution and insufficiently grounded in linguistic reality. Others
 are justified by mathematical simplicity, but have not been tested for
@@ -110,19 +111,24 @@ abstract statistical methods can be validated against, will help bridge the gap
 between small-scale linguistic processes and large-scale statistical analyses.
 
 In this article, we present an Agent-Based Model in which the spatial
-distribution of cultures on the continent scale, in the shape of realistically
-sized areas with internally coherent culture or language, arise from low-level
-demographic and migratory processes. \emph{Find a better phrase to describe the
-  research gap:} While various models combining two of the relevant aspects
-exist and a small number of models combining three of the aspects, we
-incorporates all four of geography, culture, migration, and demographics in a
-bottom-up model. \emph{Previous literature is the one in \cref{s:earlier} – Each
-  needs to be classified by which topics it touches on and which are missing.}
+distribution of languages on the continent scale, in the shape of realistically
+sized areas with internally language, arise from low-level demographic and
+migratory processes. 
+While various models combining two of the relevant aspects exist and a small
+number of models combining three of the aspects, we incorporates all four of
+geography, culture, migration, and demographics in a bottom-up model.
+In particular, our model permits a dynamic equilibrium, where the entire
+geographic space is populated, but migration and language change continue to
+form the linguistic landscape.
+\emph{Previous literature is the one in \cref{s:earlier} – Each needs to be
+  classified by which topics it touches on and which are missing.}
 
 As such, our model provides a first step towards understanding the patterns of
 language diversification, spread, and extinction. These processes are important
-factors in the large-scale dynamics of language evolution. In addition to
-providing causal understanding of cultural diversity, they directly inform the
+factors in the large-scale dynamics of language evolution, and a computational
+model will thus contribute to our understanding of the causes and factors of
+linguistic diversity.
+In addition, these factors directly inform the
 shape of tree priors in Bayesian phylogenetics. This burgeoning field
 \parencite{jager,bouckaert,gray,sino-tibetan} grew from the application of
 bioinformatics tools to linguistic data. As such, the methodology still heavily
@@ -141,15 +147,15 @@ Being a first step in this direction, the model presented here has three major r
   \parencite{} and thus directly or indirectly influenced cultural diversity in
   most parts of the world. However, this development is somewhat recent in the
   scope of human history. More importantly for the purposes of this initial
-  model, agriculture would vastly increases the complexity of the model, because
+  model, agriculture would vastly increase the complexity of the model, because
   it would add a feedback loop between culture and carrying capacity. This
   additional complexity will be necessary for a full model of language
   dispersal, but in order to piece apart the various influences, an iterative
   approach will be necessary and we start with the simpler model.
-\item No explicit consideration of language contact (additional complexity, and
-  no reliable quantitative data) – interactions between cultures arise from the
-  individual level, but there is no prestige/warfare/trade/… between cultural
-  groups that would tie in with different scenarios of cultural contact
+\item When different languages meet, there are only three possible effects:
+  Complete assimilation, warfare, or mutual avoidance. The model includes no
+  intermediate result, where languages partially assimilate due to
+  prestige/warfare/trade/… between families of different culture.
 \item no complex model of culture (not focus of the analysis, no reliable
   quantitative results either) – more detailed description and justification of
   culture in the model later.
@@ -160,7 +166,7 @@ The model is designed with extension to more concrete research questions in
 mind. In the current, first stage, the purpose of the model is to investigate
 how languages disperse and split.
 
-The structure of this article is as follows. \Cref{odd} provides the model
+The structure of this article is as follows. The following section provides the model
 description according to the revised ODD protocol
 \parencite{grimm2006standard,grimm2010odd}, a top-down description protocol for
 agent-based models starting with an overview and ending with the details of

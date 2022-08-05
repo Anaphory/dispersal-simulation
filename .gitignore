@@ -31,3 +31,14 @@ target/
 
 *.tif
 *.zip
+_minted-model_description/
+_markdown_model_description/
+
+supplement/dispersal_model_rust/plots/
+supplement/gavin2017processbased/output*.png
+*.mp4
+
+*.wkb
+
+*0.json
+
