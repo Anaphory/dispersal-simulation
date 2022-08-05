@@ -16,45 +16,35 @@ fn read_graph_from_db(
         "/home/gereon/Public/settlement-of-americas/supplement/compute_distances/network.sqlite",
         rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
     );
-    let conn: rusqlite::Connection;
-    match try_conn {
+    let conn: rusqlite::Connection = match try_conn {
         Err(e) => {
             return Err(e.to_string());
         }
-        Ok(k) => {
-            conn = k;
-        }
-    }
+        Ok(k) => k,
+    };
 
     let mut graph: MovementGraph = MovementGraph::default();
 
-    let mut nodes_stmt;
-    match conn.prepare(concat!(
+    let mut nodes_stmt = match conn.prepare(concat!(
         "SELECT node_id, longitude, latitude FROM nodes ",
         "WHERE ? < longitude AND longitude < ? AND ? < latitude AND latitude < ? ",
     )) {
         Err(e) => {
             return Err(e.to_string());
         }
-        Ok(k) => {
-            nodes_stmt = k;
-        }
-    }
+        Ok(k) => k,
+    };
 
-    let mut eco_stmt;
-    match conn.prepare(
+    let mut eco_stmt = match conn.prepare(
         "SELECT ecoregion, population_capacity FROM ecology WHERE node = ? AND ecoregion != 999",
     ) {
         Err(e) => {
             return Err(e.to_string());
         }
-        Ok(k) => {
-            eco_stmt = k;
-        }
-    }
+        Ok(k) => k,
+    };
 
-    let mut dist_stmt;
-    match conn.prepare(concat!(
+    let mut dist_stmt = match conn.prepare(concat!(
         "SELECT node1, node2, min(travel_time) ",
         "FROM edges ",
         "JOIN nodes ON node1 = node_id ",
@@ -64,10 +54,8 @@ fn read_graph_from_db(
         Err(_) => {
             return Err("Could not prepare dist statement".to_string());
         }
-        Ok(k) => {
-            dist_stmt = k;
-        }
-    }
+        Ok(k) => k,
+    };
 
     /*
     let data = match ecology::load_density_tif() {

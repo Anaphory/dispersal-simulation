@@ -13,9 +13,9 @@ impl std::fmt::Debug for crate::Family {
             .field("descendence", &self.descendence)
             .field("size", &self.effective_size)
             .field("location", &self.location)
-            .field("history", &self.history)
             .field("culture", &format_args!("{:020b}", &self.culture))
             .field("stored_resources", &self.stored_resources)
+            .field("last_harvest", &self.last_harvest)
             .finish()
     }
 }

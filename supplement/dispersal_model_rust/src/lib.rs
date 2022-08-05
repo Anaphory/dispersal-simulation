@@ -1,3 +1,9 @@
+// IDEAS:
+// every agent stores past interactions, plays tit-for-tat
+// Start at “cooperate with self”
+// (choose to play cooperator/defector/loner in public goods game to extract resources)
+// Store a base strategy, starting L
+// Base strategy changes HOW?
 /*!
 
 Model Description
@@ -59,7 +65,6 @@ project we set out here, we need the following ingedients.
 // Load useful modules
 
 #![allow(clippy::redundant_field_names, clippy::implicit_hasher)]
-#![feature(drain_filter)]
 
 use dashmap::DashMap;
 use serde_derive::{Deserialize, Serialize};
@@ -250,7 +255,6 @@ level of the band and is distributed to the individual families after the fact.
 pub struct Band<'a> {
     pub families: Vec<&'a mut Family>,
     pub culture: Culture,
-    pub total_stored: OneYearResources,
 }
 /**
 ### 2.3 Cultures
@@ -345,11 +349,7 @@ fn step(
     >,
     p: &Parameters,
     t: Seasons,
-    nearby_cache: &mut DashMap<
-        NodeId,
-        Vec<NodeId>,
-        std::hash::BuildHasherDefault<FxHasher>,
-    >,
+    nearby_cache: &mut DashMap<NodeId, Vec<NodeId>, std::hash::BuildHasherDefault<FxHasher>>,
     o: &observation::Settings,
 ) -> DashMap<
     NodeId,
@@ -375,11 +375,7 @@ fn update_each_family_step(
         FxHashMap<Culture, (usize, OneYearResources)>,
         std::hash::BuildHasherDefault<FxHasher>,
     >,
-    nearby_cache: &mut DashMap<
-        NodeId,
-        Vec<NodeId>,
-        std::hash::BuildHasherDefault<FxHasher>,
-    >,
+    nearby_cache: &mut DashMap<NodeId, Vec<NodeId>, std::hash::BuildHasherDefault<FxHasher>>,
     p: &Parameters,
 ) {
     let cc: DashMap<NodeId, usize, std::hash::BuildHasherDefault<FxHasher>> = DashMap::default();
@@ -423,6 +419,7 @@ patches recover advance to the next season according to Submodule 7.6. This
 concludes a time step.
 
  */
+use rayon::iter::{IntoParallelIterator, IntoParallelRefMutIterator};
 fn distribute_each_patch_resources_step(
     families: &mut Vec<Family>,
     patches: &mut DashMap<NodeId, Patch>,
@@ -448,9 +445,7 @@ fn distribute_each_patch_resources_step(
 
     let stored_resources = DashMap::default();
     let cultures_by_location: FxHashMap<NodeId, FxHashMap<Culture, usize>> = families_by_location
-        // TODO: Change – remove bridge – when DashMap directly supports parallel iteration
-        .into_iter()
-        .par_bridge()
+        .into_par_iter()
         .map(|(patch_id, families)| {
             let mut cc = FxHashMap::default();
 
@@ -463,7 +458,10 @@ fn distribute_each_patch_resources_step(
                 submodels::ecology::adjust_culture(group, p);
                 let group_size = group.families.iter().map(|f| f.effective_size).sum();
                 cc.insert(group.culture.clone(), group_size);
-                cs.insert(group.culture.clone(), (group_size, group.total_stored));
+                cs.insert(
+                    group.culture.clone(),
+                    (group_size, OneYearResources::default()),
+                );
             }
 
             match patches.get_mut(&patch_id) {
@@ -593,39 +591,39 @@ mod emergence {
 
     /**
 
-                                        The main emergent property will be culturally somewhat uniform territories. We
-                                        expect that the interplay of migration, cooperation and cultural similarity
-                                        leads to regions sharing similar cultures, with noticeable boundaries. This
-                                        means that the plot of cultural distances vs. geographical distances should
-                                        therefore show small cultural distances for small geographical distances. There
-                                        should be a critical geographical distance of cohesion where the distribution of
-                                        cultural distances becomes bimodal, with one mode being lower than the
-                                        cooperation threshold and one mode above the cooperation threshold. For large
-                                        geographical distances, the cultural distances should be high, but with a big
-                                        variance. The critical geographical distance is likely to depend on the region,
-                                        being larger in more marginal environments where migration is more frequent.
+                                                                                    The main emergent property will be culturally somewhat uniform territories. We
+                                                                                    expect that the interplay of migration, cooperation and cultural similarity
+                                                                                    leads to regions sharing similar cultures, with noticeable boundaries. This
+                                                                                    means that the plot of cultural distances vs. geographical distances should
+                                                                                    therefore show small cultural distances for small geographical distances. There
+                                                                                    should be a critical geographical distance of cohesion where the distribution of
+                                                                                    cultural distances becomes bimodal, with one mode being lower than the
+                                                                                    cooperation threshold and one mode above the cooperation threshold. For large
+                                                                                    geographical distances, the cultural distances should be high, but with a big
+                                                                                    variance. The critical geographical distance is likely to depend on the region,
+                                                                                    being larger in more marginal environments where migration is more frequent.
 
-                                        Underlying the model is a fission-fusiom model of group dynamics
-                                        [@crema2014simulation], so we expect a similar analysis to apply to our model.
-                                        Crema observes actual fission-fusion cycles only for a small part of the
-                                        parameter space, so it is not clear whether we should expect them for our model.
+                                                                                    Underlying the model is a fission-fusiom model of group dynamics
+                                                                                    [@crema2014simulation], so we expect a similar analysis to apply to our model.
+                                                                                    Crema observes actual fission-fusion cycles only for a small part of the
+                                                                                    parameter space, so it is not clear whether we should expect them for our model.
 
-                                        > Are there other results that are more tightly imposed by model rules and
-                                        > hence less dependent on what individuals do, and hence ‘built in’ rather
-                                        > than emergent results?
+                                                                                    > Are there other results that are more tightly imposed by model rules and
+                                                                                    > hence less dependent on what individuals do, and hence ‘built in’ rather
+                                                                                    > than emergent results?
 
-                                        Cooperation in this model is an entirely imposed feature. It is an important
-                                        question in theoretical biology and related fields under what circumstances
-                                        cooperation can prevail over defectors and other free-riders, and it may even
-                                        affect the dispersal of languages (though more likely on the level of
-                                        collectives, where the interactions between groups of different cultures range
-                                        from assimilation and language shift all the way to war and lethal violence).
-                                        But overall, human societies seem to be quite good at maintaining large-scale
-                                        cooperation, so we consider the question irrelevant for the purpsoses of the
-                                        present model. Cooperation is thus not a decision of the agents, but entirely
-                                        determined by the linguistic distance between them.
+                                                                                    Cooperation in this model is an entirely imposed feature. It is an important
+                                                                                    question in theoretical biology and related fields under what circumstances
+                                                                                    cooperation can prevail over defectors and other free-riders, and it may even
+                                                                                    affect the dispersal of languages (though more likely on the level of
+                                                                                    collectives, where the interactions between groups of different cultures range
+                                                                                    from assimilation and language shift all the way to war and lethal violence).
+                                                                                    But overall, human societies seem to be quite good at maintaining large-scale
+                                                                                    cooperation, so we consider the question irrelevant for the purpsoses of the
+                                                                                    present model. Cooperation is thus not a decision of the agents, but entirely
+                                                                                    determined by the linguistic distance between them.
 
-                                        */
+                                                                                    */
     /** Compute the Hamming distance between two culture vectors */
     #[cfg_attr(target_arch = "x86_64", target_feature(enable = "popcnt"))]
     pub unsafe fn distance(c1: &Culture, c2: &Culture) -> u32 {
@@ -664,6 +662,8 @@ mod adaptation {
     through sharing instead benefit other families of the same culture.
 
     */
+    use std::sync::Arc;
+
     pub fn decide_on_moving<'a>(
         family: &Family,
         storage: &DashMap<
@@ -673,40 +673,55 @@ mod adaptation {
         >,
         known_destinations: &'a [NodeId],
         patches: &'a DashMap<NodeId, Patch>,
+        quality_cache: &Arc<DashMap<NodeId, OneYearResources>>,
         p: &Parameters,
         population: &DashMap<NodeId, usize, std::hash::BuildHasherDefault<FxHasher>>,
     ) -> (NodeId, OneYearResources) {
         let travel_costs = sensing::many_nearby_locations(family.location, p);
 
-        let destination_expectation = known_destinations
-            .iter()
-            .map(|destination_id| (destination_id, None))
-            .chain(
-                family
-                    .history
-                    .iter()
-                    .map(|(destination_id, expected_harvest)| {
-                        (destination_id, Some(expected_harvest))
-                    }),
-            )
-            .filter_map(|(destination_id, expected_harvest)| {
-                if let Some(cost) = travel_costs.get(destination_id) {
-                    let harvest = match expected_harvest {
-                        Some(x) => *x,
-                        None => objectives::destination_quality(
-                            destination_id,
-                            family,
-                            storage,
-                            *population.get(destination_id).as_deref().unwrap_or(&0),
-                            patches.get(destination_id).as_deref().unwrap(),
-                            p,
-                        ),
-                    };
-                    Some((destination_id, harvest, cost))
-                } else {
-                    None
-                }
-            });
+        // 0.5 = memory_decay_per_season ^ memory_half_life
+        // Assuming a half life of 2 years:
+        let memory_decay_per_season = (0.5_f64).powf(p.season_length_in_years / 2.0);
+        let mut memory = 1.0;
+
+        let destination_expectation =
+            known_destinations
+                .iter()
+                .map(|destination_id| (destination_id, None))
+                .chain(family.history.iter().rev().filter_map(
+                    |(destination_id, expected_harvest)| {
+                        if memory < f64::EPSILON {
+                            return None;
+                        }
+                        if fastrand::f64() < memory {
+                            memory *= memory_decay_per_season;
+                            Some((destination_id, Some(expected_harvest)))
+                        } else {
+                            memory *= memory_decay_per_season;
+                            None
+                        }
+                    },
+                ))
+                .filter_map(|(destination_id, expected_harvest)| {
+                    if let Some(cost) = travel_costs.get(destination_id) {
+                        let harvest = if let Some(x) = expected_harvest {
+                            *x
+                        } else {
+                            objectives::destination_quality(
+                                destination_id,
+                                family,
+                                storage,
+                                *population.get(destination_id).as_deref().unwrap_or(&0),
+                                patches.get(destination_id).as_deref().unwrap(),
+                                p,
+                                quality_cache,
+                            )
+                        };
+                        Some((destination_id, harvest, cost))
+                    } else {
+                        None
+                    }
+                });
         best_location(destination_expectation, family.location)
     }
 }
@@ -829,13 +844,37 @@ mod objectives {
        environmental adaptation to the other families in the patch.
 
     */
-    pub fn expected_harvest(family: &Family, patch: &Patch, p: &Parameters) -> OneYearResources {
+    pub fn expected_harvest(patch: &Patch, p: &Parameters) -> OneYearResources {
         let harvestable_resources = patch.resources.values();
         harvestable_resources
-            .zip(&family.adaptation.entries)
-            .map(|((res, max_res), e)| (*res + *max_res * p.resource_recovery_per_season) * *e)
+            .map(|(res, max_res)| (*res + *max_res * p.resource_recovery_per_season))
             .sum::<OneYearResources>()
     }
+
+    pub fn has_enemies(
+        i: &NodeId,
+        culture: &Culture,
+        storage: &DashMap<
+            NodeId,
+            FxHashMap<Culture, (usize, OneYearResources)>,
+            std::hash::BuildHasherDefault<FxHasher>,
+        >,
+        cooperation_threshold: u32,
+    ) -> bool {
+        match storage.get(i) {
+            None => false,
+            Some(population) => {
+                for other_culture in population.keys() {
+                    if !emergence::will_cooperate(culture, other_culture, cooperation_threshold) {
+                        return true;
+                    }
+                }
+                false
+            }
+        }
+    }
+
+    use std::sync::Arc;
     /**
     This expected quality is modified to account for the risk of encountering
     enemies. If the cooperative families are not the majority in the destination,
@@ -860,6 +899,7 @@ mod objectives {
         population: usize,
         patch: &Patch,
         p: &Parameters,
+        quality_cache: &Arc<DashMap<NodeId, OneYearResources>>,
     ) -> OneYearResources {
         let pop_at_destination = population
             + (if family.location == *i {
@@ -868,16 +908,14 @@ mod objectives {
                 family.effective_size
             });
 
-        let (friends, stored_by_friendlies_except_me) = from_friends(i, family, storage, p);
-
-        let mut quality = stored_by_friendlies_except_me / friends as f64
-            + expected_harvest(family, patch, p) / pop_at_destination as f64;
-
-        if pop_at_destination > 2 * friends {
-            quality = quality * (p.enemy_discount).powi((pop_at_destination - 2 * friends) as i32);
+        if has_enemies(i, &family.culture, storage, p.cooperation_threshold) {
+            OneYearResources::default()
+        } else {
+            *quality_cache
+                .entry(*i)
+                .or_insert(expected_harvest(patch, p))
+                / pop_at_destination as f64
         }
-
-        quality
     }
 }
 /**
@@ -985,7 +1023,9 @@ mod sensing {
                     }
                 })
             })
-            .collect::<HashSet<NodeId>>().drain().collect()
+            .collect::<HashSet<NodeId>>()
+            .drain()
+            .collect()
     }
     /**
     #### Technical details on the maximum sensing distance
@@ -1027,6 +1067,7 @@ pub mod interaction {
     /**
     Agents interact in two different contexts.
 
+    THIS USED TO BE:
     During the migration phase (part 1 of the step, see [above]), agents avoid
     locations where speakers of their language are in the minority, and violently
     clash with speakers of other languages. They are attracted by locations where
@@ -1053,17 +1094,17 @@ pub mod interaction {
                 }
                 if stochasticity::fight_is_deadly(p.fight_deadliness) {
                     family.effective_size -= reduction;
-                    if family.effective_size == 0 {
-                        group.total_stored += family.stored_resources;
-                        family.stored_resources = OneYearResources::default();
-                    }
                 }
             }
         }
         join
     }
     /**
+    INSTEAD IT IS NOW:
+    During the migration phase, agents rate their target locations, 
+    */
 
+    /**
     In the resource extraction phase (part 2 of the step, see [above]), agents
     compete for limited resources. There is a maximum of resources that can be
     extracted from a patch, and the extracted resources are distributed among all
@@ -1091,7 +1132,6 @@ pub mod interaction {
 */
 pub mod stochasticity {
     use crate::Culture;
-    use rand::prelude::*;
     /**
 
     A core random component is the evolution of languages. Our model abstracts away
@@ -1101,15 +1141,15 @@ pub mod stochasticity {
 
     */
     pub fn time_till_next_mutation(culture_mutation_rate: f64) -> u32 {
-        random::<f64>().log(1. - culture_mutation_rate) as u32
+        fastrand::f64().log(1. - culture_mutation_rate) as u32
     }
     /**
     to random features in ‘linguistic genome’, which is just represented as a binary vector.
 
     */
     pub fn change_random_bitvec_component(c: &mut Culture) {
-        let i = rand::thread_rng().gen_range(0..c.in_memory.len());
-        let j = rand::thread_rng().gen_range(0..usize::BITS);
+        let i = fastrand::usize(0..c.in_memory.len());
+        let j = fastrand::u32(0..usize::BITS);
         let flip_j = 1 << j;
         match c.in_memory.get_mut(i) {
             None => {}
@@ -1124,7 +1164,7 @@ pub mod stochasticity {
 
     */
     pub fn select_pivot_family<F>(families: &[F]) -> &F {
-        let index = rand::thread_rng().gen_range(0..families.len());
+        let index = fastrand::usize(0..families.len());
         return families.get(index).unwrap();
     }
 
@@ -1137,28 +1177,28 @@ pub mod stochasticity {
 
        */
     pub fn recover_resources_proportion() -> f64 {
-        2. * rand::thread_rng().gen_range(0.0..1.0)
+        2.0 * fastrand::f64()
     }
     /**
      - uncertainty in perception when trying to discern whether a potential destination is valuable or not,
 
     */
     pub fn resource_uncertainty() -> f64 {
-        rand::thread_rng().gen_range(0.0..1.0)
+        fastrand::f64()
     }
     /**
      - warfare strategies and the deadliness of ambushes, and
 
     */
     pub fn fight_is_deadly(fight_deadliness: u32) -> bool {
-        rand::thread_rng().next_u32() < fight_deadliness
+        fastrand::u32(..) < fight_deadliness
     }
     /**
      - who arrives earlier or later at a given migration destination.
 
     */
     pub fn shuffle<P>(families: &mut Vec<P>) {
-        families.shuffle(&mut rand::thread_rng());
+        fastrand::shuffle(families);
     }
 }
 
@@ -1175,7 +1215,7 @@ pub mod stochasticity {
 
  */
 pub mod collectives {
-    use crate::{interaction, stochasticity, Band, Family, OneYearResources, Parameters};
+    use crate::{interaction, stochasticity, Band, Family, Parameters};
 
     /**
     Individual families with compatible languages form ‘bands’ when they are in the
@@ -1216,7 +1256,6 @@ pub mod collectives {
                     bands.push(Band {
                         culture: family.culture.clone(),
                         families: vec![family],
-                        total_stored: OneYearResources::default(),
                     });
                 }
                 Some(band) => {
@@ -1232,8 +1271,6 @@ pub mod collectives {
 
                 let mut bandsize = 0;
                 for family in &mut band.families {
-                    band.total_stored += family.stored_resources;
-                    family.stored_resources = OneYearResources::default();
                     bandsize += family.effective_size;
                 }
                 if bandsize > 0 {
@@ -1436,7 +1473,7 @@ pub fn initialization(p: Parameters, scale: f64) -> State {
                 effective_size: 5,
                 number_offspring: 0,
                 seasons_till_next_mutation: None,
-                stored_resources: OneYearResources::from(1.),
+                stored_resources: OneYearResources::from(10.),
                 adaptation: ecology::Ecovector::from(p.minimum_adaptation),
                 last_harvest: OneYearResources::default(),
             },
@@ -1450,7 +1487,7 @@ pub fn initialization(p: Parameters, scale: f64) -> State {
                 effective_size: 5,
                 number_offspring: 0,
                 seasons_till_next_mutation: None,
-                stored_resources: OneYearResources::from(1.),
+                stored_resources: OneYearResources::from(10.),
                 adaptation: ecology::Ecovector::from(p.minimum_adaptation),
                 last_harvest: OneYearResources::default(),
             },
@@ -1510,7 +1547,7 @@ pub mod submodels {
 
     Beyond traits directly interacting with the ecological niche of a society, there
     is significant literature on the interaction of some very specific cultural
-    traits (eg. Rusch (2014) on altruism and inter-group conflict, Watts et al.
+    traits (eg. @Rusch (2014) on altruism and inter-group conflict, Watts et al.
     (2016) on stratified societies and human sacrifice), but very few models that
     consider specific meaniningful cultural traits in agent-based, broad, and
     geographically expansive models. The closest to our goals here may be Hofstede
@@ -1615,6 +1652,8 @@ pub mod submodels {
                 std::hash::BuildHasherDefault<FxHasher>,
             >,
         ) -> Vec<Family> {
+            let cache = std::sync::Arc::new(DashMap::default());
+
             families
                 .par_iter_mut()
                 .filter_map(|mut family| {
@@ -1623,26 +1662,17 @@ pub mod submodels {
                         .or_insert_with(|| sensing::nearby_locations(family.location, p));
                     // println!("{:?}", *nearby);
 
-                    let (destination, cost) =
-                        adaptation::decide_on_moving(family, storage, &nearby, patches, p, cc);
+                    let (destination, cost) = adaptation::decide_on_moving(
+                        family, storage, &nearby, patches, &cache, p, cc,
+                    );
                     // println!("Family {:} moved to {:?}", family.descendence, destination);
 
-                    let family_location = family.location;
-                    match family
-                        .history
-                        .drain_filter(|(l, _)| l == &family_location)
-                        .last()
-                    {
-                        None => family.history.push((family.location, family.last_harvest)),
-                        Some((_, earlier_harvest)) => family.history.push((
-                            family.location,
-                            family.last_harvest * 0.5 + earlier_harvest * 0.5,
-                        )),
-                    };
-                    if family.history.len() > 14 {
-                        family.history =
-                            family.history[family.history.len() - 10..family.history.len()].into()
-                    }
+                    family.history.push((
+                        family.location,
+                        family.last_harvest / family.effective_size as f64,
+                    ));
+                    family.stored_resources += family.last_harvest;
+                    family.last_harvest = OneYearResources::default();
                     family.location = destination;
                     family.stored_resources -= cost;
 
@@ -1659,11 +1689,12 @@ pub mod submodels {
                                 // TODO: Check that the center is at index 0
                                 &nearby[1..],
                                 patches,
+                                &cache,
                                 p,
                                 cc,
                             );
                             descendant.location = destination;
-                            family.stored_resources -= cost;
+                            descendant.stored_resources -= cost;
                             Some(descendant)
                         }
                     }
@@ -1684,20 +1715,27 @@ pub mod submodels {
                 None
             } else {
                 family.number_offspring += 1;
+                let resources_they_take =
+                    family.stored_resources * 2.0 / family.effective_size as f64;
+                family.stored_resources -= resources_they_take;
                 family.effective_size -= 2;
+                let time_to_grow_adult = (15. / season_length_in_years) as u32 + 1;
                 Some(Family {
                     descendence: format!("{}:{:}", family.descendence, family.number_offspring),
                     location: family.location,
-                    history: family.history.clone(),
-                    seasons_till_next_adult: (15. / season_length_in_years) as u32 + 1,
+                    history: family.history[family.history.len()
+                        - std::cmp::min(family.history.len(), time_to_grow_adult as usize)
+                        ..family.history.len()]
+                        .into(),
+                    seasons_till_next_adult: time_to_grow_adult,
                     culture: family.culture.clone(),
 
                     effective_size: 2,
                     number_offspring: 0,
                     seasons_till_next_mutation: None,
-                    stored_resources: OneYearResources::from(0.),
+                    stored_resources: resources_they_take,
                     adaptation: family.adaptation,
-                    last_harvest: family.last_harvest,
+                    last_harvest: OneYearResources::default(),
                 })
             }
         }
@@ -1751,37 +1789,38 @@ pub mod submodels {
 
         /**
 
-                                                                                This function models how much a family contributes to the group effort of
-                                                                                harvesting a particular ecoregion. The family's contribution is given by its
-                                                                                size, weighted with how well they know the ecoregion.
+                                                                                                                                                                        This function models how much a family contributes to the group effort of
+                                                                                                                                                                        harvesting a particular ecoregion. The family's contribution is given by its
+                                                                                                                                                                        size, weighted with how well they know the ecoregion.
 
-                                                                                */
+                                                                                                                                                                        */
         /**
-                                                                                        As a side effect, because this function is the one that knows about the family's
-                                                                                        size, it also adds that size to a counter. This counter is used for the
-                                                                                        per-culture census. (The caller knows the culture of the family.)
+                                                                                                                                                                                As a side effect, because this function is the one that knows about the family's
+                                                                                                                                                                                size, it also adds that size to a counter. This counter is used for the
+                                                                                                                                                                                per-culture census. (The caller knows the culture of the family.)
 
-                                                                                        ```rust
+                                                                                                                                                                                ```rust
 
-                                                                                        let mut family= model::Family::default();
-                                                                                        family.effective_size = 8;
-                                                                                        let mut sum_effort = 0;
-                                                                                        let (target, contribution) = model::raw_family_contribution(&mut family, 0, &mut sum_effort);
-                                                                                        assert_eq!(sum_effort, 8);
-                                                                                        *target += sum_effort as model::OneYearResources;
-                                                                                        assert_eq!(family.stored_resources, 8.0)
-                                                                                        ```
-                                                                                         */
+                                                                                                                                                                                let mut family= model::Family::default();
+                                                                                                                                                                                family.effective_size = 8;
+                                                                                                                                                                                let mut sum_effort = 0;
+                                                                                                                                                                                let (target, contribution) = model::raw_family_contribution(&mut family, 0, &mut sum_effort);
+                                                                                                                                                                                assert_eq!(sum_effort, 8);
+                                                                                                                                                                                *target += sum_effort as model::OneYearResources;
+                                                                                                                                                                                assert_eq!(family.stored_resources, 8.0)
+                                                                                                                                                                                ```
+                                                                                                                                                                                 */
         pub fn raw_family_contribution<'a>(
             family: &'a mut crate::Family,
             ecoregion: usize,
             sum_effort: &mut f64,
         ) -> (&'a mut OneYearResources, f64) {
+            // TODO: This means if there are multiple ecoregions, we forget more about the ones we are not in.
             family.adaptation = family.adaptation * 0.95;
             family.adaptation.entries[ecoregion] += 0.05;
             let contribution = family.effective_size as f64 * family.adaptation[ecoregion];
             *sum_effort += contribution;
-            (&mut family.stored_resources, contribution)
+            (&mut family.last_harvest, contribution)
         }
 
         pub fn adjust_culture(group: &mut crate::Band, p: &Parameters) {
@@ -1814,20 +1853,6 @@ pub mod submodels {
         where
             P: core::ops::DerefMut<Target = crate::Patch>,
         {
-            for group in &mut groups {
-                let mut sum_effort = 0.0;
-                let group_storage = group.total_stored;
-                let mut contributions: Vec<_> = group_contribution(
-                    group,
-                    crate::ecology::ATTESTED_ECOREGIONS,
-                    &mut sum_effort,
-                );
-
-                for (storage, contribution) in &mut contributions {
-                    **storage = group_storage * *contribution / sum_effort;
-                }
-            }
-
             for (ecoregion, (res, max_res)) in &mut patch.resources {
                 let mut total_squared_groups_effort = 1.0;
                 let mut work = groups
@@ -1860,8 +1885,8 @@ pub mod submodels {
                         );
                         assert!(coefficient > OneYearResources::from(0.));
                         // println!("coefficient: {:?}", coefficient);
-                        for (storage, contribution) in &mut contributions {
-                            **storage += coefficient * p.season_length_in_years * *contribution;
+                        for (harvest, contribution) in &mut contributions {
+                            **harvest = coefficient * p.season_length_in_years * *contribution;
                         }
                         let effort = coefficient * group_effort;
                         // println!("Harvest: {:?} (@ {:?}) from {:?}", effort, coefficient, res);
