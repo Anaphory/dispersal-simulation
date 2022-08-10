@@ -9,6 +9,9 @@ fn main() -> Result<(), String> {
         Err(e) => return Err(e.to_string()),
     };
 
+    // TODO: The Leapfrog theory suggests that the good patches are distributed
+    // much less evenly than the graph currently suggests. We should experiment
+    // with noise on the resources.
     let dispersal_graph: MovementGraph = match bincode::deserialize(&contents) {
         Ok(c) => c,
         Err(e) => return Err(e.to_string()),

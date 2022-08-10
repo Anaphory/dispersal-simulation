@@ -38,7 +38,7 @@
             maxcitenames=2,url=false,
             maxbibnames=99]{biblatex}
 \renewcommand*{\bibfont}{\small}
-\addbibresource{everything.bib}
+\addbibresource{Simulation.bib}
 
 \renewbibmacro*{doi+eprint+url}{%
   \printfield{doi}%
@@ -137,7 +137,7 @@ to maximum mathematical simplicity (in the case of uniform tree priors). Our
 model could be used to assess tree priors, which have some influence on inferred
 tree topologies and dates \cite{rama2018three}, and generally contribute to the
 current push for more linguistic models in language phylogenetics
-\parencite{stochasticdollo,dollowithlateraltransfers,neureiter,maurits-rakes,kaiping-tap}.
+\parencite{stochasticdollo,dollowithlateraltransfers,neureiter,maurits-rakes,kaiping-tap,kaiping-burstclock}.
 
 Being a first step in this direction, the model presented here has three major restrictions.
 \begin{enumerate}
@@ -152,13 +152,12 @@ Being a first step in this direction, the model presented here has three major r
   additional complexity will be necessary for a full model of language
   dispersal, but in order to piece apart the various influences, an iterative
   approach will be necessary and we start with the simpler model.
-\item When different languages meet, there are only three possible effects:
-  Complete assimilation, warfare, or mutual avoidance. The model includes no
-  intermediate result, where languages partially assimilate due to
-  prestige/warfare/trade/… between families of different culture.
-\item no complex model of culture (not focus of the analysis, no reliable
-  quantitative results either) – more detailed description and justification of
-  culture in the model later.
+\item We include no complex model of culture: Cultural features in a binary
+  vector (which supports evolutionary drift) is completely separate from the
+  between-group strategy of agents and from the adaptation to ecosystems.
+  There is not sufficient quantitative evidence to create a general model of
+  these three aspects of culture, and any such attempt would distract from the
+  model's focus and reduce its speed.
 \end{enumerate}
 
 As a summary, we construct a demographic migration model which includes culture.
