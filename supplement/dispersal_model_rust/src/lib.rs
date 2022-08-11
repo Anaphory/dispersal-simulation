@@ -138,13 +138,17 @@ relevant once it shows fundamentally reasonable dynamics.
  */
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Patch {
-    /// For every relevant terrestrial ecoregion area accessible from the node
-    /// location, the tuple of resources available for the next season, and the
-    /// maximum possible resources available in a season, both in OYR.
+/**
+
+For every relevant terrestrial ecoregion area accessible from the node location,
+the patch tracks the tuple of resources available for the next season, and the
+maximum possible resources available in a season, both in OYR.
+
+*/
     resources: FxHashMap<usize, (OneYearResources, OneYearResources)>,
 }
-
 /**
+
 ### 2.2 Families
 
 The main decision-making agents of the simulation are families
@@ -563,8 +567,9 @@ cross-terrain movement is more difficult, and marginal environments are less
 attractive to migrating agents and depleted quicker.
 
  */
-    /* TODO: Write a test where a single patch has a given carrying capacity,
-     * and a cooperating population grows to that capacity. */
+        /* TODO: Write a test where a single patch has a given carrying
+          capacity, and a cooperating population grows to that capacity. */
+        fn test_grow_patch_to_capacity() {}
 /**
 
 According to its purpose of providing a model for language dispersal and split,
@@ -618,8 +623,8 @@ It has been hypothesized that there are different demographic dispersal patterns
 for different periods in the settlement of the Americas. Presumably, the first
 humans dispersing in the Americas were spreading very fast, and various
 mechanisms have been proposed to explain this (eg. leapfrog spread to
-high-quality patches [@prates2020rapid;citations-therein], technology
-specializing on hunting migratory big game [jennings2008san], or a “kelp
+high-quality patches [@prates2020rapid;@citations-therein], technology
+specializing on hunting migratory big game [@jennings2008san], or a “kelp
 highway” facilitating southward movement along the west coast of the Americas
 [@erlandson2007kelp;@erlandson2015kelp]). For the early pre-historic
 hunter-gatherer groups, when their immediate neighborhood is persistently
@@ -644,6 +649,7 @@ of the uninhabited Americas which would be necessary to investigate different
 settlement time depsths and to compare the different early dispersal models.
 
  */
+        pub fn test_carrying_capacities_constant() {}
     }
 /**
 
@@ -1012,11 +1018,11 @@ one in the region.
 > how? [@grimm2010odd]
 
 INTERACTION STRATEGY UPDATING
+
  */
-
 mod learning {}
-
 /**
+
 ### 4.6 Prediction
 
 > Prediction is fundamental to successful decision-making; if an agent’s
@@ -1118,7 +1124,7 @@ not explicitly modelled.
 
 #### Technical details on the maximum sensing distance
 
-There is a maximum range on sensing: [@kelly2013, Table 4.1] (reproduced in the
+There is a maximum range on sensing: @kelly2013lifeways [Table 4.1] (reproduced in the
 supplementary material) lists mobility data for 70 hunter-gatherer groups,
 including figueres for the yearly territory of a group where that number could
 be inferred. Three quarters of the listed territories are about 2000 km² or
@@ -1157,12 +1163,11 @@ pub mod interaction {
 
 Agents interact in two different contexts.
 
-THIS USED TO BE:
-During the migration phase (part 1 of the step, see [above]), agents avoid
-locations where speakers of their language are in the minority, and violently
-clash with speakers of other languages. They are attracted by locations where
-speakers of their language have large resource stockpiles. These interactions
-are described in more detail in [Optimization] and [Adaptation].
+During the migration phase (part 1 of the step), agents decide where to migrate
+to based on the presence other agents. They are attracted by locations where
+they expect to play a “defector” strategy against agents currently located
+there, and avoid locations where they expect to play a “loner” strategy. These
+interactions are described in more detail in [Optimization] and [Adaptation].
 
 */
     pub fn encounter_maybe_join(family: &mut Family, group: &mut Band, p: &Parameters) -> bool {
@@ -1191,15 +1196,12 @@ are described in more detail in [Optimization] and [Adaptation].
     }
 /**
 
-INSTEAD IT IS NOW:
-During the migration phase, agents rate their target locations, 
-
 In the resource extraction phase (part 2 of the step, see [above]), agents
 compete for limited resources. There is a maximum of resources that can be
 extracted from a patch, and the extracted resources are distributed among all
 agents in that patch. This distribution is not proportional to the effective
-population size: Members of a bigger group of cooperators competing with a
-smaller band get an over-proportional part of the total extracted.
+population size: Members of a bigger band competing with a smaller band get an
+over-proportional part of the total extracted.
 
 */
     pub fn group_size_effect(raw_group_size: f64) -> f64 {
@@ -1221,21 +1223,21 @@ smaller band get an over-proportional part of the total extracted.
 */
 pub mod stochasticity {
     use crate::Culture;
-    /**
+/**
 
-    A core random component is the evolution of languages. Our model abstracts away
-    from the complexity of real-life language evolution and implements only a
-    minimal evolutionary model capable of inheritance and drift. As such, mutations
-    happen with a constant rate
+A core random component is the evolution of languages. Our model abstracts away
+from the complexity of real-life language evolution and implements only a
+minimal evolutionary model capable of inheritance and drift. As such, mutations
+happen with a constant rate
 
-    */
+*/
     pub fn time_till_next_mutation(culture_mutation_rate: f64) -> u32 {
         fastrand::f64().log(1. - culture_mutation_rate) as u32
     }
-    /**
-    to random features in ‘linguistic genome’, which is just represented as a binary vector.
+/**
+to random features in the ‘culture’, which is just represented as a binary vector.
 
-    */
+*/
     pub fn change_random_bitvec_component(c: &mut Culture) {
         let i = fastrand::usize(0..c.in_memory.len());
         let j = fastrand::u32(0..usize::BITS);
@@ -1245,45 +1247,51 @@ pub mod stochasticity {
             Some(x) => *x ^= flip_j,
         };
     }
-    /**
-    The linguistic assimilation, where families adopt linguistic features of other
-    families they have cooperated with, also relies on stochasticity to choose one
-    pivotal family whose linguistic features serve as representative for the whole
-    group.
+/**
 
-    */
+The linguistic assimilation, where families adopt linguistic features of other
+families they have cooperated with, also relies on stochasticity to choose one
+cultural feature in one family which the group adapts to.
+
+TODO: Instead, choose a random feature and adjust to the majority.
+
+*/
     pub fn select_pivot_family<F>(families: &[F]) -> &F {
         let index = fastrand::usize(0..families.len());
         return families.get(index).unwrap();
     }
 
-    /**
-    The other applications of stochasticity serve in the migration process to
-    introduce variability compatible with the real world, without having to model
-    the underlying causes, of
+/**
 
-     - ecological variability, where the availability of resources each season is not deterministic,
+The other applications of stochasticity serve in the migration process to
+introduce variability compatible with the real world, without having to model
+the underlying causes, of
 
-       */
+ - ecological variability, where the availability of resources each season is not deterministic,
+
+    */
     pub fn recover_resources_proportion() -> f64 {
         2.0 * fastrand::f64()
     }
     /**
-     - uncertainty in perception when trying to discern whether a potential destination is valuable or not,
+
+ - uncertainty in perception when trying to discern whether a potential destination is valuable or not,
 
     */
     pub fn resource_uncertainty() -> f64 {
         fastrand::f64()
     }
     /**
-     - warfare strategies and the deadliness of ambushes, and
+
+ - warfare strategies and the deadliness of ambushes, and
 
     */
     pub fn fight_is_deadly(fight_deadliness: u32) -> bool {
         fastrand::u32(..) < fight_deadliness
     }
     /**
-     - who arrives earlier or later at a given migration destination.
+
+ - who arrives earlier or later at a given migration destination.
 
     */
     pub fn shuffle<P>(families: &mut Vec<P>) {
@@ -1291,7 +1299,8 @@ pub mod stochasticity {
     }
 }
 
-/**
+    /**
+
 ### 4.10 Collectives
 
 > Do the individuals form or belong to aggregations that affect, and are
@@ -1305,25 +1314,25 @@ pub mod stochasticity {
  */
 pub mod collectives {
     use crate::{interaction, stochasticity, Band, Family, Parameters};
+/**
 
-    /**
-    Individual families with compatible languages form ‘bands’ when they are in the
-    same patch of land. Families are assigned band membership in random order,
-    joining the first band that they encounter which consists only of families with
-    a compatible language. As such, membership in bands has a stochastic component:
+Individual families may form ‘bands’ when they are in the
+same patch of land. Families are assigned band membership in random order,
+joining the first band that they encounter which consists only of families with
+a compatible language. As such, membership in bands has a stochastic component:
 
-    With a threshold of 1 and families with languages 00, 01, and 10, there are two
-    equally-likely compositons of bands. 01 and 10 are not compatible, because thee
-    languages differ in 2 features, and a family with language 00 will join
-    whichever of these two groups they encounter first.
+With a threshold of 1 and families with languages 00, 01, and 10, there are two
+equally-likely compositons of bands. 01 and 10 are not compatible, because thee
+languages differ in 2 features, and a family with language 00 will join
+whichever of these two groups they encounter first.
 
-    All other properties of a band are derived from the properties of its members,
-    but not always in a linear fashion (see eg. [Interaction]). Bands do not persist
-    beyond a single time step, they are aggregated after each migration step before
-    the resource extraction step to serve as a bookkeeping unit for resource
-    extraction and cultural change.
+All other properties of a band are derived from the properties of its members,
+but not always in a linear fashion (see eg. [Interaction]). Bands do not persist
+beyond a single time step, they are aggregated after each migration step before
+the resource extraction step to serve as a bookkeeping unit for resource
+extraction and cultural change.
 
-    */
+*/
     pub fn cooperate_or_fight<'a>(
         mut families_in_this_location: Vec<&'a mut Family>,
         p: &Parameters,
@@ -1372,6 +1381,7 @@ pub mod collectives {
     }
 }
 /**
+
 ### 4.11 Observation
 
 > What data are collected from the ABM for testing, understanding, and analyzing
@@ -1386,13 +1396,14 @@ pub mod observation {
         Parameters, Seasons, Serialize,
     };
 
-    /**
-    In order to get an overview over the flow of human migration captured by the
-    model and the shape of the language areas, we periodically collect the
-    linguistic landscape, i.e. for each language its total population (the sum of
-    all families' effective sizes), for each spot.
+/**
 
-    */
+In order to get an overview over the flow of human migration captured by the
+model and the shape of the language areas, we periodically collect the
+linguistic landscape, i.e. for each language its total population (the sum of
+all families' effective sizes), for each spot.
+
+*/
     pub fn print_population_by_location(
         cultures_by_location: &FxHashMap<NodeId, FxHashMap<Culture, usize>>,
         p: &Parameters,
@@ -1415,12 +1426,12 @@ pub mod observation {
                 .collect::<Vec<(f64, f64, FxHashMap<String, usize>)>>()
         );
     }
+/**
 
-    /**
-    Observation parameters govern the logging (and state storing, for inspection and
-    resuming) period, in time steps, of the model.
+Observation parameters govern the logging (and state storing, for inspection and
+resuming) period, in time steps, of the model.
 
-    */
+*/
     #[derive(Debug, Serialize, Deserialize, Clone)]
     pub struct Settings {
         pub log_every: Seasons,
@@ -1429,8 +1440,8 @@ pub mod observation {
         pub statefile: String,
     }
 }
-
 /**
+
 ## 5. Initialization
 
 > What is the initial state of the model world, i.e., at time $t = 0$ of a
@@ -1446,6 +1457,7 @@ pub mod observation {
 > those data should be provided. [@grimm2010odd]
 
 */
+
 pub fn very_coarse_dist(x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
     (x1 - x2).abs() + (y1 - y2).abs()
 }
@@ -1585,8 +1597,8 @@ pub fn initialization(p: Parameters, scale: f64) -> State {
         p: p,
     }
 }
-
 /**
+
 ## 6. Input Data
 
 > Does the model use input from external sources such as data files or other
@@ -1599,8 +1611,8 @@ human migration into the Americas.
 
 */
 mod input {}
-
 /**
+
 ## 7. Submodels
 
 > What, in detail, are the submodels that represent the processes listed in
@@ -1608,72 +1620,88 @@ mod input {}
 > dimensions, and reference values? How were submodels designed or chosen, and
 > how were they parameterized and then tested? [@grimm2010odd]
 
+As indicated by the Basic Principles, the model includes several submodels. Each
+submodel interacts with one or more other submodels. The **demographic dispersal
+submodel** describes the underlying geography, in terms of the network of
+patches with their connections measured in travel time and their theoretical
+carrying capacity. The **culture submodel** implements an evolutionary system
+with heredity and variation (and, very indirectly, selection) where in the
+absence of other influences, cultures drift apart according to neutral
+evolution. The **cooperation submodel** provides the connection between the
+other two submodels, where extracting resources from patches (and thus
+indirectly the carrying capacity) is mediated by a public goods game, and the
+strategies of every agent depend on the cultures of other agents.
+
 */
 pub mod submodels {
-    /**
-    ### 7.1 Culture
+/**
 
-    In order to display evolutionary dynamics, a complex system must at its minimum have
-    properties that can be passed on from ancestors to descendants, which undergo variation
-    throughout time. For evolution in the classical non-neutral sense, it is furthermore nec-
-    essary for the properties to be adaptive, i. e. have an influence on survival and number
-    of descendants. The discussion to what extent culture in general is adaptive vs. largely
-    neutral is ongoing (). There certainly are cultural domains that show adaptation and have
-    effects on survivability, such as climate-appropriate clothing and shelter () or methods of
-    subsistence from gathering to agriculture ().
+### 7.1 Demographic Dispersal Model
 
-    Of these, agriculture is explicitly outside the scope of the current model, because it
-    introduces a feedback loop between culture and carrying capacity which would mask other
-    effects. A vast part of the history of humanity went about without agriculture (). But once
-    it arose, around 5000 to 10000 years ago independently in different parts of the world (), it
-    presumably became a major driver of cultural spreads (farming/language dispersal hypothesis)
-    and as such it will be useful to add such effects to a later iteration of this model.
-    Certain cultural traits are obviously important for migration processes. Due to lack
-    of comparable data on such processes on the family level, we will take an ecology-driven
-    probability density to govern knowledge of neighboring patches, and assume this captures
-    the direct interactions between the cultural process and the demographic process. We
-    describe the motivation of this approximation below in [].
+### 7.2 Culture
 
-    Beyond traits directly interacting with the ecological niche of a society, there
-    is significant literature on the interaction of some very specific cultural
-    traits (eg. @Rusch (2014) on altruism and inter-group conflict, Watts et al.
-    (2016) on stratified societies and human sacrifice), but very few models that
-    consider specific meaniningful cultural traits in agent-based, broad, and
-    geographically expansive models. The closest to our goals here may be Hofstede
-    et al. (2012). They locate their agents on Hofstede (2001)’s cultural dimensions
-    (which are themselves not beyond harsh criticism (McSweeney 2002, Baskerville
-    2003)) in order to model negotiations between agents of different cultural
-    backgrounds.
+In order to display evolutionary dynamics, a complex system must at its minimum have
+properties that can be passed on from ancestors to descendants, which undergo variation
+throughout time. For evolution in the classical non-neutral sense, it is furthermore nec-
+essary for the properties to be adaptive, i. e. have an influence on survival and number
+of descendants. The discussion to what extent culture in general is adaptive vs. largely
+neutral is ongoing (). There certainly are cultural domains that show adaptation and have
+effects on survivability, such as climate-appropriate clothing and shelter () or methods of
+subsistence from gathering to agriculture ().
 
-    Diverging hypotheses notwithstanding (tone-humidity, elevation-ejectives,
-    etc), it seems that a vast number of cultural traits are not directly involved
-    in niche adaptation. This does not mean individual traits do not exhibit
-    non-neutral evolutionary dynamics, as shown eg. by Kandler & Shennan (2013). But
-    a neutral model for cultural change appears appropriate nonetheless.
+Of these, agriculture is explicitly outside the scope of the current model, because it
+introduces a feedback loop between culture and carrying capacity which would mask other
+effects. A vast part of the history of humanity went about without agriculture (). But once
+it arose, around 5000 to 10000 years ago independently in different parts of the world (), it
+presumably became a major driver of cultural spreads (farming/language dispersal hypothesis)
+and as such it will be useful to add such effects to a later iteration of this model.
+Certain cultural traits are obviously important for migration processes. Due to lack
+of comparable data on such processes on the family level, we will take an ecology-driven
+probability density to govern knowledge of neighboring patches, and assume this captures
+the direct interactions between the cultural process and the demographic process. We
+describe the motivation of this approximation below in [].
 
-    > FIXME: Kandler and others have also argued that mixing a large amount of
-    > non-neutral evolutionary processes is not well approximated by generally
-    > neutral evolution, so this needs a slightly stronger case.
+Beyond traits directly interacting with the ecological niche of a society, there
+is significant literature on the interaction of some very specific cultural
+traits (eg. @Rusch (2014) on altruism and inter-group conflict, Watts et al.
+(2016) on stratified societies and human sacrifice), but very few models that
+consider specific meaniningful cultural traits in agent-based, broad, and
+geographically expansive models. The closest to our goals here may be Hofstede
+et al. (2012). They locate their agents on Hofstede (2001)’s cultural dimensions
+(which are themselves not beyond harsh criticism (McSweeney 2002, Baskerville
+2003)) in order to model negotiations between agents of different cultural
+backgrounds.
 
-    Neutral abstract models for culture have in the past been considered for various
-    purposes (Komarova et al. 2001). In such models, culture tends to be modeled as a binary
-    vector (Fogarty et al. 2017, Pascual et al. 2020). The number of dimension M of this culture
-    vector range between M = 6 (Pascual et al. 2020) and M = 10 [@delcastillo2013modeling],
-    with empirical reasons cited for ??? [@?] and theoretical reasons for ??? [@?] or M > N for the (effec-
-    tive) population size N (Fogarty et al. 2017). Vectors are compared using the Hamming
-    distance (after, measuring the number of mismatches between the two vectors) in most
-    cases (Fogarty et al. 2017, Pascual et al. 2020).
+Diverging hypotheses notwithstanding (tone-humidity, elevation-ejectives,
+etc), it seems that a vast number of cultural traits are not directly involved
+in niche adaptation. This does not mean individual traits do not exhibit
+non-neutral evolutionary dynamics, as shown eg. by Kandler & Shennan (2013). But
+a neutral model for cultural change appears appropriate nonetheless.
 
-    Other options exist. For instance, [@Barceló et al. (2014); @Barceló et al.
-    (2015)] use integer vectors with values between 1 and 6 reflecting importance,
-    and ‘a multidimensional weighted Euclidean distance based on the extension of
-    the cosine similarity measure for vectors’ (2014), with weights that ‘roughly
-    imitate[] the results of a factorial analysis of individual beliefs’ (2014). It
-    has not been shown that this approach to modeling culture improves realism or
-    interpretability, so we take a neutral evolution model with binary vectors and
-    an unweighted Hamming distance.
+> FIXME: Kandler and others have also argued that mixing a large amount of
+> non-neutral evolutionary processes is not well approximated by generally
+> neutral evolution, so this needs a slightly stronger case.
 
-    */
+Neutral abstract models for culture have in the past been considered for various
+purposes (Komarova et al. 2001). In such models, culture tends to be modeled as
+a binary vector (Fogarty et al. 2017, Pascual et al. 2020). The number of
+dimension M of this culture vector range between M = 6 (Pascual et al. 2020) and
+M = 10 [@delcastillo2013modeling], with empirical reasons cited for ??? [@?] and
+theoretical reasons for ??? [@?] or M > N for the (effective) population size
+N (Fogarty et al. 2017). Vectors are compared using the Hamming distance (after,
+measuring the number of mismatches between the two vectors) in most cases
+(Fogarty et al. 2017, Pascual et al. 2020).
+
+Other options exist. For instance, [@barcelo2014social; @barcelo2015simulating]
+use integer vectors with values between 1 and 6 reflecting importance, and ‘a
+multidimensional weighted Euclidean distance based on the extension of the
+cosine similarity measure for vectors’ (2014), with weights that ‘roughly
+imitate[] the results of a factorial analysis of individual beliefs’ (2014). It
+has not been shown that this approach to modeling culture improves realism or
+interpretability, so we take a neutral evolution model with binary vectors and
+an unweighted Hamming distance.
+
+*/
     pub mod culture {
         use crate::stochasticity;
         use crate::Culture;
@@ -1829,16 +1857,17 @@ pub mod submodels {
             }
         }
 
-        /**
-        According to [@goodman1985menarche], the spacing of births where infant survives
-        until birth of next sibling is $2.85±1.35$. It has been hypothesized [@?] that
-        the interval may be lower in populations at the pop cap, so we take μ-σ.
-        According to [@volk2013infant], the mean child mortality rate
-        (cumulative probability of dying prior to approximate sexual maturity at age 15)
-        of modern hunter-gatherers is 48.8%, so the mean interval of new adults is the
-        mean interval of children, divided by one minus that rate.
+/**
 
-        */
+According to [@goodman1985menarche], the spacing of births where infant survives
+until birth of next sibling is $2.85±1.35$. It has been hypothesized [@?] that
+the interval may be lower in populations close to the population capacity, so we
+take μ-σ. According to [@volk2013infant], the mean child mortality rate
+(cumulative probability of dying prior to approximate sexual maturity at age 15)
+of modern hunter-gatherers is 48.8%, so the mean interval of new adults is the
+mean interval of children, divided by one minus that rate.
+
+*/
         const YEARS_BETWEEN_ADULTS: f64 = (2.85 - 1.35) / (1. - 0.488);
 
         pub fn maybe_grow(family: &mut Family, season_length_in_years: f64) {
@@ -1876,29 +1905,6 @@ pub mod submodels {
     pub mod ecology {
         use crate::{interaction, stochasticity, OneYearResources, Parameters};
 
-        /**
-
-                                                                                                                                                                        This function models how much a family contributes to the group effort of
-                                                                                                                                                                        harvesting a particular ecoregion. The family's contribution is given by its
-                                                                                                                                                                        size, weighted with how well they know the ecoregion.
-
-                                                                                                                                                                        */
-        /**
-                                                                                                                                                                                As a side effect, because this function is the one that knows about the family's
-                                                                                                                                                                                size, it also adds that size to a counter. This counter is used for the
-                                                                                                                                                                                per-culture census. (The caller knows the culture of the family.)
-
-                                                                                                                                                                                ```rust
-
-                                                                                                                                                                                let mut family= model::Family::default();
-                                                                                                                                                                                family.effective_size = 8;
-                                                                                                                                                                                let mut sum_effort = 0;
-                                                                                                                                                                                let (target, contribution) = model::raw_family_contribution(&mut family, 0, &mut sum_effort);
-                                                                                                                                                                                assert_eq!(sum_effort, 8);
-                                                                                                                                                                                *target += sum_effort as model::OneYearResources;
-                                                                                                                                                                                assert_eq!(family.stored_resources, 8.0)
-                                                                                                                                                                                ```
-                                                                                                                                                                                 */
         pub fn raw_family_contribution<'a>(
             family: &'a mut crate::Family,
             ecoregion: usize,
@@ -1936,8 +1942,10 @@ pub mod submodels {
                 .collect()
         }
 
-        /**
-         */
+/**
+### 7.3 Public Goods Game
+
+*/
         pub fn exploit_patch<P>(mut groups: Vec<crate::Band>, mut patch: P, p: &Parameters)
         where
             P: core::ops::DerefMut<Target = crate::Patch>,
@@ -2132,4 +2140,5 @@ pub fn run(mut s: State, max_t: Seasons, o: &observation::Settings) {
         }
         s.t += 1;
     }
+
 }
