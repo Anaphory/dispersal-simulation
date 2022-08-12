@@ -4,15 +4,17 @@ Model Description
 =================
 
 The model description follows the ODD (Overview, Design concepts, Details)
-protocol for describing individual- and agent-based models [@grimm2006standard],
-as updated by @grimm2020odd. This work is licensed under the Creative Commons
-Attribution-ShareAlike 4.0 International License. To view a copy of this
-license, visit http://creativecommons.org/licenses/by-sa/4.0/. The model
-description follows the idea of literate programming [@knuth1984literate] to the
-extent useful in Rust source code – the actual model is generated from this file
-that documents the model, but the source code is largely commented using
-natural-language descriptions, not generated from them (as would be the case in
-a literal program).
+protocol for describing individual- and agent-based models
+[@grimm2006standard], as updated by @grimm2020odd. You are permitted to use
+this model description, including the source code therein, under the Creative
+Commons Attribution-ShareAlike 4.0 International License – to view a copy of
+this license, visit [http://creativecommons.org/licenses/by-sa/4.0/](http://creativecommons.org/licenses/by-sa/4.0/).
+
+The model description follows the idea of literate programming
+[@knuth1984literate] to the extent useful in Rust source code – the actual model
+is generated from this file that documents the model, but the source code is
+largely commented using natural-language descriptions, not generated from them
+(as would be the case in a literal program).
 
 ## 1. Purpose and patterns
 
@@ -270,7 +272,7 @@ impl std::fmt::LowerHex for Culture {
 }
 
 /**
-### 2.5 State
+### State
 
  */
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -329,6 +331,38 @@ impl State {
     }
 }
 /**
+
+### Deliberate model simplifications
+
+Here we list some entities we chose not to model.
+
+#### No adaptation to different environments
+
+It has been proposed [@XXX, maybe-somewhere-bantu] that the need to adaptat to
+new environments slows migrations on a continental scale. We considered
+including different ecoregions as entities. They would be represented by a
+variable in each family which would track how well the family is adapted to
+different ecoregions, and by splitting the resources of a patch between
+different ecoregions.
+
+Such an extension might still be necessary to model the dynamics of language
+areas, as it has been observed that languages are more likely to expand in
+east-west-direction (where biomes are similar) than in north-south-direction
+(where biomes differ widely), and in contrast with this a “kelp highway” of
+similar kelp-rich biomes stretching along the west coast of the Americas has
+been suggested as one explanation for the surprising speed with which humans
+settled those continents.
+
+#### No hierarchical social structure
+
+Various social structures above the family level might contribute to the
+emergence of linguistic boundaries: Affiliation to clans, tribes, or other
+larger-scale social structures might lead to social gatherings that influence
+migration patterns, govern the choice to cooperate with other cultures beyond
+personal experience, or imbue cultural variants with status (thus making them
+more likely to be copied). We consider these effects out of scope for the
+question of language boundaries.
+
 
 ## 3. Process overview and scheduling
 
@@ -524,14 +558,6 @@ fn distribute_each_patch_resources_step(
 /**
 ## 4. Design concepts
 
-The dispersal model generates a deep phylogeny of hunter-gatherer cultures based
-on culture-mediated cooperation and resource-driven migration. It is a
-demographic migration model in which the areal distribution of languages is an
-emergent property, not an imposed structure. As such, there is a feedback loop
-between resource availability, linguistic proximity, and cooperation, which
-drives the population dynamics of hunter-gatherers in the model.
-
-
 To construct a demographic migration model with culture, for the purpose of the
 project we set out here, we need the following ingedients.
 
@@ -540,37 +566,30 @@ project we set out here, we need the following ingedients.
    addition allows horizontal transfer of cultural traits other than from a parent to a
    child population.
 2. Agents that carry cultural traits and are located in geographical space, which has
-   differing ecological features
-3. A system that drives the demographics of the agents in time and space
+   differing ecological features, such that migration happens.
+3. A sub-system that drives the demographics of the agents in time and space.
 4. A way for culture and population dynamics to interact in a way that can create create
    distinct cultural areas instead of a vast cultural cline or dialect continuum.
-   In the following subsections, we will consider each of these elements separately.
 
+The mechanism we propose for the fourth ingredient is optional cooperation.
+Taking inspiration from studies in evolutionary game theory studying the
+emergence and stability of cooperation, we assume that agents can use different
+cooperative and non-cooperative strategies for obtaining resources from the
+environment. The strategies of the agents in this “game” depend adaptively on
+the cultures of other agents they interact with.
 
-
-Under the ODD protocol, the design principles largely fall into questions. Where
-my answer indicates an invariant property of the simulation, I provide a test
-function that checks that invariance if possible.
+The expected feedback loop is then that similar cultures cooperate often and
+assimilate in the process, and cooperative groups of families are more
+successful at obtaining resources and thus grow faster. When agents of very
+different cultures meet, they will generally not have reason to cooperate and
+thus avoid each other even when they end up in the same patch, and thus continue
+to drift apart.
 
  */
 mod concepts {
 
 /**
 ### 4.1 Basic priciples
-
-> Which general concepts, theories, hypotheses, or modeling approaches are
-> underlying the model’s design?
-
-> How were they taken into account?
-
-> Are they used at the level of submodels, or is their scope the system level?
-
-> Will the model provide insights about the basic principles themselves, i.e.,
-> their scope, their usefulness in real-world scenarios, validation, or
-> modification?
-
-> Does the model use new, or previously developed, theory for agent traits from
-> which system dynamics emerge?
 
 */
     mod basic_principles {
@@ -684,28 +703,24 @@ settlement time depsths and to compare the different early dispersal models.
 
 ### 4.2 Emergence
 
-> What key results or outputs of the model are modeled as emerging from the
-> adaptive traits, or behaviors, of individuals? In other words, what model
-> results are expected to vary in complex and perhaps unpredictable ways when
-> particular characteristics of individuals or their environment change?
-
 */
     mod emergence {
         use crate::*;
+    }
 /**
 
 The main emergent property we aim for will be culturally somewhat uniform
-territories. We expect that the interplay of migration, cooperation and cultural
-similarity leads to regions sharing similar cultures, with noticeable
-boundaries. This means that the plot of cultural distances vs. geographical
-distances should therefore show small cultural distances for small geographical
-distances. There should be a critical geographical distance of cohesion where
-the distribution of cultural distances becomes bimodal, with one mode being
-lower than the cooperation threshold and one mode above the cooperation
-threshold. For large geographical distances, the cultural distances should be
-high, but with a big variance. The critical geographical distance is likely to
-depend on the region, being larger in more marginal environments where migration
-is more frequent.
+territories, with significant boundaries between them. We expect that the
+interplay of migration, cooperation and cultural similarity leads to regions
+sharing similar cultures, with noticeable boundaries. This means that the plot
+of cultural distances vs. geographical distances should therefore show small
+cultural distances for small geographical distances. There should be a critical
+geographical distance of cohesion where the distribution of cultural distances
+becomes bimodal, with one mode being lower than the cooperation threshold and
+one mode above the cooperation threshold. For large geographical distances, the
+cultural distances should be high, but with a big variance. The critical
+geographical distance is likely to depend on the region, being larger in more
+marginal environments where migration is more frequent.
 
 Underlying the model is a fission-fusiom model of group dynamics
 [@crema2014simulation], so we expect a similar analysis to apply to our model.
@@ -724,31 +739,6 @@ this strategy corresponds to the avoidance of other agents and thus potentially
 to strict boundaries, we include a PGG in the model structure [Submodel ??] and
 expect varying levels of cooperation to emerge in the model.
 
-*/
-
-    /** Compute the Hamming distance between two culture vectors */
-    #[cfg_attr(target_arch = "x86_64", target_feature(enable = "popcnt"))]
-    pub unsafe fn distance(c1: &Culture, c2: &Culture) -> u32 {
-        c1.in_memory
-            .iter()
-            .zip(c2.in_memory.iter())
-            .map(|(bits1, bits2)| (bits1 ^ bits2).count_ones())
-            .sum()
-    }
-
-    pub fn will_cooperate(c1: &Culture, c2: &Culture, cooperation_threshold: u32) -> bool {
-        unsafe { distance(c1, c2) < cooperation_threshold }
-    }
-}
-}
-
-/**
-> Are there other results that are more tightly imposed by model rules and hence
-> less dependent on what individuals do, and hence ‘built in’ rather than
-> emergent results?
-
-Adaptation to local environment is implemented to grow with exposure time, without underlying mechanisms being reflected, as described below.
-
 ### 4.3 Adaptation
 
  */
@@ -756,19 +746,16 @@ mod adaptation {
     use crate::*;
 /**
 
-> What adaptive traits do the individuals have? What rules do they have for
-> making decisions or changing behavior in response to changes in themselves or
-> their environment? Do these traits explicitly seek to increase some measure of
-> individual success regarding its objectives?
+Agents have control over two main traits: Their location and their behaviour in
+the public goods game.
 
-Agents have control over two main traits. The first of these is their location.
 Agents optimize (within the limits of their knowledge) their location to
 increase the amount of resources available for them to gather. The resources
 gathered indirectly contribute to future success: A certain minimum of gathered
-resources is necessary to procreate, but extremely large amounts gathered soon
-do not increase the immediate rate of procreation and can in extreme cases
-(overexploitation of local resources) even be detrimental in the long run and
-through sharing instead benefit other families of the same culture.
+resources is necessary to procreate, but extremely large amounts gathered in a
+short time do not increase the immediate rate of procreation and can in extreme
+cases (overexploitation of local resources) even be detrimental in the long run
+and through sharing instead benefit other families of the same culture.
 
  */
     use std::sync::Arc;
@@ -834,6 +821,7 @@ through sharing instead benefit other families of the same culture.
         best_location(destination_expectation, family.location)
     }
 /**
+
 The other adaptive trait of a family is their strategy for interacting with
 other families. Every family has a basic strategy to be used with unknown
 cultures, as well as a fixed memory storing how they intend to interact with
@@ -878,20 +866,6 @@ expected quality by a factor uniformly distributed between 0 and 1.
         }
         (*target, t_cost)
     }
-/**
-
-> Or do they instead simply cause individuals to reproduce observed behaviors
-> that are implicitly assumed to indirectly convey success or fitness? [@grimm2010odd]
-
-It has been proposed [@XXX, maybe-somewhere-bantu] that the need to adaptat to
-new environments slows migrations on a continental scale. As a consequence, each
-family has a vector listing their success at extracting resources from the
-various ecoregions. This is not modeled as an evolutionary adaptive process;
-instead, the environmental adaptation of a family goes up deterministically when
-they interact with an ecoregion, and goes down to a (parameterized) minimum
-otherwise. This submodel is described in [7.X: Environmental adaptation].
-
-*/
 }
 
 /**
