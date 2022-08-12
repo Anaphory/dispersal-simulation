@@ -20,12 +20,17 @@ largely commented using natural-language descriptions, not generated from them
 
 In many parts of the world, clear borders between clearly mutually
 incomprehensible languages exist. In addition to such clearly defined language
-borders, fuzzy (but still obvious) boundaries are abound where the question of mutual
-intelligibility is unclear or where a fuzzy boundary exists (eg. in a region
-nomadically inhabited by different speakers, or inhabited by multilingual
+borders, fuzzy (but still obvious) boundaries are abound where the question of
+mutual intelligibility is unclear or where a fuzzy boundary exists (eg. in a
+region nomadically inhabited by different speakers, or inhabited by multilingual
 speakers). A priori, one might expect instead that most of the world would be
 covered by a single dialect continuum, where language changes gradually through
-space, instead of abruptly.
+space, instead of abruptly. There should be a critical geographical distance of
+cohesion where the distribution of cultural distances becomes bimodal, with one
+mode being lower than a cooperation threshold and one mode above the cooperation
+threshold. This critical geographical distance is likely to depend on the
+region, being larger in more marginal environments where migration is more
+frequent.
 
 We want to test whether distinct language ranges, with reasonably sharp borders,
 can emerge from a feedback loop between three components:
@@ -62,11 +67,12 @@ use std::fs::File;
 use rayon::prelude::*;
 use rayon::iter::{IntoParallelIterator, IntoParallelRefMutIterator};
 
-pub mod argparse;
-mod debug;
+pub mod cli;
 pub mod ecology;
+mod debug;
+mod parameters;
+use parameters::Parameters;
 
-use submodels::parameters::Parameters;
 /**
 
 ## 2. Entities, state variables, and scales
@@ -585,15 +591,7 @@ different cultures meet, they will generally not have reason to cooperate and
 thus avoid each other even when they end up in the same patch, and thus continue
 to drift apart.
 
- */
-mod concepts {
-
-/**
 ### 4.1 Basic priciples
-
-*/
-    mod basic_principles {
-/**
 
 To achieve realistic outcomes comparable, at least in part, to real human
 history, the model presented here is not the most simple abstract model
@@ -613,12 +611,6 @@ local geographical conditions. Difficult terrain impedes movement according to
 the imposed graph structure, which has edges with a higher cost where
 cross-terrain movement is more difficult, and marginal environments are less
 attractive to migrating agents and depleted quicker.
-
- */
-        /* TODO: Write a test where a single patch has a given carrying
-          capacity, and a cooperating population grows to that capacity. */
-        fn test_grow_patch_to_capacity() {}
-/**
 
 According to its purpose of providing a model for language dispersal and split,
 our model draws on existing publications looking at cultures changing in time
@@ -696,31 +688,12 @@ population capacity. We also ignore the different ecological and climatic state
 of the uninhabited Americas which would be necessary to investigate different
 settlement time depsths and to compare the different early dispersal models.
 
- */
-        pub fn test_carrying_capacities_constant() {}
-    }
-/**
-
 ### 4.2 Emergence
-
-*/
-    mod emergence {
-        use crate::*;
-    }
-/**
 
 The main emergent property we aim for will be culturally somewhat uniform
 territories, with significant boundaries between them. We expect that the
 interplay of migration, cooperation and cultural similarity leads to regions
-sharing similar cultures, with noticeable boundaries. This means that the plot
-of cultural distances vs. geographical distances should therefore show small
-cultural distances for small geographical distances. There should be a critical
-geographical distance of cohesion where the distribution of cultural distances
-becomes bimodal, with one mode being lower than the cooperation threshold and
-one mode above the cooperation threshold. For large geographical distances, the
-cultural distances should be high, but with a big variance. The critical
-geographical distance is likely to depend on the region, being larger in more
-marginal environments where migration is more frequent.
+sharing similar cultures, with noticeable boundaries.
 
 Underlying the model is a fission-fusiom model of group dynamics
 [@crema2014simulation], so we expect a similar analysis to apply to our model.
@@ -740,11 +713,6 @@ to strict boundaries, we include a PGG in the model structure [Submodel ??] and
 expect varying levels of cooperation to emerge in the model.
 
 ### 4.3 Adaptation
-
- */
-mod adaptation {
-    use crate::*;
-/**
 
 Agents have control over two main traits: Their location and their behaviour in
 the public goods game.
@@ -829,12 +797,6 @@ families they have encountered before. These strategies are modified as follows.
 
  - When a family ...
 
- */
-
-    pub fn update_interaction_strategy() {}
-
-/**
-
 In order to account for limited knowledge in an economic fashion without
 tracking the kowledge of every single family, and to avoid the case where one
 location is the best choice of a large amount of agents by a very small margin,
@@ -866,22 +828,9 @@ expected quality by a factor uniformly distributed between 0 and 1.
         }
         (*target, t_cost)
     }
-}
 
 /**
 ### 4.4 Objectives
-
-> If adaptive traits explicitly act to increase some measure of the individual’s
-> success at meeting some objective, what exactly is that objective and how is
-> it measured?
->
-> When individuals make decisions by ranking alternatives, what criteria do they
-> use? [@grimm2010odd]
-
- */
-mod objectives {
-    use crate::*;
-/**
 
 Agents base their decision for one potential destination of migration over
 another based on a modification of the resources expected per individual at the
@@ -1012,7 +961,7 @@ one in the region.
                 / pop_at_destination as f64
         }
     }
-}
+
 /**
 ### 4.5 Learning
 
@@ -1021,10 +970,6 @@ one in the region.
 > how? [@grimm2010odd]
 
 INTERACTION STRATEGY UPDATING
-
- */
-mod learning {}
-/**
 
 ### 4.6 Prediction
 
@@ -1049,10 +994,6 @@ current distribution of individuals in the target location. Agents do not
 account for the following moves of other agents, and even less so for growth,
 split, or other effects to themselves or others in future time steps.
 
- */
-mod prediction {}
-
-/**
 ### 4.7 Sensing
 
 > What internal and environmental state variables are individuals assumed to
@@ -1074,18 +1015,18 @@ mod sensing {
 Individuals know about nearby locations. The exploration of those locations is
 not explicitly modelled.
 
->   The third quartile, across all groups, of the yearly migratory distance is
->   around 320 km, so in this simulation the maximum distance moved per season
->   is about 53.3 km. The simulation is centered around distances measured in
->   time units (seconds, seasons, years). In all biomes except for mangroves,
->   the terrain speed factor is greater than one (see
->   `supplement/distances/ecoreginos.py`). If humans generally prefer 2%
->   downhill slopes, they have to encounter about the same amount in uphill
->   slopes, which are navigated at about 0.7740708353271509 m/s. At that speed,
->   53.3 km correspond do about 68899 s or 19 hours. We therefore give
->   individuals a maximum “sensing” range of 68899 seconds. Individuals will
->   know about patches within this range from their current patch, but not about
->   patches further away.
+The third quartile, across all groups, of the yearly migratory distance is
+around 320 km, so in this simulation the maximum distance moved per season
+is about 53.3 km. The simulation is centered around distances measured in
+time units (seconds, seasons, years). In all biomes except for mangroves,
+the terrain speed factor is greater than one (see
+`supplement/distances/ecoreginos.py`). If humans generally prefer 2%
+downhill slopes, they have to encounter about the same amount in uphill
+slopes, which are navigated at about 0.7740708353271509 m/s. At that speed,
+53.3 km correspond do about 68899 s or 19 hours. We therefore give
+individuals a maximum “sensing” range of 68899 seconds. Individuals will
+know about patches within this range from their current patch, but not about
+patches further away.
 
 */
 // I should say a bit more about sensing, I think.
@@ -1597,13 +1538,7 @@ pub fn initialization(p: Parameters, scale: f64) -> State {
 
 ## 6. Input Data
 
-> Does the model use input from external sources such as data files or other
-> models to represent processes that change over time? [@grimm2010odd]
-
-The model currently takes no external data sources into account. As such, it
-cannot represent the paleogeographical change in climate, ecology, and geography
-(eg. coast lines) that would be necessary to generate a realistic picture of
-human migration into the Americas.
+The model does not use input data to represent time-varying processes.
 
 */
 mod input {}
@@ -1939,9 +1874,27 @@ mean interval of children, divided by one minus that rate.
         }
 
 /**
-### 7.3 Public Goods Game
+### Public Goods Game
 
+The public goods game is a complex adaptive model in itself, so it is described
+here by its own, slightly reduced, ODD.
+
+#### Purpose and patterns
+
+#### Process overview and scheduling
+
+#### Submodels
 */
+
+        // In this submodel, assume that agents implement an ‘identifier’ trait,
+        // which will be the cultures in the big model, and a ‘strategy choice’.
+
+        // FORM GROUPS, BASED ON STRATEGIES
+        // OSTRACISE, BASED ON STRATEGIES
+        // PLAY PGG, BASED ON STRATEGIES
+        // RECEIVE PAYOFFS
+        // UPDATE STRATEGIES
+
         pub fn exploit_patch<P>(mut groups: Vec<crate::Band>, mut patch: P, p: &Parameters)
         where
             P: core::ops::DerefMut<Target = crate::Patch>,
@@ -2029,64 +1982,6 @@ mean interval of children, divided by one minus that rate.
                         * stochasticity::recover_resources_proportion()
                         + *patch_resources,
                 )
-            }
-        }
-    }
-
-    pub mod parameters {
-        use crate::movementgraph::MovementGraph;
-        use crate::OneYearResources;
-        use serde_derive::{Deserialize, Serialize};
-
-        #[derive(Debug, Serialize, Deserialize, Clone)]
-        pub struct Parameters {
-            pub resource_recovery_per_season: f64,
-            pub culture_mutation_rate: f64,
-            pub culture_dimensionality: usize,
-            pub cooperation_threshold: u32,
-            pub maximum_resources_one_adult_can_harvest: OneYearResources,
-            pub evidence_needed: f64,
-            pub payoff_std: f64,
-            pub minimum_adaptation: f64,
-            pub fight_deadliness: u32,
-            pub enemy_discount: f64,
-
-            pub season_length_in_years: f64,
-            pub dispersal_graph: MovementGraph,
-        }
-
-        impl Default for Parameters {
-            fn default() -> Parameters {
-                Parameters {
-                    resource_recovery_per_season: 0.10,
-                    culture_mutation_rate: 6e-3,
-                    culture_dimensionality: 20,
-                    cooperation_threshold: 6,
-                    // In a previous iteration, there was no maximum of
-                    // resources accessible to one adult in a year. To be
-                    // consistent with that, we set the default of this new
-                    // parameter to a ludicrously high amount.
-                    maximum_resources_one_adult_can_harvest: OneYearResources::from(1e50),
-                    evidence_needed: 0.1,
-                    payoff_std: 0.1,
-                    minimum_adaptation: 0.5,
-                    fight_deadliness: (1 << 31),
-                    enemy_discount: (0.5_f64).powf(0.2),
-
-                    // I found that Kelly (2013), the guy who collected data
-                    // like Binford but maybe more faithfully to science and the
-                    // sources, has data on hunter-gatherer migrations, so I
-                    // could make a case for 6 migration steps/seasons per year,
-                    // and for estimating a maximum distance of each of these
-                    // steps. Together with a discussion I had with Peter and
-                    // Nico about two weeks ago, I managed to put something new
-                    // together. The downside is that with 6 seasons per year,
-                    // it also takes about a factor of 3 longer to simulate the
-                    // same number of years, so I'm only 250 years into the
-                    // simulation with this.
-                    season_length_in_years: 1. / 6.,
-                    dispersal_graph: MovementGraph::default(),
-                }
             }
         }
     }
