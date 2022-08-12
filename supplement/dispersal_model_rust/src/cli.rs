@@ -118,3 +118,40 @@ pub fn parse_args<'a>(
     println!("Starting…");
     parser
 }
+
+
+pub fn run(mut s: State, max_t: Seasons, o: &observation::Settings) {
+    let mut stored_resources: DashMap<_, _, std::hash::BuildHasherDefault<FxHasher>> =
+        DashMap::default();
+    let mut cache: DashMap<_, _, std::hash::BuildHasherDefault<FxHasher>> = DashMap::default();
+    loop {
+        stored_resources = step(
+            &mut s.families,
+            &mut s.patches,
+            &stored_resources,
+            &s.p,
+            s.t,
+            &mut cache,
+            o,
+        );
+
+        if s.families.is_empty() {
+            println!("Died out");
+            break;
+        }
+        if (s.t == max_t) || (o.store_every > 0) && (s.t % o.store_every == 0) {
+            println!("{:} % {:}", s.t, o.store_every);
+            let to_be_stored = s.clone();
+            let file = o.statefile.to_string();
+            std::thread::spawn(|| {
+                store_state(to_be_stored, file).unwrap_or_else(|r| println!("{:}", r))
+            });
+        }
+        if s.t >= max_t {
+            println!("Ended");
+            break;
+        }
+        s.t += 1;
+    }
+
+}

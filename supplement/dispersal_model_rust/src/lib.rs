@@ -3,53 +3,43 @@
 Model Description
 =================
 
-This model description follows the ODD (Overview, Design concept, Details)
-protocol (Grimm et al., 2006; Grimm et al., 2010). Where appropriate, we quote
-the guiding questions of the ODD protocol at the beginning of a section. The
-model description follows the idea of literate programming (Knuth 1992) to the
+The model description follows the ODD (Overview, Design concepts, Details)
+protocol for describing individual- and agent-based models [@grimm2006standard],
+as updated by @grimm2020odd. This work is licensed under the Creative Commons
+Attribution-ShareAlike 4.0 International License. To view a copy of this
+license, visit http://creativecommons.org/licenses/by-sa/4.0/. The model
+description follows the idea of literate programming [@knuth1984literate] to the
 extent useful in Rust source code – the actual model is generated from this file
 that documents the model, but the source code is largely commented using
 natural-language descriptions, not generated from them (as would be the case in
 a literal program).
 
-## 1. Purpose
+## 1. Purpose and patterns
 
-The dispersal model generates a deep phylogeny of hunter-gatherer cultures based
-on culture-mediated cooperation and resource-driven migration. It is a
-demographic migration model in which the areal distribution of languages is an
-emergent property, not an imposed structure. As such, there is a feedback loop
-between resource availability, linguistic proximity, and cooperation, which
-drives the population dynamics of hunter-gatherers in the model.
+In many parts of the world, clear borders between clearly mutually
+incomprehensible languages exist. In addition to such clearly defined language
+borders, fuzzy (but still obvious) boundaries are abound where the question of mutual
+intelligibility is unclear or where a fuzzy boundary exists (eg. in a region
+nomadically inhabited by different speakers, or inhabited by multilingual
+speakers). A priori, one might expect instead that most of the world would be
+covered by a single dialect continuum, where language changes gradually through
+space, instead of abruptly.
 
-The model is designed with extension to more concrete research questions in
-mind. In the current, first stage, the purpose of the model is to investigate
-how languages disperse and split, driven only by the necessary interactions
-between humans. The particular research question is whether distinct cultural
-areas, with reasonably sharp borders, can emerge from only a simple feedback
-loop between conditional cooperation, linguistic assimilation, and genetic
-drift.
+We want to test whether distinct language ranges, with reasonably sharp borders,
+can emerge from a feedback loop between three components:
 
-If that is the case, the summary statistics of a phylogeny (in particular
-diversification rates) can later be compared to values known from language
-evolution. The model is structured to be easily applied to study the history of
-the settlement of the Americas at a later time. It would require paleoclimate
-data and interpretations of past ecoregions (and potentially an extension
-describing the changes in human behaviour patterns) to produce results that can
-be compared to that history.
+1. Demographic dispersal, where human populations grow and migrate on the continental scale based on the availability of resources;
+2. Culture, taken as an abstract evolutionary system; and
+3. Optional cooperation, as studied in evolutionary game theory.
 
-To construct a demographic migration model with culture, for the purpose of the
-project we set out here, we need the following ingedients.
-
-1. A representation of culture, which is at the least able to undergo neutral evolution
-   (showing heritability and random variation, not necessarily fitness) and which in
-   addition allows horizontal transfer of cultural traits other than from a parent to a
-   child population.
-2. Agents that carry cultural traits and are located in geographical space, which has
-   differing ecological features
-3. A system that drives the demographics of the agents in time and space
-4. A way for culture and population dynamics to interact in a way that can create create
-   distinct cultural areas instead of a vast cultural cline or dialect continuum.
-   In the following subsections, we will consider each of these elements separately.
+The model structure is intended to facilitate later extension to simulate the
+settlement of the Americas according to different theories. In addition to
+shedding light on those theories, this could be used to create better priors for
+American cultural phylogenies. If these components are sufficient for the
+emergence of distinct language areas, the summary statistics of a cultural
+phylogeny generated from such a model (in particular diversification and
+extinction rates) can later be compared to values inferred from language
+evolution.
 
 */
 
@@ -75,21 +65,33 @@ mod debug;
 pub mod ecology;
 
 use submodels::parameters::Parameters;
-
 /**
 
 ## 2. Entities, state variables, and scales
 
-The model consists of agents interacting on a network of habitable patches in
-discrete time. One time step is supposed to model a season during which a group
-of hunter-gatherers remains within the same area. Some of the underlying data is
-using seconds as base unit and needs to be translated.
+The model consists of agents representing hunter-gatherer families interacting
+on a network of habitable patches in discrete time. One time step is represents
+2 months, the a season during which a group of hunter-gatherers remains within the same area.
+
+@kelly2013lifeways [Table 4.1] lists mobility data for 70 hunter-gatherer
+groups, including figures for the yearly territory of a group where that number
+could be inferred. The 75% quantile of the territories sizes is about 2000 km² or
+less. In our model, this corresponds to roughly 5 patches (each with an area of
+ca. 400 km², see below) being visited per year. To give some leeway, we permit
+our agents up to 6 moves per year, so a season corresponds to two months.
 
  */
 pub type Seasons = u32;
-const SECONDS_PER_YEAR: f64 = 365.24219 * 24. * 60. * 60.;
-
+const SEASONS_PER_YEAR: Seasons = 6;
 /**
+
+Some of the underlying data is using seconds as base unit and needs to be
+    translated.
+
+ */
+const SECONDS_PER_YEAR: f64 = 365.24219 * 24. * 60. * 60.;
+/**
+
 Whereever possible, resources are measured in terms of the resources one adult
 consumes in a year, abbreviated OYR. For comparison, in terms of food energy,
 one OYR corresponds to about 650'000 kcal/3'000'000 kJ, but it also includes
@@ -97,30 +99,29 @@ other limited resources necessary for human survival.
 
  */
 use ecology::OneYearResources;
-
 /**
+
 ### 2.1 Geography: Nodes and Patches
 
-The geography of the simulation is described by a directed weighted graph, where
-each edge has a weight representing the travel time (by foot, or by simple boat
-along rivers and coasts) in seconds. This movement graph is constructed before
-the initialization from pre-processed real geographical data. The construction
-of our movement graph is described in [@kaiping2021network]. Each node has a
-unique numerical identifier.
+The geography of the simulation is described by a directed weighted network,
+where each edge has a weight representing the travel time (by foot, or by simple
+boat along rivers and coasts) in seconds. This movement network represents the
+extent of North and South America. The construction of our movement network is
+described in [@kaiping2021network].
 
  */
 pub mod movementgraph;
 pub type NodeId = petgraph::graph::NodeIndex<usize>;
 /**
 
-It also contains the data on the patch of land it corresponds to. A patch
-contains one or more terrestrial ecoregions. For each ecoregion, the node tracks
-maximum and current availability of resources, measured in OYR available over
-the course of one season. We estimate these numbers from population densities,
-adapting the estimation from [@tallavaara2018productivity] to derive population counts, and
-therefore the resource amounts necessary to sustain them, in the separate
-ecoregions areas that are most easily reached from the point represented by the
-node.
+Each node contains the data on the patch of land it corresponds to. A
+patch contains one or more terrestrial ecoregions. For each ecoregion, the node
+tracks maximum and current availability of resources, measured in OYR available
+over the course of one season. We estimate these numbers from population
+densities, adapting the estimation from [@tallavaara2018productivity] to derive
+population counts, and therefore the resource amounts necessary to sustain them,
+in the separate ecoregions areas that are most easily reached from the point
+represented by the node.
 
 Our areas have an average area of about 400 km² each, but because we inlude all
 locations best accessibility from each hexagon center (in a generalization of
@@ -128,12 +129,6 @@ Voronoy polygons, see [@kaiping2021network]) instead of the hexagons as defined
 in the underlying regular grid, the actual area represented by a patch can vary:
 On the boundary between a steep, inaccessible canyon and a flat grassland the
 patches inside the canyon may be much smaller than the patches on the grassland.
-
-In the current state of the model, the patch at a node is constant throughout
-the simulation, but future work might add seasonality or random variation. By
-nature, the simulation invites the extension to include paleoclimate data, such
-as recently published in [@beyer2020highresolution], but that only becomes
-relevant once it shows fundamentally reasonable dynamics.
 
  */
 #[derive(Serialize, Deserialize, Clone)]
@@ -149,13 +144,16 @@ maximum possible resources available in a season, both in OYR.
 }
 /**
 
-### 2.2 Families
+### 2.2 Agents: Families
 
-The main decision-making agents of the simulation are families
-[@delcastillo2013modeling;@barcelo2014social]. Families can migrate between
-nodes, grow, or shrink. New families can split off from existing families and
-become independent agents, and families that shrink below 2 individuals die out
-and are remove from the simulation. Each family has the following properties.
+For hunter-gatherer populations, most decisions influencing the population
+dynamics are made on the family level
+[@i-thought-i-had-a-referencece-for-this-somewhere-from-barcelo]. The agents of
+the simulation are thus families [@delcastillo2013modeling; @barcelo2014social]
+and individual humans are not modelled. New families can split off from existing
+families and become independent agents, and families that shrink below 2
+individuals die out and are remove from the simulation. Each family has the
+following properties.
 
 > MAYBE: Lake (2000)
 
@@ -164,11 +162,6 @@ and are remove from the simulation. Each family has the following properties.
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Family {
 /**
-- A history of decendence.
-
-     */
-    pub descendence: String,
-    /**
 - The effective size of the family in number of adults. One adult is assumed to
     consume the same amount of food/energy and to contribute the same labor to
     foraging as any other adult. For simplicity, children are not modelled, even
@@ -178,7 +171,7 @@ pub struct Family {
      */
     pub effective_size: usize,
     /**
-- A culture shared among all members of the family, to be detailed below
+- A culture shared among all members of the family, as detailed below
 
      */
     pub culture: Culture,
@@ -188,27 +181,10 @@ pub struct Family {
      */
     pub location: NodeId,
     /**
-- The amount of resources, in OYR per capita, which the family harvested in the previous season.
-
-     */
-    pub last_harvest: OneYearResources,
-    /**
 - The amount of stored resources, in OYR, the family has access to without going foraging.
 
      */
     pub stored_resources: OneYearResources,
-    /**
-- Its adaptation to local ecoregions is represented as a vector with values
-      between 0.0 (completely unknown) and 1.0 (perfectly familiar) for any
-      ecoregion the family might encounter.
-
-     */
-    pub adaptation: ecology::Ecovector,
-    /**
-- The number of seasons to wait until the next (unsimulated) child becomes an adult.
-
-     */
-    pub seasons_till_next_adult: Seasons,
     /**
 
 - For bookkeeping purposes (eg. generating descendant's ‘descendence’ values),
@@ -219,25 +195,23 @@ pub struct Family {
     pub number_offspring: u16,
     /**
 
-- The previous locations of the agent. The most recent locations serve as the memory of the agent. It is also useful for some bits of analysis
+- The previous locations of the agent. The most recent locations serve as the
+  memory of the agent. It is also useful for some bits of analysis.
 
      */
     pub history: Vec<(NodeId, OneYearResources)>,
+
+    seasons_till_next_mutation: Option<Seasons>,
+    seasons_till_next_adult: Seasons,
+
     /**
-- A bookkeeping quantity. Instead of mutation happening in each time step with
-      a tiny probability, the same distribution of times between mutations is
-      generated by drawing a number of season from a geometric distribution and
-      counting it down by one each time step, which is useful because random number
-      generation is computationally expensive.
+- A history of decendence, which also serves as its unique identifier.
 
-     */
-    pub seasons_till_next_mutation: Option<Seasons>,
+*/
+        pub descendence: String,
+
 }
-/**
 
-The descendence of a family also serves as its unique identifier.
-
- */
 impl PartialEq for Family {
     fn eq(&self, other: &Self) -> bool {
         self.descendence == other.descendence
@@ -245,22 +219,7 @@ impl PartialEq for Family {
 }
 
 /**
-### 2.3 Bands
-
-Families that have compatible cultures and are in the same location can band
-together to share resources between different families, and to compete against
-other bands. The cooperative bands formed by cooperating families are
-higher-level agents created ad-hoc in each time step. They do not persist or
-have effect beyond a single time step. Resource exploitation happens at the
-level of the band and is distributed to the individual families after the fact.
-
- */
-pub struct Band<'a> {
-    pub families: Vec<&'a mut Family>,
-    pub culture: Culture,
-}
-/**
-### 2.4 Cultures
+### 2.3 Other entities: Cultures
 
 Every family has a culture. These are very abstract and vastly simplified, due
 to the lack of quantitative data on cultural evolution in a framework comparable
@@ -313,55 +272,67 @@ impl std::fmt::LowerHex for Culture {
 /**
 ### 2.5 State
 
-The status of all families, including their locations, is the core of the model
-state. The state also tracks time, measured in time steps corresponding to one
-season each, since the start of the simulation, and stores the mapping between
-nodes and patches as well as a copy of the model parameters.
-
  */
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct State {
 /**
 
-- The agents (families) currently active in the simulation. This vector
-    changes over time as new families are added and old families die out.
+The status of all extant families (including their locations, included in each
+family as state variable), is the core of the model state. Its composition can
+change over time as new families are added and old families die out.
 
-     */
+ */
     families: Vec<Family>,
-    /**
+/**
 
-- The current time step, in half years since start of the simulation.
+The state also tracks time, measured in time steps corresponding to one season
+each, since the start of the simulation.
 
-     */
+ */
     pub t: Seasons,
-    /**
+/**
 
-- The patches of the model, indexed by node ID in a graph. This set is
-    fixed, although the properties of the patches may change with time.
+For the purpose of resuming the model, the state also stores a copy of the model
+parameters, which includes network information of which patch belongs to which
+network node.
 
-     */
-    patches: DashMap<NodeId, Patch>,
-    /**
-
-- The parameters of the model.
-
-     */
+ */
     p: Parameters,
+    patches: DashMap<NodeId, Patch>,
+}
+/**
+
+With these properties, the state can be stored and the model can be resumed from it later.
+
+ */
+impl State {
+    pub fn store(&self, statefile: String) -> Result<(), String> {
+        let file = match File::create(statefile) {
+            Ok(f) => f,
+            Err(_) => return Err("Could not create state file".to_string()),
+        };
+        match bincode::serialize_into(file, &self) {
+            Ok(_) => Ok(()),
+            Err(_) => Err("Failed to store state.".to_string()),
+        }
+    }
+
+    pub fn load_from_file(statefile: String) -> Result<Self, String> {
+        let contents = match fs::read(statefile) {
+            Ok(c) => c,
+            Err(e) => return Err("Could not open state file: {:}", e.to_string()),
+        };
+        match bincode::deserialize(&contents) {
+            Ok(c) => c,
+            Err(e) => return Err("Could not restore state from state file: {:}", e.to_string()),
+        }
+    }
 }
 /**
 
 ## 3. Process overview and scheduling
 
-> Who (i.e., what entity) does what, and in what order? When are state
-> variables updated? How is time modeled, as discrete steps or as a continuum
-> over which both continuous processes and discrete events can occur? Except
-> for very simple schedules, one should use pseudo-code to describe the
-> schedule in every detail, so that the model can be re-implemented from this
-> code. Ideally, the pseudo-code corresponds fully to the actual code used in
-> the program implementing the ABM. [@grimm2010odd]
-
-The model progresses in discrete time steps, each corresponding to a fixed fraction of a year.
-The structure of a single time step consist of two parts, as follows.
+The model progresses in discrete time steps. The structure of a single time step consist of two parts, as follows.
 
  */
 fn step(
@@ -385,13 +356,19 @@ fn step(
     distribute_each_patch_resources_step(families, patches, p, o, t)
 }
 /**
-The first part focuses on the individual families, which shrink, grow, die,
-split, and move. It constructs the mapping of families at the end of the season,
-grouped by their location at the end of the movement. Because the movement of a
-family depends on the distribution of the families at he start of the season and
-not at the time of movement, it can happen entirely in parallel.
 
- */
+1. The first part focuses on the individual families, which shrink and grow
+   (updating the effective size), die (updating the list of all families), split
+   (updating the list of all families, and setting the new family's state
+   variables), and move (updating family's location and history). It constructs
+   the mapping of families at the end of the season, grouped by their location
+   at the end of the movement. The movement of a family depends on the
+   distribution of the families at he start of the season and locations are
+   updated synchonously after every family has moved; all other state variable
+   updates are family-internal. This means that movement can happen entirely in
+   parallel.
+
+    */
 fn update_each_family_step(
     families: &mut Vec<Family>,
     patches: &mut DashMap<NodeId, Patch>,
@@ -434,20 +411,42 @@ fn update_each_family_step(
     );
     families.append(&mut children);
 }
+    /**
 
-// IDEAS:
-// every agent stores past interactions, plays tit-for-tat (C→D→L→C)
-// Start at “cooperate with self”
-// (choose to play cooperator/defector/loner in public goods game to extract resources)
-// Store a base strategy, starting L
-// Base strategy changes HOW? Random mutation? Or maybe to some function of history?
-/**
-The second part focusses on the patches. The resources of a patch are updated
-according to the families exploiting them over the season. This is described in
-detail in [Submodel Exploitation]. Everything here happens locally to a patch,
-with no external interaction, so this can be done in parallel. After
-exploitation, patches recover for the next season according to [Submodel Patch].
-This concludes a time step.
+2. The second part focusses on the patches. The update executes the following
+   steps, in order for each patch. Everything here happens locally to a patch,
+   with no external interaction, so the different patches are updated in
+   parallel.
+
+    * In random order to avoid accidental artefacts, each agent in a patch
+      decides whether to join an existing group or form a new group, according
+      to the rules described in [Submodel Public Goods Game].
+
+    * The effective size of each group each calculated based on the agents'
+      synchorous and mutually independent strategy choices in the public goods
+      game.
+
+    * The available resources are distributed to the groups. The distribution
+      occurs proportional to the groups' effective sizes, and can thus happen in
+      arbitrary order even when the total of effective sizes exceeds the available
+      resources.
+
+    * The resources available in the patch are reduced by the total amount
+      distributed to the groups.
+
+    * The current resources of each patch are increased due to the fact that
+      patches recover every season, according to [Submodel Demographic Dispersal
+      Model].
+
+    * For each group, the collectively gathered resources are distributed
+      according to [Submodel Public Goods Game], in arbitrary order because all
+      interactions between agents have now been resolved. Each agent increases
+      their “stored resources” by their amount of resources gained.
+
+    * Within each group, families adjust a random one of their cultural features
+      to the majority value of that feature in their group.
+
+TODO: Explain why we chose this order of events.
 
  */
 fn distribute_each_patch_resources_step(
@@ -515,9 +514,39 @@ fn distribute_each_patch_resources_step(
     }
     stored_resources
 }
+// IDEAS:
+// every agent stores past interactions, plays tit-for-tat (C→D→L→C)
+// Start at “cooperate with self”
+// (choose to play cooperator/defector/loner in public goods game to extract resources)
+// Store a base strategy, starting L
+// Base strategy changes HOW? Random mutation? Or maybe to some function of history?
 
 /**
 ## 4. Design concepts
+
+The dispersal model generates a deep phylogeny of hunter-gatherer cultures based
+on culture-mediated cooperation and resource-driven migration. It is a
+demographic migration model in which the areal distribution of languages is an
+emergent property, not an imposed structure. As such, there is a feedback loop
+between resource availability, linguistic proximity, and cooperation, which
+drives the population dynamics of hunter-gatherers in the model.
+
+
+To construct a demographic migration model with culture, for the purpose of the
+project we set out here, we need the following ingedients.
+
+1. A representation of culture, which is at the least able to undergo neutral evolution
+   (showing heritability and random variation, not necessarily fitness) and which in
+   addition allows horizontal transfer of cultural traits other than from a parent to a
+   child population.
+2. Agents that carry cultural traits and are located in geographical space, which has
+   differing ecological features
+3. A system that drives the demographics of the agents in time and space
+4. A way for culture and population dynamics to interact in a way that can create create
+   distinct cultural areas instead of a vast cultural cline or dialect continuum.
+   In the following subsections, we will consider each of these elements separately.
+
+
 
 Under the ODD protocol, the design principles largely fall into questions. Where
 my answer indicates an invariant property of the simulation, I provide a test
@@ -1071,6 +1100,19 @@ mod sensing {
 Individuals know about nearby locations. The exploration of those locations is
 not explicitly modelled.
 
+>   The third quartile, across all groups, of the yearly migratory distance is
+>   around 320 km, so in this simulation the maximum distance moved per season
+>   is about 53.3 km. The simulation is centered around distances measured in
+>   time units (seconds, seasons, years). In all biomes except for mangroves,
+>   the terrain speed factor is greater than one (see
+>   `supplement/distances/ecoreginos.py`). If humans generally prefer 2%
+>   downhill slopes, they have to encounter about the same amount in uphill
+>   slopes, which are navigated at about 0.7740708353271509 m/s. At that speed,
+>   53.3 km correspond do about 68899 s or 19 hours. We therefore give
+>   individuals a maximum “sensing” range of 68899 seconds. Individuals will
+>   know about patches within this range from their current patch, but not about
+>   patches further away.
+
 */
 // I should say a bit more about sensing, I think.
     use std::collections::HashMap;
@@ -1122,26 +1164,6 @@ not explicitly modelled.
     }
 /**
 
-#### Technical details on the maximum sensing distance
-
-There is a maximum range on sensing: @kelly2013lifeways [Table 4.1] (reproduced in the
-supplementary material) lists mobility data for 70 hunter-gatherer groups,
-including figueres for the yearly territory of a group where that number could
-be inferred. Three quarters of the listed territories are about 2000 km² or
-less. In our model, this corresponds to roughly 5 patches (each with an area of
-ca. 400 km²) being visited per year. To give some leeway, we permit our agents
-up to 6 moves per year, so a season corresponds to two months. The third
-quartile, across all groups, of the yearly migratory distance is around 320 km,
-so in this simulation the maximum distance moved per season is about 53.3 km.
-The simulation is centered around distances measured in time units (seconds,
-seasons, years). In all biomes except for mangroves, the terrain speed factor is
-greater than one (see `supplement/distances/ecoreginos.py`). If humans generally
-prefer 2% downhill slopes, they have to encounter about the same amount in
-uphill slopes, which are navigated at about 0.7740708353271509 m/s. At that
-speed, 53.3 km correspond do about 68899 s or 19 hours. We therefore give
-individuals a maximum “sensing” range of 68899 seconds. Individuals will know
-about patches within this range from their current patch, but not about patches
-further away.
 
  */
     const MAX_SEASON_RANGE: f64 = 320. / 6. * 1000. / 0.774_070_835_327_150_9;
@@ -2096,49 +2118,3 @@ mean interval of children, divided by one minus that rate.
     }
 }
 
-pub fn store_state(state: State, statefile: String) -> Result<(), String> {
-    let file = match File::create(statefile) {
-        Ok(f) => f,
-        Err(_) => return Err("Could not create state file".to_string()),
-    };
-    match bincode::serialize_into(file, &state) {
-        Ok(_) => Ok(()),
-        Err(_) => Err("Failed to store state.".to_string()),
-    }
-}
-
-pub fn run(mut s: State, max_t: Seasons, o: &observation::Settings) {
-    let mut stored_resources: DashMap<_, _, std::hash::BuildHasherDefault<FxHasher>> =
-        DashMap::default();
-    let mut cache: DashMap<_, _, std::hash::BuildHasherDefault<FxHasher>> = DashMap::default();
-    loop {
-        stored_resources = step(
-            &mut s.families,
-            &mut s.patches,
-            &stored_resources,
-            &s.p,
-            s.t,
-            &mut cache,
-            o,
-        );
-
-        if s.families.is_empty() {
-            println!("Died out");
-            break;
-        }
-        if (s.t == max_t) || (o.store_every > 0) && (s.t % o.store_every == 0) {
-            println!("{:} % {:}", s.t, o.store_every);
-            let to_be_stored = s.clone();
-            let file = o.statefile.to_string();
-            std::thread::spawn(|| {
-                store_state(to_be_stored, file).unwrap_or_else(|r| println!("{:}", r))
-            });
-        }
-        if s.t >= max_t {
-            println!("Ended");
-            break;
-        }
-        s.t += 1;
-    }
-
-}

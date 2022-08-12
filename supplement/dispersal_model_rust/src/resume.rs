@@ -43,15 +43,7 @@ fn main() -> Result<(), String> {
         parser.parse_args_or_exit();
     }
 
-    let contents = match fs::read(statefile) {
-        Ok(c) => c,
-        Err(e) => return Err(e.to_string()),
-    };
-
-    let state: State = match bincode::deserialize(&contents) {
-        Ok(c) => c,
-        Err(e) => return Err(e.to_string()),
-    };
+    let state: State = State::load_from_file(statefile)?;
 
     run(state, end, &o);
     Ok(())
