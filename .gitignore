@@ -28,6 +28,7 @@ __pycache__
 
 # Rust
 target/
+Cargo.lock
 
 *.tif
 *.zip
