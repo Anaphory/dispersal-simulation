@@ -7,7 +7,8 @@ auto/
 *.log
 *.out
 *.pdf
-*.synctex.gz
+*.synctex.gz*
+*.toc
 
 # World Climate Data – Huge!
 supplement/worldclim/*.tif
