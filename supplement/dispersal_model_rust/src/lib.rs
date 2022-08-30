@@ -154,16 +154,24 @@ maximum possible resources available in a season, both in OYR.
 
 ### 2.2 Agents: Families
 
-For hunter-gatherer populations, most decisions influencing the population
-dynamics are made on the family level
-[@i-thought-i-had-a-referencece-for-this-somewhere-from-barcelo]. The agents of
-the simulation are thus families [@delcastillo2013modeling; @barcelo2014social]
-and individual humans are not modelled. New families can split off from existing
-families and become independent agents, and families that shrink below 2
-individuals die out and are remove from the simulation. Each family has the
-following properties.
+Cultural traits can be attached on various levels – to individuals, bands,
+territorial groups, or nation states, depending on the desired level of
+abstraction. For hunter-gatherer societies, it has has been suggested that the
+decisions about migration and demographics are made on the family level
+[@i-thought-i-had-a-referencece-for-this-somewhere-from-barcelo], so it makes
+sense to consider families the agents of our model and attach cultural traits on
+the family level. Families tend to be socially and geographically coheherent
+\parencite{}, but share their location (eg. camps, bands) with other families,
+which makes co-locality a reasonable factor for social interactions between
+them.
 
 > MAYBE: Lake (2000)
+
+The agents of the simulation are thus families [@delcastillo2013modeling;
+@barcelo2014social] and individual humans are not modelled. New families can
+split off from existing families and become independent agents, and families
+that shrink below 2 individuals die out and are remove from the simulation. Each
+family has the following properties.
 
  */
 
@@ -341,8 +349,96 @@ impl State {
 ### Deliberate model simplifications
 
 Here we list some entities we chose not to model.
+For a few of these choices, we collected relevant literature cited here, but in the end decided against their inclusion.
+
+#### No exploration of migration destinations (instead, a fixed radius is known)
+
+Eco-Cultural Niche Modeling
+(ECNM) [@banks2006ecocultural] has been a useful tool for a variety of
+archaeological questions [@banks2008human;@banks2013ecological;@dalpoimguedes2014modeling;@kondo2018ecological;@walker2019persistence].
+A well-established tool for ECNM is the maximum entropy approach implemented in
+the MaxEnt software package
+[@phillips2006maximum;@phillips2008modeling;@maxenttutorial]. MaxEnt
+generates, based on a set of points and environmental parameters, a maximum
+entropy probabilistic model for predicting the locations of these points. The
+resulting probability surface has been used to construct likely migration
+pathways of prehistoric populations [@kondo2018ecological].
+@steele2003where argue for models that take into account not only the
+quality (eg. in terms of caloric content) of resources, but also the
+accessibility. This suggests in converse that well-constructed cost-surface
+paths can be a tool to generate an approximation of a probability distribution
+representing niche. We construct a cost function that describes the effort
+moving from one settlement location to another, in terms of raw energy
+expenditure and missed foraging opportunities due to time spent on the trail.
+For land-based travel, we follow @wood2006energetically, which
+provides a metabolics-based cost that improve upon earlier heuristics such as
+@tobler1993three 's. For waterways, these costs are supplemented by
+@livingood2012no, and land cover that might increase the effort of
+movement is taken from @white2012geospatial.
+
+The cost is used in two ways: It serves directly as a cost of migration, which
+is also a penalty when a family considers moving to a better patch, which means
+that a neighboring patch needs to be better than the current patch by a margin.
+(It thus fulfills a similar role to the threshold of evidence $c$ by
+@crema2014simulation.)
+
+In addition, we considered a model where a family will only move to a place they
+know about, and such knowledge can only be acquired by a human traversing the
+distance. This exploration is not modeled explicitly, but it gives an intuitive
+mapping from the cost surface to a probability surface: Instead of visiting $q$
+patches with some arbitrary travel cost, an explorer can visit one patch with
+the $q$-fold effort to reach it and will still cross through at least one patch
+at the original cost. So we take anything that can be reached with an
+expenditure $E$ of one day's worth of resources (2263 kcal, according to
+\textcite{pontzer2012huntergatherer}---\textcite{smith2003assessment} cites a
+similar number of 2390 kcal) to be known ($p=1$), and for other locations with a
+cost-to-reach of $E$ accordingly we take $p(E) = \frac{1}{2 + E / {2263 \text{
+kcal}}}$ for all patches that can be reached within XXX days \parencite{}, and
+$p(E) = 0$ otherwise.
+
+However, this involves costly computations, so we discarded this approach.
 
 #### No adaptation to different environments
+
+It has been shown that language families spread easier east-west than
+north-south, due to climate varying much more with latitude than with longitude
+[@XXX]. Local biome can also play a role in the dispersal of a language
+family, as argued eg. by @grollemund2015bantu and @ehret2015bantu. There is
+not much literature on explicit models of cultural traits interacting with
+ecological niche in the context of migration.
+
+There may be a cost to moving from one habitat to another in the mid-term due to
+unfamiliarity not just with the details of the new landscape (“landscape
+learning”), but also with the general strategies for dealing with gathering food
+in a different habitat or ‘megapatch’ \parencite{kelly2003colonization}.
+\Textcite{kelly2003colonization} describes the time to learn a specific
+landscape. He does not quote any numbers, but gives impressions between ‘a
+couple of years’ and the time from a 12-year olds first accompanying their
+father until, presumably, adulthood, so we assume that it might take around 8
+years to gain familiarity and full efficiency. A graph by \Textcite[Fig.
+4]{freeman2017theory} suggests that under certain circumstances, foraging effort
+within a single environment can flip by a factor of roughly 2 due to a bistable
+stability landscape for foraging. Due to the unavailability of any other
+comparable data, we combine these two very rough estimates into a coarse process
+(and later check robustness) as follows.
+
+We assume that moving into a completely new biome will reduce the efficiency of
+a family to $0.5$. This has the side-effect to make moving across biome
+boundaries more likely for larger groups, who can compensate for the loss in
+efficiency by their cooperation. This ties into one of the possible strategies
+\textcite{kelly2003colonization} suggests for colonizing new land. Then, in each
+year, the efficiency in all biomes decreases by a factor of $\sqrt[30]{0.5}$ to
+a minimum of $50\%$, so that after a generation of living entirely outside the
+old biome, all specific knowledge is lost, and the family's efficiency in their
+current biome increases by $6.25\%$ to a maximum of $100\%$\footnote{An even
+  more elegant way would be a yearly loss by $p$ and an increase by $\frac{1}{p}
+  -1$, which would naturally balance each other at maximum efficiency $100\%$}, so
+that a family reaches full familiarity within 8 years. If a single patch
+displays a mix of biomes, a family will adapt randomly in proportion to the
+biomes present, thus balancing the adaptation and permitting a gradual
+transition between biomes.
+
+
 
 It has been proposed [@XXX, maybe-somewhere-bantu] that the need to adaptat to
 new environments slows migrations on a continental scale. We considered
@@ -358,6 +454,9 @@ east-west-direction (where biomes are similar) than in north-south-direction
 similar kelp-rich biomes stretching along the west coast of the Americas has
 been suggested as one explanation for the surprising speed with which humans
 settled those continents.
+
+
+
 
 #### No hierarchical social structure
 
@@ -1569,6 +1668,15 @@ pub mod submodels {
 
 ### 7.1 Demographic Dispersal Model
 
+    \textcite{hamilton2018stochastic}: Very simple model. Interesting extinction
+    mechanics, which I would love to include, but don't know how yet.
+
+    \textcite{crema2014simulation}: Fission-fusion dynamics, because that drives
+    migration and cooperation. We use a slightly reduced model of their decision
+    process.
+
+
+
 ### 7.2 Culture
 
 In order to display evolutionary dynamics, a complex system must at its minimum have
@@ -1880,6 +1988,21 @@ The public goods game is a complex adaptive model in itself, so it is described
 here by its own, slightly reduced, ODD.
 
 #### Purpose and patterns
+
+Conditional cooperation is a core ingredient of the feedback loop between
+culture and demographics in our model. We initially attempted to simplify the
+dynamics of interacting agents of different cultures to a single criterion of
+maximal cultural difference that would still allow cooperation. However, this
+approach is not transitive, so conceptual issues arise when A and B as well as B
+and C are each more similar than the threshold, but A and C are not similar:
+Will A, B, and C form a band? The apprach furthermore ignores the broad range of
+cultural interactions.
+
+A frequent model of conditional cooperation in evolutionary game theory is the
+Public Goods Game [@XXX] In the basic game, subjects secretly choose whether to
+contribute to a public pot. The total contributions are scaled up and evenly
+divided among players.
+
 
 #### Process overview and scheduling
 
